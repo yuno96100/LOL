@@ -1,0 +1,17 @@
+{
+    "version": "1.0.0",
+    "files": [
+        "CharactorManager.js",
+        "Common.js",
+        "Const.js",
+        "DataBase.js",
+        "Helper.js",
+        "LoginManager.js",
+        "Main.js",
+        "Matching.js",
+        "Object.js",
+        "RecordManager.js",
+        "RelationManager.js"
+    ],
+    "note": "v1.0.0 : 신규방생성을 위한 모듈 정리"
+}
