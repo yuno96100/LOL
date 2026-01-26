@@ -17,7 +17,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
        UserCmd(room, msg, sender, replier, imageDB.getProfileBase64());
 }
 function MainCmd(_room, _msg, _sender, _replier) {
-    if (_msg.indexOf("!ID확인") === 0) {
+    if (_msg.indexOf(".ID확인") === 0) {
         if (login_Manager.contain(_msg.split(" ")[1]) !== -1)
             _replier.reply("이미 등록된 ID입니다.");
         else {
@@ -27,7 +27,7 @@ function MainCmd(_room, _msg, _sender, _replier) {
 }
 function UserCmd(_room, _msg, _sender, _replier, _image) {
     var result, obj, array, rtnStr, splitMsg, friend, i;
-    if (_msg.indexOf("!등록") === 0) {
+    if (_msg.indexOf(".등록") === 0) {
         if(_msg.split(" ")[1] === undefined || _msg.split(" ")[1] === null || _msg.split(" ")[1] === "") {
             _replier.reply("패스워드 값이 없습니다.");
             return;
@@ -39,7 +39,7 @@ function UserCmd(_room, _msg, _sender, _replier, _image) {
             _replier.reply("이미 등록이된 ID입니다.");
         }
     }
-    else if (_msg.indexOf("!PW변경") === 0) {
+    else if (_msg.indexOf(".PW변경") === 0) {
         result = login_Manager.changepw(_room, _msg.split(" ")[1], _msg.split(" ")[2], _sender, _image);
         if (result === 0) {
             _replier.reply("변경이 완료되었습니다.");
@@ -51,25 +51,25 @@ function UserCmd(_room, _msg, _sender, _replier, _image) {
             _replier.reply("초기 등록된 보안 key값이 다릅니다. 최초 등록된 카톡명과 이미지로 변경하시기 바랍니다.");
         }
     }
-    else if(_msg.indexOf("!로그인") === 0) {
+    else if(_msg.indexOf(".로그인") === 0) {
         if(login_Manager.login(_room, _msg.split(" ")[1], _sender, _image)) {
             _replier.reply("로그인이 완료 되었습니다.");
         } else {
             _replier.reply("로그인에 실패하였습니다.");
         }
     }
-    else if(_msg.indexOf("!로그아웃") === 0) {
+    else if(_msg.indexOf(".로그아웃") === 0) {
         if(login_Manager.logout(_room, _sender, _image)) {
             _replier.reply("로그아웃이 완료 되었습니다.");
         } else {
             _replier.reply("로그아웃에 실패하였습니다.");
         }
     }
-    else if(_msg.indexOf("!계정정보") === 0) {
+    else if(_msg.indexOf(".계정정보") === 0) {
         _replier.reply(login_Manager.loginfo(_room));
         _replier.reply(Character_Manager.Charinfo(_room));
     }
-    else if(_msg.indexOf("!캐릭생성") === 0){
+    else if(_msg.indexOf(".캐릭생성") === 0){
         if(!checkLogin(_room, _replier))return;
 
         if(!Character_Manager.makeCharacter(_room))
