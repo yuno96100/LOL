@@ -4,10 +4,10 @@ const MainRoomNmae = "LOL 실험실";
 const GameMaster = "시스템";
 const rootPath = "sdcard/LOL/";
 const fileNameList = { UserList:"Users/UserList.txt",
-                       CharactorList:"Charactor/CharactorList.txt",
-                       CharOption:"Charactor/CharOption.txt",
-                       RecordList:"Charactor/RecordList.txt",
-                       RelationList:"Charactor/RelationList.txt"};
+                       CharacterList:"Character/CharacterList.txt",
+                       CharOption:"Character/CharOption.txt",
+                       RecordList:"Character/RecordList.txt",
+                       RelationList:"Character/RelationList.txt"};
 
 const DBNameList = { Species:"DB/Species.txt",
                     WearItem:"DB/WearItem.txt",
