@@ -4,7 +4,7 @@ const libObject = Bridge.getScopeOf("Object.js"); // object 객체
 const libCommon = Bridge.getScopeOf("Common.js"); // 일반 function Lib
 
 var login_Manager = Bridge.getScopeOf("LoginManager.js").LoginManager(); // 로그인 담당 객체
-var charactor_Manager = Bridge.getScopeOf("CharactorManager.js").CharactorManager(); // 캐릭터 담당 객체
+var Character_Manager = Bridge.getScopeOf("CharacterManager.js").CharacterManager(); // 캐릭터 담당 객체
 var relation_Manager = Bridge.getScopeOf("RelationManager.js").RelationManager(); // 친구추가 및 삭제 담당 객체
 var db_Manager = Bridge.getScopeOf("DataBase.js").DBManager(); // 데이터 담당 객체
 
@@ -67,12 +67,12 @@ function UserCmd(_room, _msg, _sender, _replier, _image) {
     }
     else if(_msg.indexOf("!계정정보") === 0) {
         _replier.reply(login_Manager.loginfo(_room));
-        _replier.reply(charactor_Manager.Charinfo(_room));
+        _replier.reply(Character_Manager.Charinfo(_room));
     }
     else if(_msg.indexOf("!캐릭생성") === 0){
         if(!checkLogin(_room, _replier))return;
 
-        if(!charactor_Manager.makeCharactor(_room))
+        if(!Character_Manager.makeCharacter(_room))
         {
             _replier.reply("이미 생성된 캐릭터가 존재 합니다.");
             return;
