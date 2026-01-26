@@ -1,7 +1,7 @@
 {
     "version": "1.0.0",
     "files": [
-        "CharactorManager.js",
+        "CharacterManager.js",
         "Common.js",
         "Const.js",
         "DataBase.js",
