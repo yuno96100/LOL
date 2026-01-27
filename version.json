@@ -1,17 +1,9 @@
 {
     "version": "1.0.4",
     "files": [
-        "CharacterManager.js",
         "Common.js",
         "Const.js",
-        "DataBase.js",
-        "Helper.js",
-        "LoginManager.js",
-        "main.js",
-        "Matching.js",
-        "Object.js",
-        "RecordManager.js",
-        "RelationManager.js"
+        "main.js"
     ],
     "note": "v1.0.4 : 상태점검"
 }
