@@ -3,6 +3,22 @@ var libConst = Bridge.getScopeOf("Const.js");
 var helper = Bridge.getScopeOf("Helper.js");
 
 function response(room, msg, sender, isGroupChat, replier) {
+   
+    
+    if (msg === ".정보확인") {
+        var info = " [ 봇 설정 정보 확인 ]\n\n";
+        info += "● 현재 방 이름: " + room + "\n";
+        info += "● 메인 방 설정: " + libConst.MainRoomNmae + "\n";
+        info += "● 일치 여부: " + (room === libConst.MainRoomNmae ? "일치(MainCmd)" : "불일치(UserCmd)") + "\n";
+        info += "● 데이터 경로: " + libConst.rootPath + "\n";
+        info += "● 사용자 파일: " + libConst.rootPath + libConst.fileNameList["UserList"];
+        
+        replier.reply(info);
+        return; // 테스트 명령어 실행 시 하단 로직 무시
+    }
+    
+    
+    
     // 1. 봇이 방 이름을 어떻게 읽고 있는지 확인하기 위한 로그
     if (msg === ".정보") {
         replier.reply("현재 방 이름: [" + room + "]\n설정된 메인방: [" + libConst.MainRoomNmae + "]");
