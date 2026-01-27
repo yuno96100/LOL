@@ -1,8 +1,12 @@
 {
-    "version": "1.0.4",
+    "version": "1.0.5",
     "files": [
         "Common.js",
         "Const.js",
+        "LoginManager.js",
+        "Object.js",
+        "Helper.js",
+        "DataBase.js",
         "main.js"
     ],
     "note": "v1.0.4 : 상태점검"
