@@ -1,35 +1,27 @@
-function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
-    
-    // 1. 봇 동작 여부 확인 (가장 기초)
+function response(room, msg, sender, isGroupChat, replier) {
     if (msg === ".체크") {
-        var log = ["==== 🤖 시스템 정밀 점검 ===="];
+        var libConst = Bridge.getScopeOf("Const.js");
+        var res = "=== 🔍 LOL 실험실 환경 점검 ===\n";
         
-        // 현재 방 이름 확인
-        log.push("📍 현재 방 이름: [" + room + "]");
+        res += "📍 봇이 인식한 현재 방 이름: [" + room + "]\n";
+        res += "⚙️ 설정 파일의 메인 방 이름: [" + libConst.MainRoomNmae + "]\n";
         
-        // 파일 읽기/쓰기 권한 확인
-        try {
-            var path = "sdcard/Kmjbot/test_log.txt";
-            FileStream.write(path, "OK");
-            var read = FileStream.read(path);
-            log.push(read === "OK" ? "✅ 저장소 권한: 정상" : "❌ 저장소 권한: 읽기 실패");
-        } catch(e) {
-            log.push("❌ 저장소 권한: 없음 (" + e.message + ")");
+        if (room === libConst.MainRoomNmae) {
+            res += "✅ 결과: 메인방 일치! (정상 작동 가능)\n";
+        } else {
+            res += "❌ 결과: 방 이름 불일치! (명령어 무시됨)\n";
+            res += "💡 해결: Const.js의 MainRoomNmae를 [" + room + "]로 수정하세요.\n";
         }
 
-        // Bridge(파일 연결) 기능 확인
+        // 경로 권한 체크
         try {
-            var testConst = Bridge.getScopeOf("Const.js");
-            if (testConst) {
-                log.push("✅ Const.js 연결: 성공");
-                log.push("✅ 설정된 메인룸: [" + testConst.MainRoomNmae + "]");
-            } else {
-                log.push("❌ Const.js 연결: 실패 (파일이 없거나 컴파일 에러)");
-            }
+            var path = libConst.rootPath + "test.txt";
+            FileStream.write(path, "test");
+            res += "📁 경로 권한: ✅ 정상 (" + libConst.rootPath + ")";
         } catch(e) {
-            log.push("❌ Bridge 에러: " + e.message);
+            res += "📁 경로 권한: ❌ 에러 (" + e.message + ")\n💡 폴더가 없거나 권한이 없습니다.";
         }
 
-        replier.reply(log.join("\n"));
+        replier.reply(res);
     }
 }
