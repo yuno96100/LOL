@@ -1,1 +1,3 @@
-const MainRoomName = "LOL실험실"; // 토씨 하나 안 틀리고 똑같이 적어야 합니다.
+// Const.js
+const MainRoomName = "LOL실험실"; // 'GameRoom'에서 변경
+const rootPath = "sdcard/LOL/";    // 'Kmjbot'에서 변경
