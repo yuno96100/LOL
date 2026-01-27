@@ -1,7 +1,3 @@
-// 상단 참조 부분 (레거시 API는 이 로드가 중요합니다)
-var libConst = Bridge.getScopeOf("Const.js");
-var helper = Bridge.getScopeOf("Helper.js");
-
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
 
     // 1. 단순 텍스트 일치 확인 테스트
