@@ -1,45 +1,28 @@
 // 상단 참조 부분 (레거시 API는 이 로드가 중요합니다)
 var libConst = Bridge.getScopeOf("Const.js");
 var helper = Bridge.getScopeOf("Helper.js");
-
-function response(room, msg, sender, isGroupChat, replier) {
-   
+function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
-    if (msg === ".정보확인") {
-        var info = " [ 봇 설정 정보 확인 ]\n\n";
-        info += "● 현재 방 이름: " + room + "\n";
-        info += "● 메인 방 설정: " + libConst.MainRoomName + "\n";
-        info += "● 일치 여부: " + (room === libConst.MainRoomName ? "일치(MainCmd)" : "불일치(UserCmd)") + "\n";
-        info += "● 데이터 경로: " + libConst.rootPath + "\n";
-        info += "● 사용자 파일: " + libConst.rootPath + libConst.fileNameList["UserList"];
-        
-        replier.reply(info);
-        return; // 테스트 명령어 실행 시 하단 로직 무시
-    }
-    
-    
-    
-    // 1. 봇이 방 이름을 어떻게 읽고 있는지 확인하기 위한 로그
+    /* ---- 테스트용 로직 시작 ---- */
     if (msg === ".정보") {
-        replier.reply("현재 방 이름: [" + room + "]\n설정된 메인방: [" + libConst.MainRoomName + "]");
-        return;
+        var testInfo = "==== [ 봇 시스템 체크 ] ====\n\n";
+        testInfo += "1. 현재 방 이름 : " + room + "\n";
+        testInfo += "2. 메인 방 설정 : " + libConst.MainRoomName + "\n";
+        testInfo += "3. 현재 방 성격 : " + (room === libConst.MainRoomName ? "공용(MainRoom)" : "개인(UserRoom)") + "\n";
+        testInfo += "4. 데이터 경로 : " + libConst.rootPath + "\n";
+        testInfo += "5. 접두사 테스트 : OK (.)\n\n";
+        testInfo += "※ 가입 테스트는 '개인(UserRoom)'에서 진행하세요.";
+        
+        replier.reply(testInfo);
+        return; // 테스트 확인 시 아래 로직 실행 방지
     }
+    /* ---- 테스트용 로직 끝 ---- */
 
-    // 2. 접두사 점검
-    if (!msg.startsWith(".")) return;
-
-    // 3. 방 이름이 'LOL 실험실'인지 체크 (Const.js 기준)
+    // 기존 로직 (도움말 및 명령어 분기)
+    if (helper.Directions(room, msg, replier)) return;
+    
     if (room === libConst.MainRoomName) {
-        // 메인룸 전용 명령어 (ID확인 등)
-        if (msg === ".명령어") {
-            helper.Directions(room, msg, replier);
-        }
+        MainCmd(room, msg, sender, replier);
     } else {
-        // 1:1 대화방 명령어 (등록, 로그인 등)
-        // 여기는 방 이름이 MainRoomName과 다를 때 실행됩니다.
-        if (msg.startsWith(".등록") || msg.startsWith(".로그인")) {
-            // 여기에 로그인 로직 실행
-            replier.reply("1:1 대화방 기능을 실행합니다.");
-        }
+        UserCmd(room, msg, sender, replier, imageDB);
     }
-}
