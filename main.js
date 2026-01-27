@@ -1,24 +1,17 @@
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
 
-    // .정보 입력 시 즉시 실행
+    // .정보 입력 시 즉시 실행 (설정값 참조 안 함)
     if (msg === ".정보") {
         var res = "[ 봇 연결 상태 확인 ]\n\n";
         res += "● 현재 방 이름: " + room + "\n";
         res += "● 보낸 사람: " + sender + "\n";
+        res += "● 그룹 채팅 여부: " + (isGroupChat ? "예" : "아니오") + "\n";
+        res += "● 패키지명: " + packageName;
         
-        // Const.js의 값을 가져올 때 에러 방지 처리
-        try {
-            var configRoom = libConst.MainRoomName || libConst.MainRoomNmae || "설정 없음";
-            res += "● 설정된 메인방: " + configRoom + "\n";
-            res += "● 데이터 경로: " + (libConst.rootPath || "경로 미설정") + "\n";
-            res += "● 판정: " + (room === configRoom ? "메인방" : "유저방");
-        } catch (e) {
-            res += "\n[!] Const.js 참조 에러: 변수명을 확인하세요.";
-        }
-
         replier.reply(res);
         return; 
     }
     
-    // ... 나머지 로직
+    // 이 아래부터는 기존 로직을 실행하되, 
+    // Const.js의 변수가 없으면 에러가 날 수 있으니 체크가 필요합니다.
 }
