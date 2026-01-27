@@ -1,5 +1,5 @@
 {
-    "version": "1.0.2",
+    "version": "1.0.3",
     "files": [
         "CharacterManager.js",
         "Common.js",
@@ -13,5 +13,5 @@
         "RecordManager.js",
         "RelationManager.js"
     ],
-    "note": "v1.0.2 : 가입 및 로그인에 의한 채팅방분기"
+    "note": "v1.0.3 : 가입 및 로그인에 의한 채팅방분기 2"
 }
