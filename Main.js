@@ -1,53 +1,35 @@
-function response(room, msg, sender, isGroupChat, replier) {
+function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
-    // 점검 명령어
+    // 1. 봇 동작 여부 확인 (가장 기초)
     if (msg === ".체크") {
-        var report = ["🔍 [시스템 환경 점검 리포트]"];
+        var log = ["==== 🤖 시스템 정밀 점검 ===="];
         
+        // 현재 방 이름 확인
+        log.push("📍 현재 방 이름: [" + room + "]");
+        
+        // 파일 읽기/쓰기 권한 확인
         try {
-            // 1. Const.js 로드 확인
-            var libConst = Bridge.getScopeOf("Const.js");
-            if (!libConst) {
-                report.push("❌ Const.js : 로드 실패 (파일명을 확인하세요)");
-            } else {
-                report.push("✅ Const.js : 로드 성공");
-                report.push("   - 설정된 메인룸: " + libConst.MainRoomNmae);
-                report.push("   - 설정된 경로: " + libConst.rootPath);
-                
-                // 2. 방 이름 일치 확인
-                if (room === libConst.MainRoomNmae) {
-                    report.push("✅ 현재 방 인식: 메인룸(GameRoom) 일치");
-                } else {
-                    report.push("ℹ️ 현재 방 인식: 개인톡 또는 다른 방 (" + room + ")");
-                }
-            }
-
-            // 3. 파일 시스템 및 폴더 권한 확인
-            var testPath = libConst.rootPath + "test.txt";
-            try {
-                FileStream.write(testPath, "test");
-                var readTest = FileStream.read(testPath);
-                if (readTest === "test") {
-                    report.push("✅ 파일 시스템: 읽기/쓰기 가능");
-                } else {
-                    report.push("❌ 파일 시스템: 쓰기 성공했으나 읽기 실패");
-                }
-            } catch (e) {
-                report.push("❌ 파일 시스템: 권한 없음 또는 폴더 없음 (" + e.message + ")");
-            }
-
-            // 4. Bridge 정상 작동 확인 (다른 모듈 로드)
-            try {
-                var libCommon = Bridge.getScopeOf("Common.js");
-                report.push(libCommon ? "✅ Common.js : 연결됨" : "❌ Common.js : 연결 실패");
-            } catch(e) {
-                report.push("❌ 모듈 브릿지 에러: " + e.message);
-            }
-
-        } catch (e) {
-            report.push("⚠️ 치명적 오류: " + e.message);
+            var path = "sdcard/Kmjbot/test_log.txt";
+            FileStream.write(path, "OK");
+            var read = FileStream.read(path);
+            log.push(read === "OK" ? "✅ 저장소 권한: 정상" : "❌ 저장소 권한: 읽기 실패");
+        } catch(e) {
+            log.push("❌ 저장소 권한: 없음 (" + e.message + ")");
         }
 
-        replier.reply(report.join("\n"));
+        // Bridge(파일 연결) 기능 확인
+        try {
+            var testConst = Bridge.getScopeOf("Const.js");
+            if (testConst) {
+                log.push("✅ Const.js 연결: 성공");
+                log.push("✅ 설정된 메인룸: [" + testConst.MainRoomNmae + "]");
+            } else {
+                log.push("❌ Const.js 연결: 실패 (파일이 없거나 컴파일 에러)");
+            }
+        } catch(e) {
+            log.push("❌ Bridge 에러: " + e.message);
+        }
+
+        replier.reply(log.join("\n"));
     }
 }
