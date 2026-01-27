@@ -1,29 +1,38 @@
-const libConst = Bridge.getScopeOf("Const.js");
-const helper = Bridge.getScopeOf("Helper.js");
-var login_Manager;
+// Main.js 상단
+var libConst, helper, login_Manager;
 
-try {
-    login_Manager = Bridge.getScopeOf("LoginManager.js").LoginManager();
-} catch(e) {
-    Log.e("LoginManager 로드 실패: " + e);
+function init() {
+    try {
+        libConst = Bridge.getScopeOf("Const.js");
+        helper = Bridge.getScopeOf("Helper.js");
+        // LoginManager를 가져올 때 에러 방지를 위해 초기화 함수 호출
+        var loginScope = Bridge.getScopeOf("LoginManager.js");
+        if(loginScope && loginScope.LoginManager) {
+            login_Manager = loginScope.LoginManager();
+        }
+    } catch(e) {
+        Log.e("초기화 실패: " + e);
+    }
 }
 
+// 봇이 켜질 때 실행
+init();
+
 function response(room, msg, sender, isGroupChat, replier) {
-    try {
-        // 1. 테스트용 (작동 확인)
-        if (msg === ".테스트") return replier.reply("봇이 정상 작동 중입니다!");
+    // 0. 혹시 모르니 다시 한번 체크
+    if(!libConst) init();
 
-        // 2. 접두사 체크
-        if (!msg.startsWith(libConst.Prefix)) return;
+    // 1. 접두사 확인 (현재 설정한 '.')
+    if (!msg.startsWith(".")) return;
 
-        // 3. 도움말 디자인 출력
-        if (helper.Directions(room, msg, replier)) return;
+    // 2. 테스트 명령어 (이게 안 오면 설정 문제)
+    if (msg === ".테스트") return replier.reply("✅ 봇 응답 가능");
 
-        let cmdLine = msg.substring(libConst.Prefix.length);
-        let args = cmdLine.split(" ");
-        let cmd = args[0];
+    // 3. Helper 실행
+    // 여기서 주의! Helper.js 내부의 "!명령어"를 ".명령어"로 고쳤는지 확인하세요.
+    if (helper.Directions(room, msg, replier)) return;
 
-        // 4. 방 분기
+    // 4. 방 분기
         if (room === libConst.MainRoomNmae) {
             if (cmd === "ID확인") {
                 let id = args[1];
