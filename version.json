@@ -7,7 +7,7 @@
         "DataBase.js",
         "Helper.js",
         "LoginManager.js",
-        "Main.js",
+        "script.js",
         "Matching.js",
         "Object.js",
         "RecordManager.js",
