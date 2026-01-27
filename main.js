@@ -8,8 +8,8 @@ function response(room, msg, sender, isGroupChat, replier) {
     if (msg === ".정보확인") {
         var info = " [ 봇 설정 정보 확인 ]\n\n";
         info += "● 현재 방 이름: " + room + "\n";
-        info += "● 메인 방 설정: " + libConst.MainRoomNmae + "\n";
-        info += "● 일치 여부: " + (room === libConst.MainRoomNmae ? "일치(MainCmd)" : "불일치(UserCmd)") + "\n";
+        info += "● 메인 방 설정: " + libConst.MainRoomName + "\n";
+        info += "● 일치 여부: " + (room === libConst.MainRoomName ? "일치(MainCmd)" : "불일치(UserCmd)") + "\n";
         info += "● 데이터 경로: " + libConst.rootPath + "\n";
         info += "● 사용자 파일: " + libConst.rootPath + libConst.fileNameList["UserList"];
         
@@ -21,7 +21,7 @@ function response(room, msg, sender, isGroupChat, replier) {
     
     // 1. 봇이 방 이름을 어떻게 읽고 있는지 확인하기 위한 로그
     if (msg === ".정보") {
-        replier.reply("현재 방 이름: [" + room + "]\n설정된 메인방: [" + libConst.MainRoomNmae + "]");
+        replier.reply("현재 방 이름: [" + room + "]\n설정된 메인방: [" + libConst.MainRoomName + "]");
         return;
     }
 
@@ -29,14 +29,14 @@ function response(room, msg, sender, isGroupChat, replier) {
     if (!msg.startsWith(".")) return;
 
     // 3. 방 이름이 'LOL 실험실'인지 체크 (Const.js 기준)
-    if (room === libConst.MainRoomNmae) {
+    if (room === libConst.MainRoomName) {
         // 메인룸 전용 명령어 (ID확인 등)
         if (msg === ".명령어") {
             helper.Directions(room, msg, replier);
         }
     } else {
         // 1:1 대화방 명령어 (등록, 로그인 등)
-        // 여기는 방 이름이 MainRoomNmae과 다를 때 실행됩니다.
+        // 여기는 방 이름이 MainRoomName과 다를 때 실행됩니다.
         if (msg.startsWith(".등록") || msg.startsWith(".로그인")) {
             // 여기에 로그인 로직 실행
             replier.reply("1:1 대화방 기능을 실행합니다.");
