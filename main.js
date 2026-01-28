@@ -1,19 +1,29 @@
-// Const.js와 Common.js의 설정을 가져옵니다.
-const libConst = Bridge.getScopeOf("Const.js"); 
+// 상단에 라이브러리 참조가 되어있는지 확인하세요.
+const libConst = Bridge.getScopeOf("Const.js");
 
-function checkRoomStatus(room, replier) {
-    // 1. 현재 내가 있는 방의 이름을 변수에 저장
-    var currentRoomName = room;
+function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
-    // 2. 해당 방이 Const.js에 정의된 메인 게임방(그룹방)인지 확인
-    var isGroupRoom = (currentRoomName === libConst.MainRoomName);
-    
-    // 3. 결과 출력
-    var resultMsg = "[방 정보 확인]\n";
-    resultMsg += "  - 현재 방 이름: " + currentRoomName + "\n";
-    resultMsg += "  - 그룹방 여부: " + (isGroupRoom ? "예 (게임 메인룸)" : "아니오 (개인룸/기타)");
-    
-    replier.reply(resultMsg);
-    
-    return isGroupRoom;
+    // [명령어: !방정보] 현재 방의 이름과 그룹방 여부를 출력합니다.
+    if (msg === ".방정보") { // 사용자의 설정에 따라 '.' 접두사 사용
+        var currentRoom = room; // 현재 접속 중인 방 이름
+        var mainRoom = libConst.MainRoomNmae; // Const.js에 설정된 메인룸 이름 ("GameRoom")
+        
+        // 그룹방 여부 판별 (현재 방 이름과 설정된 메인룸 이름 비교)
+        var isMainRoom = (currentRoom === mainRoom);
+        
+        var result = "『 채팅방 정보 확인 』\n\n";
+        result += "📍 현재 방: " + currentRoom + "\n";
+        result += "👥 그룹방 여부: " + (isMainRoom ? "O (메인 게임룸)" : "X (개인룸/기타)");
+        
+        if (isMainRoom) {
+            result += "\n\n* 이 곳은 공식 게임방이므로 모든 명령어가 활성화됩니다.";
+        } else {
+            result += "\n\n* 이 곳은 개인 공간입니다.";
+        }
+        
+        replier.reply(result);
+        return; // 로직 종료
+    }
+
+    // --- 이후 기존 Main.js의 로직 (MainCmd, UserCmd 등)이 이어짐 ---
 }
