@@ -1,5 +1,5 @@
 {
-    "version": "1.1.2",
+    "version": "1.1.4",
     "files": [
         "Const.js",
         "Object.js",
@@ -8,5 +8,5 @@
         "LoginManager.js",
         "main.js"
     ],
-    "note": "v1.1.2 : .정보 명령어 내 시스템 보호막 및 아키텍처 정보 상세화"
+    "note": "v1.1.4 : 에러 로그 출력 위치 지정(게임봇 방) 및 시스템 안정성 강화"
 }
