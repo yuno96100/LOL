@@ -1,24 +1,19 @@
-function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
+// Const.js와 Common.js의 설정을 가져옵니다.
+const libConst = Bridge.getScopeOf("Const.js"); 
 
-    // [1] 정보 확인용 (에러 방지를 위해 변수 존재 여부 체크)
-    if (msg === ".정보") {
-        var res = "[ 봇 실시간 인식 정보 ]\n\n";
-        res += "● 인식된 방 이름: " + room + "\n";
-        res += "● 보낸 사람: " + sender + "\n";
-        res += "● 단체톡 여부(isGroupChat): " + isGroupChat + "\n";
-        replier.reply(res);
-        return;
-    }
-
-    // [2] 명령어 분기 처리 (가장 확실한 방법)
-    // 방 이름에 "LOL" 또는 "실험실"이 포함되어 있거나, 설정된 이름과 같으면 메인방으로 인식
-    var isMainRoom = (room === "LOL실험실") || (room.indexOf("LOL실험실") !== -1);
-
-    if (isMainRoom) {
-        // 단체톡방에서 실행될 명령어
-        MainCmd(room, msg, sender, replier);
-    } else {
-        // 그 외(개인톡 등)에서 실행될 명령어 (.등록, .로그인 등)
-        UserCmd(room, msg, sender, replier, imageDB);
-    }
+function checkRoomStatus(room, replier) {
+    // 1. 현재 내가 있는 방의 이름을 변수에 저장
+    var currentRoomName = room;
+    
+    // 2. 해당 방이 Const.js에 정의된 메인 게임방(그룹방)인지 확인
+    var isGroupRoom = (currentRoomName === libConst.MainRoomName);
+    
+    // 3. 결과 출력
+    var resultMsg = "[방 정보 확인]\n";
+    resultMsg += "  - 현재 방 이름: " + currentRoomName + "\n";
+    resultMsg += "  - 그룹방 여부: " + (isGroupRoom ? "예 (게임 메인룸)" : "아니오 (개인룸/기타)");
+    
+    replier.reply(resultMsg);
+    
+    return isGroupRoom;
 }
