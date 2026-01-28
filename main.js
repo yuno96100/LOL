@@ -1,5 +1,12 @@
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
+
+
+if (sender === "내카톡이름" && msg === ".리로드") {
+    Api.reload();
+    replier.reply("시스템을 재시작했습니다.");
+}
+
     // 테스트용: 어떤 방에서든 작동해야 함
     if (msg === ".테스트") {
         replier.reply("봇이 살아있습니다!\n방 이름: " + room);
