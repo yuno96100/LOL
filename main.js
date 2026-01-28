@@ -1,27 +1,24 @@
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
-    
-    // [설정값 불러오기]
-    var configMainRoom = libConst.MainRoomName;
 
-    // [메인방 판정 로직]
-    // 1. 방 이름이 설정값과 같거나
-    // 2. 방 이름에 설정값이 포함되어 있거나
-    // 3. 엔진이 단체톡(isGroupChat)으로 인식할 때
-    var isMain = (room === configMainRoom) || (room.indexOf(configMainRoom) !== -1) || isGroupChat;
-
-    // 테스트용 정보 출력
+    // [1] 정보 확인용 (에러 방지를 위해 변수 존재 여부 체크)
     if (msg === ".정보") {
-        var info = "현재방: " + room + "\n";
-        info += "판정: " + (isMain ? "메인방(공용)" : "유저방(개인)");
-        replier.reply(info);
+        var res = "[ 봇 실시간 인식 정보 ]\n\n";
+        res += "● 인식된 방 이름: " + room + "\n";
+        res += "● 보낸 사람: " + sender + "\n";
+        res += "● 단체톡 여부(isGroupChat): " + isGroupChat + "\n";
+        replier.reply(res);
         return;
     }
 
-    // [명령어 분기]
-    if (isMain) {
+    // [2] 명령어 분기 처리 (가장 확실한 방법)
+    // 방 이름에 "LOL" 또는 "실험실"이 포함되어 있거나, 설정된 이름과 같으면 메인방으로 인식
+    var isMainRoom = (room === "LOL 실험실") || (room.indexOf("LOL 실험실") !== -1);
+
+    if (isMainRoom) {
+        // 단체톡방에서 실행될 명령어
         MainCmd(room, msg, sender, replier);
     } else {
-        // 방 이름이 닉네임으로 나오는 경우 보통 이쪽으로 들어옵니다.
+        // 그 외(개인톡 등)에서 실행될 명령어 (.등록, .로그인 등)
         UserCmd(room, msg, sender, replier, imageDB);
     }
 }
