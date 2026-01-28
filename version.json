@@ -1,12 +1,12 @@
 {
-    "version": "1.0.5",
+    "version": "1.1.0",
     "files": [
-        "LoginManager.js",
         "Const.js",
         "Object.js",
-        "Helper.js",
         "DataBase.js",
-        "main.js"
+        "Helper.js",
+        "LoginManager.js",
+        "Main.js"
     ],
-    "note": "v1.0.5 : 기능추가"
+    "note": "v1.1.0 : 화폐 시스템(RP) 제거 및 방 정보 출력 기능 추가, 인터페이스 통일"
 }
