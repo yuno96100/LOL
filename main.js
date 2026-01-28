@@ -1,12 +1,9 @@
-/**
- * main.js
- * 역할: 메인 컨트롤러 및 지정된 방으로 에러 보고
- */
-
+// main.js 상단 모듈 로드 부분 확인
 const libConst = Bridge.getScopeOf("Const.js").bridge();
 const Login = Bridge.getScopeOf("LoginManager.js").bridge();
 const Helper = Bridge.getScopeOf("Helper.js").bridge();
 
+// (중략 - v1.1.4와 동일한 response 함수 로직)
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
     try {
