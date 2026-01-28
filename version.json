@@ -3,7 +3,7 @@
     "files": [
         "Common.js",
         "Const.js",
-        "LoginManager.js",
+        "Logic.js",
         "Object.js",
         "Helper.js",
         "DataBase.js",
