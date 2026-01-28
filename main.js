@@ -12,7 +12,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
     // [2] 명령어 분기 처리 (가장 확실한 방법)
     // 방 이름에 "LOL" 또는 "실험실"이 포함되어 있거나, 설정된 이름과 같으면 메인방으로 인식
-    var isMainRoom = (room === "LOL 실험실") || (room.indexOf("LOL 실험실") !== -1);
+    var isMainRoom = (room === "LOL실험실") || (room.indexOf("LOL실험실") !== -1);
 
     if (isMainRoom) {
         // 단체톡방에서 실행될 명령어
