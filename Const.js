@@ -1,7 +1,7 @@
 // Const.js
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
-const AdminName = "방장닉네임"; 
+const AdminName = "시스템"; 
 
 // 경로 설정
 const RootPath = "sdcard/LOL/";      
