@@ -1,5 +1,5 @@
 {
-    "version": "1.1.4",
+    "version": "1.1.5",
     "files": [
         "Const.js",
         "Object.js",
@@ -8,5 +8,5 @@
         "LoginManager.js",
         "main.js"
     ],
-    "note": "v1.1.4 : 에러 로그 출력 위치 지정(게임봇 방) 및 시스템 안정성 강화"
+    "note": "v1.1.5 : LoginManager 내 DB 모듈 참조 오류(undefined) 수정"
 }
