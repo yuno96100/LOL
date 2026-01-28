@@ -1,13 +1,12 @@
 {
     "version": "1.0.5",
     "files": [
-        "Common.js",
+        "LoginManager.js",
         "Const.js",
-        "Logic.js",
         "Object.js",
         "Helper.js",
         "DataBase.js",
         "main.js"
     ],
-    "note": "v1.0.4 : 상태점검"
+    "note": "v1.0.5 : 기능추가"
 }
