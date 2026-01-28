@@ -1,5 +1,5 @@
 {
-    "version": "1.1.1",
+    "version": "1.1.2",
     "files": [
         "Const.js",
         "Object.js",
@@ -8,5 +8,5 @@
         "LoginManager.js",
         "main.js"
     ],
-    "note": "v1.1.1 : 봇 비활성화 방지를 위한 try-catch 예외 처리 강화 및 인터페이스 통일"
+    "note": "v1.1.2 : .정보 명령어 내 시스템 보호막 및 아키텍처 정보 상세화"
 }
