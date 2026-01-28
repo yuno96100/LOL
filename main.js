@@ -1,6 +1,6 @@
 /**
  * main.js
- * 역할: 메인 컨트롤러 및 에러 방지 보호막
+ * 역할: 메인 컨트롤러 및 에러 메시지 채팅 출력 추가
  */
 
 const libConst = Bridge.getScopeOf("Const.js").bridge();
@@ -9,16 +9,15 @@ const Helper = Bridge.getScopeOf("Helper.js").bridge();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
-    // [보호막] 전체 로직을 try-catch로 감싸 에러 발생 시 봇이 죽는 것을 방지합니다.
+    // [보호막] 전체 로직 감싸기
     try {
-        // 접두사 체크
         if (!msg.startsWith(libConst.Prefix)) return;
 
         const args = msg.split(" ");
         const command = args[0].slice(libConst.Prefix.length);
         const params = args.slice(1);
 
-        // 인터페이스 통일용 함수 (내부 선언)
+        // 인터페이스 통일용 함수
         function replyBox(title, content) {
             var res = "━━━━━━━━━━━━━━━\n";
             res += "🧪 " + title + "\n";
@@ -41,7 +40,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 case "등록":
                     replyBox("유저 등록 안내", 
                         sender + "님, 환영합니다!\n\n" +
-                        "정식 가입을 위해 방장(" + libConst.AdminName + ")에게\n" +
+                        "정식 가입을 위해 " + libConst.AdminName + "에게\n" +
                         "1:1 메시지로 '.가입 [ID] [PW]'를 보내주세요."
                     );
                     break;
@@ -62,7 +61,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
          * [2] 개인톡방 분기
          */
         if (!isGroupChat) {
-            // 세션 기능 구현 전 임시 변수
             let isLoggedIn = false; 
 
             switch (command) {
@@ -104,7 +102,15 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
     } catch (e) {
-        // 에러가 발생하면 봇이 꺼지지 않고 로그에 에러의 원인과 줄 번호를 남깁니다.
+        // [수정 포인트] 에러 발생 시 로그뿐만 아니라 채팅방에도 에러 내용을 표시합니다.
+        var errorMsg = "⚠️ [시스템 런타임 에러]\n";
+        errorMsg += "━━━━━━━━━━━━━━━\n";
+        errorMsg += "• 내용: " + e.message + "\n";
+        errorMsg += "• 위치: " + e.lineNumber + "번째 줄\n";
+        errorMsg += "━━━━━━━━━━━━━━━\n";
+        errorMsg += "※ 해당 에러가 지속되면 코드를 확인해 주세요.";
+        
+        replier.reply(errorMsg);
         Log.e("Error in main.js: " + e.message + "\nLine: " + e.lineNumber);
     }
 }
