@@ -1,6 +1,6 @@
 /**
  * main.js
- * 역할: 메인 컨트롤러 및 에러 메시지 채팅 출력 추가
+ * 역할: 메인 컨트롤러 및 시스템 상세 정보 제공
  */
 
 const libConst = Bridge.getScopeOf("Const.js").bridge();
@@ -9,7 +9,6 @@ const Helper = Bridge.getScopeOf("Helper.js").bridge();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
-    // [보호막] 전체 로직 감싸기
     try {
         if (!msg.startsWith(libConst.Prefix)) return;
 
@@ -17,7 +16,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         const command = args[0].slice(libConst.Prefix.length);
         const params = args.slice(1);
 
-        // 인터페이스 통일용 함수
         function replyBox(title, content) {
             var res = "━━━━━━━━━━━━━━━\n";
             res += "🧪 " + title + "\n";
@@ -28,15 +26,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         /**
-         * [1] 단체톡방 분기 (LOL실험실)
+         * [1] 단체톡방 분기
          */
         if (room.trim() === libConst.MainRoomName.trim()) {
             switch (command) {
-                case "도움말":
-                case "명령어":
-                    replier.reply(Helper.getMainHelp());
-                    break;
-
                 case "등록":
                     replyBox("유저 등록 안내", 
                         sender + "님, 환영합니다!\n\n" +
@@ -46,12 +39,24 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     break;
 
                 case "정보":
-                    var roomInfo = "• 현재 방: " + room + "\n" +
-                                   "• 타입: 단체 채팅방\n" +
-                                   "• 실험실 버전: " + libConst.Version + "\n" +
-                                   "• 관리자: " + libConst.AdminName + "\n" +
-                                   "• 시스템 상태: 정상";
-                    replyBox("실험실 및 방 정보", roomInfo);
+                    var systemInfo = "• 서버 버전: v" + libConst.Version + "\n" +
+                                     "• 관리 주체: " + libConst.AdminName + "\n\n" +
+                                     "[🛡️ 보호막 시스템]\n" +
+                                     "• 에러 트래킹: 가동 중 (Try-Catch)\n" +
+                                     "• 비활성화 방지: 적용 완료\n\n" +
+                                     "[📂 시스템 아키텍처]\n" +
+                                     "• 모듈 구조: Bridge API (V2)\n" +
+                                     "• 데이터 저장: JSON File System\n" +
+                                     "• 동기화: GitHub API 연동\n\n" +
+                                     "[📍 현재 위치]\n" +
+                                     "• 접속 방: " + room + "\n" +
+                                     "• 모드: 퍼블릭(단체톡)";
+                    replyBox("실험실 시스템 상세 정보", systemInfo);
+                    break;
+                
+                case "도움말":
+                case "명령어":
+                    replier.reply(Helper.getMainHelp());
                     break;
             }
             return;
@@ -65,52 +70,41 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
             switch (command) {
                 case "가입":
-                    if (params.length < 2) {
-                        replyBox("가입 실패", "⚠️ 사용법: .가입 [ID] [PW]");
-                        return;
-                    }
-                    var regRes = Login.tryRegister(params[0], params[1], sender);
-                    replyBox("가입 결과", regRes.msg);
+                    if (params.length < 2) return replyBox("가입 실패", "⚠️ 사용법: .가입 [ID] [PW]");
+                    replyBox("가입 결과", Login.tryRegister(params[0], params[1], sender).msg);
                     break;
 
                 case "로그인":
-                    if (params.length < 2) {
-                        replyBox("로그인 실패", "⚠️ 사용법: .로그인 [ID] [PW]");
-                        return;
-                    }
-                    var logRes = Login.tryLogin(params[0], params[1]);
-                    replyBox("로그인 결과", logRes.msg);
+                    if (params.length < 2) return replyBox("로그인 실패", "⚠️ 사용법: .로그인 [ID] [PW]");
+                    replyBox("로그인 결과", Login.tryLogin(params[0], params[1]).msg);
                     break;
 
                 case "정보":
-                    var privateRoomInfo = "• 대화 상대: " + sender + "\n" +
-                                          "• 타입: 1:1 개인톡\n" +
-                                          "• 계정 상태: " + (isLoggedIn ? "로그인됨" : "로그인 필요") + "\n" +
-                                          "• 서버 버전: " + libConst.Version;
-                    replyBox("방 및 계정 정보", privateRoomInfo);
+                    var privateSystemInfo = "[👤 계정 상태]\n" +
+                                            "• 대상: " + sender + "\n" +
+                                            "• 상태: " + (isLoggedIn ? "인증됨" : "인증 필요") + "\n\n" +
+                                            "[🛡️ 보안 시스템]\n" +
+                                            "• 데이터 암호화: PW 매칭 (Local)\n" +
+                                            "• 세션 보호: 가동 준비 중\n\n" +
+                                            "[⚙️ 봇 엔진]\n" +
+                                            "• 버전: v" + libConst.Version + "\n" +
+                                            "• 타입: 프라이빗(1:1)";
+                    replyBox("개인 세션 및 시스템 정보", privateSystemInfo);
                     break;
 
                 case "도움말":
-                case "명령어":
                     replier.reply(Helper.getPrivateHelp(isLoggedIn));
-                    break;
-                    
-                default:
-                    replyBox("알림", "❓ 알 수 없는 명령어입니다.\n'.도움말'을 입력해 주세요.");
                     break;
             }
         }
 
     } catch (e) {
-        // [수정 포인트] 에러 발생 시 로그뿐만 아니라 채팅방에도 에러 내용을 표시합니다.
-        var errorMsg = "⚠️ [시스템 런타임 에러]\n";
-        errorMsg += "━━━━━━━━━━━━━━━\n";
-        errorMsg += "• 내용: " + e.message + "\n";
-        errorMsg += "• 위치: " + e.lineNumber + "번째 줄\n";
-        errorMsg += "━━━━━━━━━━━━━━━\n";
-        errorMsg += "※ 해당 에러가 지속되면 코드를 확인해 주세요.";
-        
+        var errorMsg = "⚠️ [시스템 런타임 에러]\n" +
+                       "━━━━━━━━━━━━━━━\n" +
+                       "• 내용: " + e.message + "\n" +
+                       "• 위치: " + e.lineNumber + "줄\n" +
+                       "━━━━━━━━━━━━━━━";
         replier.reply(errorMsg);
-        Log.e("Error in main.js: " + e.message + "\nLine: " + e.lineNumber);
+        Log.e("Error: " + e.message + " at " + e.lineNumber);
     }
 }
