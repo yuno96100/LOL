@@ -1,12 +1,5 @@
 {
-    "version": "1.2.2",
-    "files": [
-        "Const.js",
-        "Object.js",
-        "DataBase.js",
-        "Helper.js",
-        "LoginManager.js",
-        "main.js"
-    ],
-    "note": "v1.1.2 : LoginManager 내 'Bridge is not defined' 에러 수정을 위한 참조 방식 최적화"
+    "version": "1.2.3",
+    "files": ["Const.js", "Object.js", "DataBase.js", "Helper.js", "LoginManager.js", "main.js"],
+    "note": "v1.2.3 : Bridge is not defined 에러 수정을 위한 의존성 주입 구조 완성"
 }
