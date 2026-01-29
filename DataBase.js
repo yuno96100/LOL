@@ -1,4 +1,3 @@
-// DataBase.js
 const libConst = Bridge.getScopeOf("Const.js").bridge();
 
 function bridge() {
