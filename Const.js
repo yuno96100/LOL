@@ -1,15 +1,15 @@
 const Prefix = "."; 
-const Version = "1.7.1"; 
+const Version = "1.7.2"; 
 
 function bridge() {
     return {
         Prefix: Prefix,
-        MainRoomName: "LOL실험실",
-        ErrorLogRoom: "게임봇",
+        MainRoomName: "소환사의협곡",        // 그룹톡 이름 변경
+        ErrorLogRoom: "소환사의협곡관리",    // 관리자 방 이름 변경
         RootPath: "sdcard/LOL/",
         DBPath: "sdcard/LOL/DB/",
         UserPath: "sdcard/LOL/DB/Users/",
-        BackupPath: "sdcard/LOL/DB/Backup/", // 삭제 직전의 상태가 저장되는 곳
+        BackupPath: "sdcard/LOL/DB/Backup/",
         Version: Version
     };
 }
