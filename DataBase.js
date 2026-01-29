@@ -9,7 +9,12 @@ function bridge() {
                 return FileStream.write(libConst.UserPath + id + ".json", JSON.stringify(data, null, 4));
             } catch (e) { return false; }
         },
-        saveUser: function(id, data) { return this.writeUser(id, data); },
+
+        // 호환성용 별칭 1
+        saveUser: function(id, data) { 
+            return this.writeUser(id, data); 
+        },
+
         readUser: function(id) {
             try {
                 var path = libConst.UserPath + id + ".json";
@@ -17,9 +22,17 @@ function bridge() {
                 return JSON.parse(FileStream.read(path));
             } catch (e) { return null; }
         },
+
+        // 🚨 [추가] 호환성용 별칭 2: LoginManager에서 찾는 이름
+        loadUser: function(id) {
+            return this.readUser(id);
+        },
+
         isExisted: function(id) {
+            if (!id) return false;
             return new java.io.File(libConst.UserPath + id + ".json").exists();
         },
+
         getUserList: function() {
             var files = new java.io.File(libConst.UserPath).listFiles();
             var list = [];
@@ -32,12 +45,14 @@ function bridge() {
             }
             return list;
         },
+
         deleteUser: function(id) {
             try {
                 var from = new java.io.File(libConst.UserPath + id + ".json");
                 return from.renameTo(new java.io.File(libConst.BackupPath + id + ".json"));
             } catch (e) { return false; }
         },
+
         restoreUser: function(id) {
             try {
                 var from = new java.io.File(libConst.BackupPath + id + ".json");
