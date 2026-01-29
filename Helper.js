@@ -1,55 +1,86 @@
-// Helper.js
 const libConst = Bridge.getScopeOf("Const.js").bridge();
 
 function bridge() {
     return {
-        getMenu: function(room, isGroupChat, isLoggedIn) {
-            var title = "";
-            var body = "";
+        getMenu: function(room, isGroupChat, isLoggedIn, category, userSession, DB) {
+            var res = "━━━━━━━━━━━━━━━\n";
+            var p = libConst.Prefix;
 
+            // [1] 관리자 방 메뉴 (게임봇)
             if (room.trim() === libConst.ErrorLogRoom.trim()) {
-                title = "🛡️ 관리자 컨트롤 센터";
-                body = "✨ 유저 관리\n" +
-                       "• " + libConst.Prefix + "유저조회 : 가입 ID 목록\n" +
-                       "• " + libConst.Prefix + "유저정보 [ID] : 상세 정보\n" +
-                       "• " + libConst.Prefix + "유저초기화 [ID] : 데이터 리셋\n" +
-                       "• " + libConst.Prefix + "유저삭제 [ID] : 계정 삭제\n" +
-                       "• " + libConst.Prefix + "유저롤백 [ID] : 복구\n\n" +
-                       "👑 권한 제어\n" +
-                       "• " + libConst.Prefix + "관리자임명 [닉네임]\n" +
-                       "• " + libConst.Prefix + "관리자해임 [닉네임]\n\n" +
-                       "📊 시스템\n" +
-                       "• " + libConst.Prefix + "정보 : 서버 상태";
-            } else if (room.trim() === libConst.MainRoomName.trim()) {
-                title = "🧪 LOL실험실 메인메뉴";
-                body = "📢 공용 명령어\n" +
-                       "• " + libConst.Prefix + "등록 : 가입 방법\n" +
-                       "• " + libConst.Prefix + "정보 : 서버 버전\n" +
-                       "• " + libConst.Prefix + "메뉴 : 현재 창 열기\n\n" +
-                       "💡 가입/로그인은 개인톡(1:1)에서!";
-            } else if (!isGroupChat) {
-                title = "👤 개인 전용 메뉴";
+                switch(category) {
+                    case "유저제어":
+                        res += "⚙️ [관리자 > 유저제어]\n━━━━━━━━━━━━━━━\n";
+                        res += "• " + p + "유저초기화 [닉네임]\n• " + p + "유저삭제 [닉네임]\n• " + p + "유저롤백 [닉네임]\n\n";
+                        res += "🔙 돌아가기: " + p + "메뉴";
+                        break;
+                    case "데이터":
+                        res += "📊 [관리자 > 데이터조회]\n━━━━━━━━━━━━━━━\n";
+                        let userList = DB.getUserList();
+                        res += "• 등록 유저: " + userList.length + "명\n";
+                        res += "• 목록: " + (userList.length > 0 ? userList.join(", ") : "없음") + "\n\n";
+                        res += "🔙 돌아가기: " + p + "메뉴";
+                        break;
+                    default:
+                        res += "🛡️ 관리자 제어 센터\n━━━━━━━━━━━━━━━\n";
+                        res += "1. " + p + "메뉴 데이터 (유저목록)\n";
+                        res += "2. " + p + "메뉴 유저제어 (수정/삭제)\n";
+                        res += "3. " + p + "정보 (업데이트 알림)";
+                }
+            } 
+            // [2] 공용 방 메뉴 (LOL실험실)
+            else if (isGroupChat && room.trim() === libConst.MainRoomName.trim()) {
+                switch(category) {
+                    case "가이드":
+                        res += "📖 [실험실 > 가이드]\n━━━━━━━━━━━━━━━\n";
+                        res += "• 개인톡에서 '" + p + "가입 [닉네임] [PW]'를 입력하세요.\n";
+                        res += "• 입력하신 정보가 게임 닉네임이 됩니다.\n\n";
+                        res += "🔙 돌아가기: " + p + "메뉴";
+                        break;
+                    case "랭킹":
+                        res += "🏆 [실험실 > 실시간랭킹]\n━━━━━━━━━━━━━━━\n";
+                        res += "• (미구현) 전적 기반 랭킹 시스템\n\n";
+                        res += "🔙 돌아가기: " + p + "메뉴";
+                        break;
+                    default:
+                        res += "🧪 LOL실험실 메인메뉴\n━━━━━━━━━━━━━━━\n";
+                        res += "1. " + p + "메뉴 가이드\n";
+                        res += "2. " + p + "메뉴 랭킹 (미구현)\n";
+                        res += "3. " + p + "정보 (패치노트)";
+                }
+            }
+            // [3] 개인톡 메뉴 (유저 기능)
+            else if (!isGroupChat) {
                 if (!isLoggedIn) {
-                    body = "🔓 인증 전\n" +
-                           "• " + libConst.Prefix + "가입 [ID] [PW]\n" +
-                           "• " + libConst.Prefix + "로그인 [ID] [PW]";
+                    res += "🔓 비회원 메뉴\n━━━━━━━━━━━━━━━\n";
+                    res += "📢 아이디는 사용할 '닉네임'으로 적어주세요!\n\n";
+                    res += "1. " + p + "가입 [닉네임] [PW]\n";
+                    res += "2. " + p + "로그인 [닉네임] [PW]";
                 } else {
-                    body = "🔒 인증됨\n" +
-                           "• " + libConst.Prefix + "내정보 : 스탯 확인\n" +
-                           "• " + libConst.Prefix + "로그아웃 : 접속 종료\n" +
-                           "• " + libConst.Prefix + "메뉴 : 메뉴 확인";
+                    switch(category) {
+                        case "내정보":
+                            res += "👤 [메뉴 > 내정보]\n━━━━━━━━━━━━━━━\n";
+                            res += "• 닉네임: " + userSession.info.name + "\n";
+                            res += "• 레벨: " + userSession.status.level + "\n";
+                            res += "• 전적: " + userSession.status.win + "승 " + userSession.status.loss + "패\n\n";
+                            res += "🔙 돌아가기: " + p + "메뉴";
+                            break;
+                        case "인벤토리":
+                            res += "🎒 [메뉴 > 인벤토리]\n━━━━━━━━━━━━━━━\n";
+                            res += "• (미구현) 보유 아이템 목록\n\n";
+                            res += "🔙 돌아가기: " + p + "메뉴";
+                            break;
+                        default:
+                            res += "🏠 유저 메인 메뉴\n━━━━━━━━━━━━━━━\n";
+                            res += "1. " + p + "메뉴 내정보\n";
+                            res += "2. " + p + "메뉴 인벤토리 (미구현)\n";
+                            res += "3. " + p + "로그아웃";
+                    }
                 }
             }
 
-            var res = "━━━━━━━━━━━━━━━\n";
-            res += "📋 " + title + "\n";
-            res += "━━━━━━━━━━━━━━━\n";
-            res += body + "\n";
-            res += "━━━━━━━━━━━━━━━";
+            res += "\n━━━━━━━━━━━━━━━";
             return res;
-        },
-        getAdminHelp: function() { return this.getMenu(libConst.ErrorLogRoom, true, true); },
-        getMainHelp: function() { return this.getMenu(libConst.MainRoomName, true, false); },
-        getPrivateHelp: function(isLoggedIn) { return this.getMenu("", false, isLoggedIn); }
+        }
     };
 }
