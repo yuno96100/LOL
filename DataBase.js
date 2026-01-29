@@ -17,7 +17,8 @@ function bridge() {
                 return JSON.parse(FileStream.read(path));
             } catch (e) { return null; }
         },
-        loadUser: function(id) { // 명시적 추가
+        // 🚨 혹시 모를 참조 에러 대비 이중 정의
+        loadUser: function(id) {
             return this.readUser(id);
         },
         isExisted: function(id) {
