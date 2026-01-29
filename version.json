@@ -2,5 +2,5 @@
     "version": "1.6.2",
     "updateDate": "2026-01-30",
     "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
-    "note": "v1.6.2 : 개인톡-그룹톡 로그인 상태 연동 및 미로그인 시 그룹톡 이용 차단 적용"
+    "note": "v1.6.2 통합 업데이트: 로그인 연동, 메뉴 번호 시스템, 무접두사 숫자 명령어 및 보안 강화"
 }
