@@ -1,5 +1,5 @@
 {
-    "version": "1.2.6",
+    "version": "1.2.8",
     "files": ["Const.js", "Object.js", "DataBase.js", "Helper.js", "LoginManager.js", "main.js"],
-    "note": "v1.2.6 : 의존성 주입 방식을 통한 Bridge 참조 오류 원천 차단"
+    "note": "v1.2.8 : 로그인 세션 유지(내정보 확인 가능) 기능 포함 통합본"
 }
