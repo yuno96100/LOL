@@ -4,7 +4,7 @@ function bridge() {
             return {
                 info: {
                     id: id,
-                    pw: "0", // 비밀번호 기능 제거로 인한 기본값 고정
+                    pw: "0",
                     name: nick,
                     joinDate: new Date().getTime()
                 },
