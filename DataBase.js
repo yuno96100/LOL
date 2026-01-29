@@ -13,13 +13,11 @@ function bridge() {
         readUser: function(id) {
             try {
                 var path = libConst.UserPath + id + ".json";
-                var file = new java.io.File(path);
-                if (!file.exists()) return null;
+                if (!new java.io.File(path).exists()) return null;
                 return JSON.parse(FileStream.read(path));
             } catch (e) { return null; }
         },
-        // 🚨 [중요] LoginManager에서 호출하는 함수 이름을 readUser와 연결
-        loadUser: function(id) {
+        loadUser: function(id) { // 명시적 추가
             return this.readUser(id);
         },
         isExisted: function(id) {
