@@ -2,7 +2,7 @@
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
 const ErrorLogRoom = "게임봇"; 
-const Version = "1.1.9"; // 게임봇 전용 도움말 추가
+const Version = "1.2.0"; // 관리자 시스템 버그 수정 및 안정화
 
 const RootPath = "sdcard/LOL/";      
 const DBPath = RootPath + "DB/";     
