@@ -1,6 +1,6 @@
 {
-    "version": "1.9.1",
+    "version": "2.0.9",
     "updateDate": "2026-01-30",
-    "files": ["main.js", "Const.js", "Helper.js"],
-    "note": "v1.9.1 : 관리자 유저 제어 기능을 메뉴 번호 기반 대화형 방식으로 일원화"
+    "files": ["DataBase.js", "main.js", "LoginManager.js"],
+    "note": "v2.0.9 : DataBase 내 isExisted 함수 누락 해결 및 간편 가입 적용"
 }
