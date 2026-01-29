@@ -13,11 +13,12 @@ function bridge() {
         readUser: function(id) {
             try {
                 var path = libConst.UserPath + id + ".json";
-                if (!new java.io.File(path).exists()) return null;
+                var file = new java.io.File(path);
+                if (!file.exists()) return null;
                 return JSON.parse(FileStream.read(path));
             } catch (e) { return null; }
         },
-        loadUser: function(id) { return this.readUser(id); },
+        loadUser: function(id) { return this.readUser(id); }, // 호환성 유지
         isExisted: function(id) {
             if (!id) return false;
             return new java.io.File(libConst.UserPath + id + ".json").exists();
