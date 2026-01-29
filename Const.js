@@ -1,7 +1,7 @@
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
 const ErrorLogRoom = "게임봇"; 
-const Version = "1.5.3"; 
+const Version = "1.5.4"; 
 
 function bridge() {
     return {
