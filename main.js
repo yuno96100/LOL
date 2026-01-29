@@ -13,58 +13,68 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let command = args[0].slice(libConst.Prefix.length);
         const params = args.slice(1);
 
-        let userSession = sessions[sender];
+        // 세션 초기화 (메뉴 상태값 포함)
+        if (!sessions[sender]) sessions[sender] = { isMenuOpen: false, data: null };
+        let userSession = sessions[sender].data;
         let isLoggedIn = !!userSession;
 
-        // [번호 명령어 변환 로직]
-        // 만약 command가 숫자라면(1, 2, 3...) 대응하는 텍스트 명령어로 치환
-        let mappedCmd = Helper.getCommandByNum(room, isGroupChat, isLoggedIn, command);
-        if (mappedCmd) command = mappedCmd;
-
-        // [메뉴 출력 로직]
+        // [메뉴 명령어 처리]
         if (command === "메뉴") {
             let cat = params[0];
-            let mappedCat = Helper.getCommandByNum(room, isGroupChat, isLoggedIn, cat);
+            
+            // 번호를 입력했으나 메뉴가 닫혀있다면 무시 (단, '.메뉴 1' 처럼 명시적 호출은 허용)
+            if (!isNaN(cat) && !sessions[sender].isMenuOpen && params.length > 0) {
+                return replier.reply("❌ 메뉴 창을 먼저 열어주세요. (" + libConst.Prefix + "메뉴)");
+            }
+
+            // 번호 매핑
+            let mappedCat = Helper.getRootCmdByNum(room, isGroupChat, isLoggedIn, cat);
             if (mappedCat) cat = mappedCat;
+
+            // 메뉴 상태 업데이트
+            sessions[sender].isMenuOpen = !cat; // 카테고리 없이 '.메뉴'만 치면 오픈 상태
             return replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, cat, userSession, DB));
         }
 
-        // [명령어 분기]
+        // [번호 단독 입력 처리]
+        if (!isNaN(command)) {
+            if (!sessions[sender].isMenuOpen) {
+                // 메뉴가 닫혀있을 때 번호만 입력하면 안내 (단, 가입/로그인은 예외적으로 허용할지 선택 가능)
+                // 여기서는 요청대로 '메뉴 활성화 시에만 카테고리 진입' 하도록 제한
+                return replier.reply("💡 메뉴 창이 닫혀있습니다. '" + libConst.Prefix + "메뉴'를 먼저 입력하세요.");
+            }
+            // 메뉴가 열려있다면 해당 번호의 명령어로 치환
+            let mapped = Helper.getRootCmdByNum(room, isGroupChat, isLoggedIn, command);
+            if (mapped) command = mapped;
+        }
+
+        // [기능 로직]
         switch (command) {
             case "도움말":
-                return replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "도움말", userSession, DB));
-            
-            case "정보":
-                let note = "🧪 LOL봇 v" + libConst.Version + "\n📝 번호 명령어(.1, .2) 지원 업데이트";
-                replier.reply(note);
-                if (room.trim() === libConst.ErrorLogRoom.trim()) Api.replyRoom(libConst.MainRoomName, note);
-                return;
-
+                replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "도움말", userSession, DB));
+                break;
             case "가입":
-                if (isGroupChat) return replier.reply("❌ 가입은 개인톡에서 해주세요.");
                 if (params.length < 2) return replier.reply("⚠️ " + libConst.Prefix + "1 [닉네임] [PW]");
                 replier.reply(Login.tryRegister(params[0], params[1], params[0], DB, Obj).msg);
+                sessions[sender].isMenuOpen = false; // 실행 후 메뉴 닫음
                 break;
-
             case "로그인":
-                if (isGroupChat) return replier.reply("❌ 로그인은 개인톡에서 해주세요.");
                 if (params.length < 2) return replier.reply("⚠️ " + libConst.Prefix + "2 [닉네임] [PW]");
                 var res = Login.tryLogin(params[0], params[1], DB);
-                if (res.success) sessions[sender] = res.data;
+                if (res.success) sessions[sender].data = res.data;
                 replier.reply(res.msg);
+                sessions[sender].isMenuOpen = false;
                 break;
-
             case "로그아웃":
-                delete sessions[sender];
+                sessions[sender].data = null;
+                sessions[sender].isMenuOpen = false;
                 replier.reply("🚪 로그아웃 완료");
                 break;
-
             case "내정보":
                 replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "내정보", userSession, DB));
                 break;
-                
-            case "데이터": // 관리자 전용
-                if (room.trim() === libConst.ErrorLogRoom.trim()) replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "데이터", userSession, DB));
+            case "정보":
+                replier.reply("🧪 LOL봇 v" + libConst.Version + "\n📝 메뉴 활성화 상태 체크 시스템 도입");
                 break;
         }
 
