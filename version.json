@@ -1,13 +1,6 @@
 {
-    "version": "1.5.1",
+    "version": "1.5.2",
     "updateDate": "2026-01-29",
-    "files": [
-        "main.js",
-        "Const.js",
-        "DataBase.js",
-        "Object.js",
-        "LoginManager.js",
-        "Helper.js"
-    ],
-    "note": "v1.5.1 : 항목 추가에 대비하여 도움말 항목을 항상 리스트 최하단에 배치하도록 로직 최적화"
+    "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
+    "note": "v1.5.2 : 번호로 메뉴 진입 기능 추가, 닉네임 연동 및 메뉴 명칭 통일"
 }
