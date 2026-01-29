@@ -1,7 +1,7 @@
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
 const ErrorLogRoom = "게임봇"; 
-const Version = "1.5.1"; 
+const Version = "1.5.2"; 
 
 const RootPath = "sdcard/LOL/";      
 const DBPath = RootPath + "DB/";     
