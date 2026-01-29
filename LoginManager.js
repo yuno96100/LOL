@@ -1,9 +1,9 @@
 // LoginManager.js
 function bridge() {
     return {
-        // DB와 Obj를 외부(main)에서 직접 받아서 사용합니다.
+        // 인자로 DB와 Obj를 직접 넘겨받습니다. (main에서 보내줄 예정)
         tryRegister: function(_id, _pw, _sender, DB, Obj) {
-            if (!DB) return { success: false, msg: "❌ DB 모듈 연결 실패" };
+            if (!DB || !Obj) return { success: false, msg: "❌ 시스템 모듈 로드 실패" };
             
             if (DB.isExisted(_id)) return { success: false, msg: "❌ 이미 사용 중인 ID입니다." };
             
@@ -11,11 +11,11 @@ function bridge() {
             if (DB.saveUser(_id, newUser)) {
                 return { success: true, msg: "✅ 가입 완료!\n'.로그인 " + _id + " " + _pw + "'를 입력하세요." };
             }
-            return { success: false, msg: "❌ 저장 중 오류 발생" };
+            return { success: false, msg: "❌ 데이터 저장 중 오류 발생" };
         },
 
         tryLogin: function(_id, _pw, DB) {
-            if (!DB) return { success: false, msg: "❌ DB 모듈 연결 실패" };
+            if (!DB) return { success: false, msg: "❌ 시스템 모듈 로드 실패" };
             
             let user = DB.loadUser(_id);
             if (!user) return { success: false, msg: "❌ 존재하지 않는 ID입니다." };
