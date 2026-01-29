@@ -16,9 +16,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let isAdminRoom = (room.trim() === libConst.ErrorLogRoom.trim());
         let isMainRoom = (room.trim() === libConst.MainRoomName.trim());
 
-        const NickWarning = "\n\n⚠️ **주의**: 개인톡과 '소환사의협곡'의 닉네임이 같아야 합니다.";
+        // [1] 가입 안내 문구 정의
+        const NickWarning = "\n\n⚠️ 주의: 개인톡과 단체톡의 카카오톡 닉네임이 같아야 같은 유저로 인식합니다.";
+        const NameUsage = "\n💡 가입 시 닉네임은 내 정보에 출력되는 닉네임 입니다.";
 
-        // [1] 관리자 2차 확인
+        // [2] 관리자 2차 확인
         if (isAdminRoom && global.adminAction[sender]) {
             let action = global.adminAction[sender];
             if (msg === "확인") {
@@ -36,21 +38,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
-        // [2] 로그인 권한 체크
-        if (!isLoggedIn && !isAdminRoom) {
-            const isAuth = msg === libConst.Prefix + "메뉴" || msg.startsWith(libConst.Prefix + "가입") || 
-                           msg.startsWith(libConst.Prefix + "로그인") || (global.sessions[sender].isMenuOpen && (msg === "1" || msg === "2"));
-            if (!isAuth) {
-                if (isMainRoom) {
-                    if (isPrefix || !isNaN(msg)) return replier.reply("⚠️ [" + sender + "]님, 로그인이 필요합니다." + NickWarning);
-                    return;
-                } else if (!isGroupChat) {
-                    global.sessions[sender].isMenuOpen = true;
-                    return replier.reply("👋 로그인 후 이용 가능합니다!\n" + Helper.getMenu(room, isMainRoom, false, null, null, DB) + NickWarning);
-                }
-            }
-        }
-
         // [3] 명령어 분석
         let command = "";
         let params = [];
@@ -62,35 +49,47 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             command = msg.trim();
         } else { return; }
 
-        // [4] 메뉴 활성화 체크
-        if (command !== "메뉴" && !global.sessions[sender].isMenuOpen) {
-            return replier.reply("⚠️ 먼저 '" + libConst.Prefix + "메뉴'를 입력해 주세요.");
-        }
-
-        // [5] 번호 -> 명령어 변환
+        // [4] 번호 -> 명령어 변환
         if (!isNaN(command)) {
             let mapped = Helper.getRootCmdByNum(room, isMainRoom, isLoggedIn, command);
             if (mapped) command = mapped;
         }
 
-        // [6] 실행 로직
+        // [5] 실행 로직
         switch (command) {
             case "메뉴":
                 global.sessions[sender].isMenuOpen = true;
                 replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, null, userSession, DB));
                 break;
 
+            case "가입":
+                if (isMainRoom) return replier.reply("❌ 가입은 개인톡에서만 가능합니다.");
+                if (params.length < 2) return replier.reply("📝 [가입 안내]\n" + libConst.Prefix + "가입 [닉네임] [비번]\n예: " + libConst.Prefix + "가입 야스오 1234" + NickWarning + NameUsage);
+                
+                let inputNick = params[0].trim();
+                let inputPw = params[1].trim();
+
+                if (DB.isExisted(sender)) return replier.reply("⚠️ 이미 가입된 계정입니다.");
+
+                var regResult = Login.tryRegister(sender, inputPw, inputNick, DB, Obj);
+                replier.reply(regResult.msg + NickWarning + NameUsage);
+                if (regResult.success) global.sessions[sender].isMenuOpen = false;
+                break;
+
+            case "로그인":
+                if (isMainRoom) return;
+                if (params.length < 1) return replier.reply("🔓 " + libConst.Prefix + "로그인 [비번]" + NickWarning);
+                var res = Login.tryLogin(sender, params[0], DB);
+                if (res.success) global.sessions[sender].data = res.data;
+                replier.reply(res.msg);
+                break;
+
             case "정보":
                 let userCount = DB.getUserList().length;
                 let activeSessions = Object.keys(global.sessions).filter(k => global.sessions[k].data).length;
                 let infoMsg = "🖥️ [ 봇 시스템 정보 ]\n━━━━━━━━━━━━━━━\n";
-                infoMsg += "• 봇 버전: v" + libConst.Version + "\n";
-                infoMsg += "• 그룹톡: " + libConst.MainRoomName + "\n";
-                infoMsg += "• 관리방: " + libConst.ErrorLogRoom + "\n";
-                infoMsg += "• 가입 유저: " + userCount + "명\n";
-                infoMsg += "• 활성 세션: " + activeSessions + "개\n";
-                infoMsg += "• 시스템 경로: " + libConst.RootPath + "\n";
-                infoMsg += "━━━━━━━━━━━━━━━";
+                infoMsg += "• 버전: v" + libConst.Version + "\n• 그룹톡: " + libConst.MainRoomName + "\n• 관리방: " + libConst.ErrorLogRoom + "\n";
+                infoMsg += "• 유저: " + userCount + "명 / 세션: " + activeSessions + "개\n━━━━━━━━━━━━━━━";
                 replier.reply(infoMsg);
                 break;
 
@@ -98,16 +97,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 if (!isAdminRoom) return;
                 if (params.length > 0) {
                     let ud = DB.readUser(params[0]);
-                    if (!ud) return replier.reply("❌ [" + params[0] + "] 유저가 없습니다.");
-                    let detail = "👤 [ " + ud.info.name + " 상세 정보 ]\n━━━━━━━━━━━━━━━\n";
-                    detail += "• ID: " + ud.info.id + "\n• 가입일: " + ud.info.joinDate + "\n";
-                    detail += "• 자금: " + ud.status.money + "G\n• 레벨: " + ud.status.level + "\n";
-                    detail += "• 가방: " + (ud.inventory.length > 0 ? ud.inventory.join(", ") : "비어있음") + "\n";
-                    detail += "━━━━━━━━━━━━━━━";
+                    if (!ud) return replier.reply("❌ 유저가 없습니다.");
+                    let detail = "👤 [ " + ud.info.name + " 상세 ]\n━━━━━━━━━━━━━━━\n• ID: " + ud.info.id + "\n• 가입일: " + ud.info.joinDate + "\n• 돈: " + ud.status.money + "G\n━━━━━━━━━━━━━━━";
                     replier.reply(detail);
-                } else {
-                    replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", userSession, DB));
-                }
+                } else replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", userSession, DB));
                 break;
 
             case "유저제어":
@@ -115,36 +108,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저제어", userSession, DB));
                 break;
 
-            case "삭제":
-                if (!isAdminRoom || params.length < 1) return;
-                global.adminAction[sender] = { type: "삭제", target: params[0] };
-                replier.reply("⚠️ [" + params[0] + "] 삭제하시겠습니까? (복구가능)\n'확인' 또는 '취소' 입력.");
-                break;
-
-            case "복구":
-                if (!isAdminRoom || params.length < 1) return;
-                DB.restoreUser(params[0]);
-                replier.reply("✅ [" + params[0] + "] 복구 완료.");
-                break;
-
-            case "가입":
-                if (isGroupChat) return;
-                if (DB.isExisted(sender)) return replier.reply("⚠️ 이미 가입된 계정입니다.");
-                // LoginManager 내부에서도 DB.writeUser를 호출하도록 되어있는지 확인이 필요합니다.
-                replier.reply(Login.tryRegister(sender, params[0], sender, DB, Obj).msg);
-                break;
-
-            case "로그인":
-                if (isGroupChat) return;
-                var res = Login.tryLogin(sender, params[0], DB);
-                if (res.success) global.sessions[sender].data = res.data;
-                replier.reply(res.msg);
-                break;
-
             case "로그아웃":
                 global.sessions[sender].data = null;
                 global.sessions[sender].isMenuOpen = false;
-                replier.reply("🚪 로그아웃 되었습니다.");
+                replier.reply("🚪 로그아웃 완료.");
                 break;
 
             case "내정보":
