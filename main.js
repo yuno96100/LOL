@@ -17,11 +17,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let isMainRoom = (room.trim() === libConst.MainRoomName.trim());
         let isAdminRoom = (room.trim() === libConst.ErrorLogRoom.trim());
 
+        // [1] 대기 입력 처리
         if (session.waitAction) {
             handleWaitAction(sender, msg, replier);
             return;
         }
 
+        // [2] 관리자 전용 확인/취소
         if (isAdminRoom && global.adminAction[sender]) {
             if (msg === "확인") {
                 let action = global.adminAction[sender];
@@ -40,6 +42,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
+        // [3] 메뉴 호출
         if (msg === libConst.Prefix + "메뉴") {
             session.isMenuOpen = true;
             session.waitAction = null;
@@ -47,6 +50,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
+        // [4] 숫자 명령어 처리
         if (!isNaN(msg) && session.isMenuOpen) {
             let cmd = Helper.getRootCmdByNum(room, isAdminRoom, isMainRoom, isLoggedIn, msg.trim());
             if (!cmd) return;
@@ -74,6 +78,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     if (isAdminRoom) {
                         replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", session.data, DB) + "\n\n🔍 상세조회할 카톡 닉네임 입력.");
                         session.waitAction = "상세조회";
+                    }
+                    break;
+                case "삭제":
+                case "초기화":
+                case "복구":
+                    if (isAdminRoom) {
+                        replier.reply("🛠️ " + cmd + "할 카톡 닉네임 입력.");
+                        session.waitAction = cmd;
                     }
                     break;
                 default:
@@ -105,7 +117,7 @@ function handleWaitAction(sender, msg, replier) {
             let res = Login.tryLogin(input, DB);
             if (res.success) {
                 session.data = res.data;
-                replier.reply("✅ 로그인 성공! 반갑습니다, " + res.data.info.name + "님.");
+                replier.reply("✅ 로그인 성공! [" + res.data.info.name + "]님.");
             } else {
                 replier.reply("🚫 " + res.msg);
             }
@@ -113,8 +125,19 @@ function handleWaitAction(sender, msg, replier) {
         case "상세조회":
             let ud = DB.readUser(input);
             if (!ud) return replier.reply("❌ 유저 없음.");
-            replier.reply("👤 [" + ud.info.name + "] 상세\n돈: " + ud.status.money + "G");
+            replier.reply("👤 [" + ud.info.name + "] 상세조회\n• 카톡ID: " + ud.info.id + "\n• 보유금: " + ud.status.money + "G");
+            break;
+        case "삭제":
+        case "초기화":
+            if (!DB.isExisted(input)) return replier.reply("❌ 대상이 없습니다.");
+            global.adminAction[sender] = { type: action, target: input };
+            replier.reply("⚠️ [" + input + "]님을 " + action + " 하시겠습니까? (확인/취소)");
+            session.waitAction = null; return;
+        case "복구":
+            if (DB.restoreUser(input)) replier.reply("✅ 복구 성공.");
+            else replier.reply("❌ 복구 실패.");
             break;
     }
-    session.waitAction = null; session.isMenuOpen = false;
+    session.waitAction = null;
+    session.isMenuOpen = false;
 }
