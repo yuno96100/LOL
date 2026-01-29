@@ -1,75 +1,67 @@
 const libConst = Bridge.getScopeOf("Const.js").bridge();
 
 function bridge() {
-    var userFolder = new java.io.File(libConst.UserPath);
-    var backupFolder = new java.io.File(libConst.BackupPath);
-    if (!userFolder.exists()) userFolder.mkdirs(); 
-    if (!backupFolder.exists()) backupFolder.mkdirs(); 
-
     return {
-        getAdmins: function() {
+        // 유저 데이터 읽기 (JSON 파싱 포함)
+        readUser: function(id) {
+            var path = libConst.UserPath + id + ".json";
             try {
-                let content = FileStream.read(libConst.AdminPath);
-                return content ? JSON.parse(content) : [];
-            } catch (e) { return []; }
+                var content = File.read(path);
+                if (content == null) return null;
+                return JSON.parse(content);
+            } catch (e) {
+                return null;
+            }
         },
-        saveAdmins: function(_list) {
+
+        // 유저 데이터 쓰기
+        writeUser: function(id, data) {
+            var path = libConst.UserPath + id + ".json";
             try {
-                FileStream.write(libConst.AdminPath, JSON.stringify(_list, null, 4));
+                File.write(path, JSON.stringify(data, null, 4));
                 return true;
-            } catch (e) { return false; }
+            } catch (e) {
+                return false;
+            }
         },
-        saveUser: function(_id, _data) {
-            try {
-                FileStream.write(libConst.UserPath + _id + ".json", JSON.stringify(_data, null, 4));
-                return true;
-            } catch (e) { return false; }
+
+        // 유저 존재 여부 확인
+        isExisted: function(id) {
+            return File.exists(libConst.UserPath + id + ".json");
         },
-        loadUser: function(_id) {
-            try {
-                let content = FileStream.read(libConst.UserPath + _id + ".json");
-                return content ? JSON.parse(content) : null;
-            } catch (e) { return null; }
-        },
-        isExisted: function(_id) {
-            var file = new java.io.File(libConst.UserPath + _id + ".json");
-            return file.exists();
-        },
+
+        // 전체 유저 리스트 가져오기 (파일명 목록)
         getUserList: function() {
-            try {
-                let folder = new java.io.File(libConst.UserPath);
-                let files = folder.listFiles();
-                let list = [];
-                if (files != null) {
-                    for (let i = 0; i < files.length; i++) {
-                        if (files[i].isFile() && files[i].getName().endsWith(".json")) {
-                            list.push(files[i].getName().replace(".json", ""));
-                        }
+            var folder = new java.io.File(libConst.UserPath);
+            var files = folder.listFiles();
+            var list = [];
+            if (files != null) {
+                for (var i = 0; i < files.length; i++) {
+                    if (files[i].isFile() && files[i].getName().endsWith(".json")) {
+                        list.push(files[i].getName());
                     }
                 }
-                return list;
-            } catch (e) { return []; }
+            }
+            return list;
         },
-        deleteUser: function(_id) {
-            try {
-                let userData = this.loadUser(_id);
-                if (userData) {
-                    FileStream.write(libConst.BackupPath + _id + "_bk.json", JSON.stringify(userData, null, 4));
-                    var file = new java.io.File(libConst.UserPath + _id + ".json");
-                    return file.delete();
-                }
-                return false;
-            } catch (e) { return false; }
+
+        // 유저 삭제 (백업 폴더로 이동)
+        deleteUser: function(id) {
+            var fromPath = libConst.UserPath + id + ".json";
+            var toPath = libConst.BackupPath + id + ".json";
+            
+            // 백업 폴더가 없으면 생성
+            var backupFolder = new java.io.File(libConst.BackupPath);
+            if (!backupFolder.exists()) backupFolder.mkdirs();
+            
+            return File.move(fromPath, toPath);
         },
-        rollbackUser: function(_id) {
-            try {
-                let content = FileStream.read(libConst.BackupPath + _id + "_bk.json");
-                if (content) {
-                    FileStream.write(libConst.UserPath + _id + ".json", content);
-                    return true;
-                }
-                return false;
-            } catch (e) { return false; }
+
+        // 유저 복구 (백업에서 복원)
+        restoreUser: function(id) {
+            var fromPath = libConst.BackupPath + id + ".json";
+            var toPath = libConst.UserPath + id + ".json";
+            return File.move(fromPath, toPath);
         }
     };
 }
