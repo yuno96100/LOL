@@ -1,6 +1,6 @@
 {
-    "version": "1.8.1",
+    "version": "1.8.7",
     "updateDate": "2026-01-30",
     "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
-    "note": "v1.8.1: 방 이름 반영, 유저 상세 조회 통합 및 시스템 정보 출력 강화"
+    "note": "v1.8.7: 가입 입력순서 변경(닉네임, 비번) 및 닉네임 용도 안내 문구 추가"
 }
