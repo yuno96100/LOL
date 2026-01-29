@@ -129,6 +129,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
             case "가입":
                 if (isGroupChat) return;
+                if (DB.isExisted(sender)) return replier.reply("⚠️ 이미 가입된 계정입니다.");
+                // LoginManager 내부에서도 DB.writeUser를 호출하도록 되어있는지 확인이 필요합니다.
                 replier.reply(Login.tryRegister(sender, params[0], sender, DB, Obj).msg);
                 break;
 
