@@ -1,5 +1,5 @@
 {
-    "version": "1.2.4",
+    "version": "1.2.6",
     "files": ["Const.js", "Object.js", "DataBase.js", "Helper.js", "LoginManager.js", "main.js"],
-    "note": "v1.2.4 : Bridge 참조 에러를 물리적으로 불가능하게 차단 (DI 패턴 적용)"
+    "note": "v1.2.6 : 의존성 주입 방식을 통한 Bridge 참조 오류 원천 차단"
 }
