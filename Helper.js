@@ -2,98 +2,75 @@ const libConst = Bridge.getScopeOf("Const.js").bridge();
 
 function bridge() {
     return {
+        // 입력된 값이 번호일 경우 카테고리 명으로 변환해주는 함수
+        getCategoryByNum: function(room, isGroupChat, num) {
+            if (room.trim() === libConst.ErrorLogRoom.trim()) {
+                if (num == "1") return "데이터";
+                if (num == "2") return "유저제어";
+                if (num == "3") return "정보";
+                if (num == "4") return "도움말";
+            } else if (isGroupChat) {
+                if (num == "1") return "가이드";
+                if (num == "2") return "랭킹";
+                if (num == "3") return "정보";
+                if (num == "4") return "도움말";
+            } else {
+                if (num == "1") return "내정보";
+                if (num == "2") return "인벤토리";
+                if (num == "3") return "로그아웃";
+                if (num == "4") return "도움말";
+            }
+            return null;
+        },
+
         getMenu: function(room, isGroupChat, isLoggedIn, category, userSession, DB) {
             var res = "━━━━━━━━━━━━━━━\n";
             var p = libConst.Prefix;
 
-            // [1] 관리자 방 (게임봇)
+            // [1] 관리자 방
             if (room.trim() === libConst.ErrorLogRoom.trim()) {
                 switch(category) {
                     case "데이터":
-                        let userList = DB.getUserList();
-                        res += "📊 [관리자 > 데이터조회]\n━━━━━━━━━━━━━━━\n";
-                        res += "• 등록 유저: " + userList.length + "명\n" + "• 목록: " + (userList.length > 0 ? userList.join(", ") : "없음") + "\n\n";
-                        res += "🔙 돌아가기: " + p + "메뉴";
+                        res += "📊 [관리자 > 데이터조회]\n━━━━━━━━━━━━━━━\n• 등록 유저: " + DB.getUserList().length + "명\n\n🔙 " + p + "메뉴";
                         break;
                     case "유저제어":
-                        res += "⚙️ [관리자 > 유저제어]\n━━━━━━━━━━━━━━━\n";
-                        res += "• " + p + "유저초기화 [닉네임]\n• " + p + "유저삭제 [닉네임]\n• " + p + "유저롤백 [닉네임]\n\n";
-                        res += "🔙 돌아가기: " + p + "메뉴";
+                        res += "⚙️ [관리자 > 유저제어]\n━━━━━━━━━━━━━━━\n• " + p + "유저초기화 [닉]\n• " + p + "유저삭제 [닉]\n\n🔙 " + p + "메뉴";
                         break;
                     case "도움말":
-                        res += "🛡️ [관리자 > 도움말]\n━━━━━━━━━━━━━━━\n";
-                        res += "• " + p + "유저조회 : 전체 유저 목록\n";
-                        res += "• " + p + "유저삭제 [ID] : 계정 삭제\n";
-                        res += "• " + p + "정보 : 패치노트 알림 전송\n\n";
-                        res += "🔙 돌아가기: " + p + "메뉴";
+                        res += "🛡️ [관리자 > 도움말]\n━━━━━━━━━━━━━━━\n• 메뉴 뒤에 번호를 입력해 이동 가능합니다.\n• 예: " + p + "메뉴 1\n• 모든 유저 데이터는 실시간 백업됩니다.\n\n🔙 " + p + "메뉴";
                         break;
                     default:
-                        res += "🛡️ 관리자 제어 센터\n━━━━━━━━━━━━━━━\n";
-                        res += "1. 데이터 조회\n";
-                        res += "2. 유저 제어\n";
-                        res += "3. 정보 (패치노트)\n";
-                        // 추가 카테고리가 생겨도 도움말은 마지막에 위치
-                        res += "4. 도움말";
+                        res += "🛡️ 관리자 메인 메뉴\n━━━━━━━━━━━━━━━\n1. 데이터 조회\n2. 유저 제어\n3. 정보 (패치노트)\n4. 도움말";
                 }
             } 
-            // [2] 공용 방 (LOL실험실)
-            else if (isGroupChat && room.trim() === libConst.MainRoomName.trim()) {
+            // [2] 공용 방
+            else if (isGroupChat) {
                 switch(category) {
                     case "가이드":
-                        res += "📖 [실험실 > 가이드]\n━━━━━━━━━━━━━━━\n";
-                        res += "• 개인톡에서 '" + p + "가입 [닉네임] [PW]'\n";
-                        res += "• 아이디가 곧 게임 닉네임이 됩니다.\n\n";
-                        res += "🔙 돌아가기: " + p + "메뉴";
+                        res += "📖 [실험실 > 가이드]\n━━━━━━━━━━━━━━━\n• 개인톡에서 가입 후 이용해주세요.\n\n🔙 " + p + "메뉴";
                         break;
                     case "도움말":
-                        res += "❓ [실험실 > 도움말]\n━━━━━━━━━━━━━━━\n";
-                        res += "• 랭킹 및 패치 알림용 방입니다.\n";
-                        res += "• 플레이는 봇 개인톡에서 가능합니다.\n\n";
-                        res += "🔙 돌아가기: " + p + "메뉴";
+                        res += "❓ [실험실 > 도움말]\n━━━━━━━━━━━━━━━\n• 공용방은 알림 및 전적 확인용입니다.\n• 명령어는 " + p + "메뉴 [번호] 형태입니다.\n\n🔙 " + p + "메뉴";
                         break;
                     default:
-                        res += "🧪 LOL실험실 메인메뉴\n━━━━━━━━━━━━━━━\n";
-                        res += "1. 가이드\n";
-                        res += "2. 랭킹 (미구현)\n";
-                        res += "3. 정보\n";
-                        res += "4. 도움말";
+                        res += "🧪 메인 메뉴\n━━━━━━━━━━━━━━━\n1. 가이드\n2. 랭킹 (미구현)\n3. 정보\n4. 도움말";
                 }
             }
-            // [3] 개인톡 (유저 전용)
-            else if (!isGroupChat) {
+            // [3] 개인톡 (가입 시 닉네임 반영)
+            else {
                 if (!isLoggedIn) {
-                    res += "🔓 비회원 메뉴\n━━━━━━━━━━━━━━━\n";
-                    res += "1. 가입 [" + p + "가입]\n";
-                    res += "2. 로그인 [" + p + "로그인]\n";
-                    res += "3. 도움말";
+                    res += "🔓 비회원 메뉴\n━━━━━━━━━━━━━━━\n1. 가입\n2. 로그인\n3. 도움말";
                 } else {
+                    let userName = userSession.info.name;
                     switch(category) {
                         case "내정보":
-                            res += "👤 [메뉴 > 내정보]\n━━━━━━━━━━━━━━━\n";
-                            res += "• 닉네임: " + userSession.info.name + "\n";
-                            res += "• 레벨: " + userSession.status.level + "\n";
-                            res += "• 전적: " + userSession.status.win + "승 " + userSession.status.loss + "패\n\n";
-                            res += "🔙 돌아가기: " + p + "메뉴";
-                            break;
-                        case "인벤토리":
-                            res += "🎒 [메뉴 > 인벤토리]\n━━━━━━━━━━━━━━━\n";
-                            res += "• (미구현) 보유 아이템 목록\n\n";
-                            res += "🔙 돌아가기: " + p + "메뉴";
+                            res += "👤 [" + userName + " > 정보]\n━━━━━━━━━━━━━━━\n• 레벨: " + userSession.status.level + "\n• 소지금: " + userSession.status.money + "\n\n🔙 " + p + "메뉴";
                             break;
                         case "도움말":
-                            res += "❓ [메뉴 > 도움말]\n━━━━━━━━━━━━━━━\n";
-                            res += "• " + p + "내정보 : 내 스탯 확인\n";
-                            res += "• " + p + "로그아웃 : 접속 종료\n";
-                            res += "• " + p + "정보 : 패치 확인\n\n";
-                            res += "🔙 돌아가기: " + p + "메뉴";
+                            res += "❓ [" + userName + " > 도움말]\n━━━━━━━━━━━━━━━\n• 번호 입력: " + p + "메뉴 1, " + p + "메뉴 2...\n• 정보 확인: " + p + "내정보\n• 종료: " + p + "로그아웃\n\n🔙 " + p + "메뉴";
                             break;
                         default:
-                            res += "🏠 유저 메인 메뉴\n━━━━━━━━━━━━━━━\n";
-                            res += "1. 내정보\n";
-                            res += "2. 인벤토리 (미구현)\n";
-                            res += "3. 로그아웃\n";
-                            // 나중에 상점이나 대전 메뉴가 추가되어도 도움말이 항상 마지막
-                            res += "4. 도움말"; 
+                            res += "🏠 [" + userName + "] 메인 메뉴\n━━━━━━━━━━━━━━━\n1. 내정보\n2. 인벤토리 (미구현)\n3. 로그아웃\n4. 도움말";
                     }
                 }
             }
