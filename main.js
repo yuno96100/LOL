@@ -8,74 +8,87 @@ let sessions = {};
 
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     try {
-        if (!msg.startsWith(libConst.Prefix)) return;
-        const args = msg.split(" ");
-        let command = args[0].slice(libConst.Prefix.length);
-        const params = args.slice(1);
-
         if (!sessions[sender]) sessions[sender] = { isMenuOpen: false, data: null };
         let userSession = sessions[sender].data;
         let isLoggedIn = !!userSession;
+        let isPrefix = msg.startsWith(libConst.Prefix);
+        
+        let command = "";
+        let params = [];
 
-        // [1] 메뉴 명령어 (.메뉴)
-        if (command === "메뉴") {
-            let cat = params[0];
-            
-            // 번호를 입력했는데 메뉴가 닫혀있다면 명시적 '메뉴 1'만 허용 혹은 차단
-            if (cat && !isNaN(cat) && !sessions[sender].isMenuOpen) {
-                return replier.reply("❌ 메뉴 창을 먼저 열어주세요. (" + libConst.Prefix + "메뉴)");
-            }
-
-            // 번호 매핑 (Helper 브릿지 호출)
-            let mappedCat = Helper.getRootCmdByNum(room, isGroupChat, isLoggedIn, cat);
-            if (mappedCat) command = mappedCat; 
-            else {
-                sessions[sender].isMenuOpen = true; // 카테고리 없으면 메뉴 오픈
-                return replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, null, userSession, DB));
-            }
+        // 명령어 분석
+        if (isPrefix) {
+            let args = msg.split(" ");
+            command = args[0].slice(libConst.Prefix.length);
+            params = args.slice(1);
+        } else if (!isNaN(msg) && sessions[sender].isMenuOpen) {
+            command = msg.trim();
+        } else {
+            return; // 일반 채팅 무시
         }
 
-        // [2] 단독 번호 입력 (.1, .2 등)
+        // 번호 명령어 변환 (모든 메뉴 공통)
         if (!isNaN(command)) {
-            if (!sessions[sender].isMenuOpen) {
-                return replier.reply("💡 메뉴 창이 닫혀있습니다. '" + libConst.Prefix + "메뉴'를 먼저 입력하세요.");
+            if (sessions[sender].isMenuOpen) {
+                let mapped = Helper.getRootCmdByNum(room, isGroupChat, isLoggedIn, command);
+                if (mapped) command = mapped;
+            } else {
+                if (!isPrefix) return;
+                return replier.reply("💡 메뉴 창을 먼저 열어주세요. (" + libConst.Prefix + "메뉴)");
             }
-            let mapped = Helper.getRootCmdByNum(room, isGroupChat, isLoggedIn, command);
-            if (mapped) command = mapped;
         }
 
-        // [3] 명령어 실행 로직
+        // 실행 로직
         switch (command) {
-            case "도움말":
-                replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "도움말", userSession, DB));
+            case "메뉴":
+                sessions[sender].isMenuOpen = true;
+                replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, null, userSession, DB));
                 break;
+
             case "가입":
-                if (params.length < 2) return replier.reply("⚠️ .1 [ID] [PW]");
+                if (isGroupChat) return replier.reply("❌ 가입은 개인톡에서 진행해주세요.");
+                if (params.length < 2) {
+                    let guide = "📝 [ 회원가입 안내 ]\n━━━━━━━━━━━━━━━\n📍 입력법: " + libConst.Prefix + "가입 [닉네임] [비밀번호]\n📍 예시: " + libConst.Prefix + "가입 페이커 1234";
+                    return replier.reply(guide);
+                }
                 replier.reply(Login.tryRegister(params[0], params[1], params[0], DB, Obj).msg);
                 sessions[sender].isMenuOpen = false;
                 break;
+
             case "로그인":
-                if (params.length < 2) return replier.reply("⚠️ .2 [ID] [PW]");
-                var res = Login.tryLogin(params[0], params[1], DB);
-                if (res.success) sessions[sender].data = res.data;
-                replier.reply(res.msg);
+                if (isGroupChat) return replier.reply("❌ 로그인은 개인톡에서 진행해주세요.");
+                if (params.length < 2) return replier.reply("🔓 [ 로그인 ]\n입력법: " + libConst.Prefix + "로그인 [닉네임] [비밀번호]");
+                var logRes = Login.tryLogin(params[0], params[1], DB);
+                if (logRes.success) sessions[sender].data = logRes.data;
+                replier.reply(logRes.msg);
                 sessions[sender].isMenuOpen = false;
                 break;
+
+            case "내정보":
+            case "인벤토리":
+            case "가이드":
+            case "랭킹":
+            case "데이터":
+            case "유저제어":
+                replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, command, userSession, DB));
+                break;
+
+            case "도움말":
+                replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "도움말", userSession, DB));
+                break;
+
             case "로그아웃":
                 sessions[sender].data = null;
                 sessions[sender].isMenuOpen = false;
                 replier.reply("🚪 로그아웃 완료");
                 break;
-            case "내정보":
-                replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "내정보", userSession, DB));
-                break;
+
             case "정보":
-                replier.reply("🧪 LOL봇 v" + libConst.Version + "\n📝 Helper 참조 에러 수정 완료");
+                replier.reply("🧪 LOL봇 v" + libConst.Version + "\n📝 전 메뉴 무접두사 번호 이동 통합 적용");
                 break;
         }
 
     } catch (e) {
-        // 상세 에러 로그 출력
-        Api.replyRoom(libConst.ErrorLogRoom, "🚨 에러: " + e.message + "\n라인: " + e.lineNumber);
+        Api.replyRoom(libConst.ErrorLogRoom, "🚨 에러: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
