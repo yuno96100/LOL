@@ -2,8 +2,7 @@
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
 const ErrorLogRoom = "게임봇"; 
-const AdminName = "시스템"; 
-const Version = "1.1.5"; // LoginManager 모듈 로드 오류 수정
+const Version = "1.1.9"; // 게임봇 전용 도움말 추가
 
 const RootPath = "sdcard/LOL/";      
 const DBPath = RootPath + "DB/";     
@@ -13,10 +12,10 @@ function bridge() {
         Prefix: Prefix,
         MainRoomName: MainRoomName,
         ErrorLogRoom: ErrorLogRoom,
-        AdminName: AdminName,
         RootPath: RootPath,
         DBPath: DBPath,
         UserPath: DBPath + "Users/",
+        AdminPath: DBPath + "Admins.json",
         Version: Version
     };
 }
