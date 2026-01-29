@@ -1,6 +1,6 @@
 {
-    "version": "1.5.4",
-    "updateDate": "2026-01-29",
+    "version": "1.5.5",
+    "updateDate": "2026-01-30",
     "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
-    "note": "v1.5.4 : 메뉴 활성화 상태 체크 로직 추가 (카테고리 진입 제한)"
+    "note": "v1.5.5 : Helper 함수 참조 에러 수정 및 메뉴 상태 체크 강화"
 }
