@@ -6,7 +6,7 @@ function bridge() {
                     id: id,
                     pw: pw,
                     name: nick,
-                    originalNickname: nick, // 가입 시 카톡 닉네임 영구 기록
+                    originalNickname: nick,
                     joinDate: new Date().toLocaleString()
                 },
                 status: {
