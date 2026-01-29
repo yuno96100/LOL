@@ -1,5 +1,5 @@
 {
-    "version": "1.2.3",
+    "version": "1.2.4",
     "files": ["Const.js", "Object.js", "DataBase.js", "Helper.js", "LoginManager.js", "main.js"],
-    "note": "v1.2.3 : Bridge is not defined 에러 수정을 위한 의존성 주입 구조 완성"
+    "note": "v1.2.4 : Bridge 참조 에러를 물리적으로 불가능하게 차단 (DI 패턴 적용)"
 }
