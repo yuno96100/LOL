@@ -1,10 +1,8 @@
 /**
  * main.js
- * 버전: v1.2.2
- * 업데이트 내용: LoginManager에 DB/Obj 객체를 주입하여 'Bridge is not defined' 에러 해결
+ * 버전: v1.2.6
  */
 
-// 모듈 로드 (main.js는 Bridge를 정상 인식함)
 const libConst = Bridge.getScopeOf("Const.js").bridge();
 const DB = Bridge.getScopeOf("DataBase.js").bridge();
 const Obj = Bridge.getScopeOf("Object.js").bridge();
@@ -14,81 +12,64 @@ const Helper = Bridge.getScopeOf("Helper.js").bridge();
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
     try {
-        // 접두사 체크
         if (!msg.startsWith(libConst.Prefix)) return;
 
         const args = msg.split(" ");
         const command = args[0].slice(libConst.Prefix.length);
         const params = args.slice(1);
 
-        // 공통 UI 박스 함수
         function replyBox(title, content) {
-            var res = "━━━━━━━━━━━━━━━\n";
-            res += "🧪 " + title + "\n";
-            res += "━━━━━━━━━━━━━━━\n";
-            res += content + "\n";
-            res += "━━━━━━━━━━━━━━━";
+            var res = "━━━━━━━━━━━━━━━\n🧪 " + title + "\n━━━━━━━━━━━━━━━\n" + content + "\n━━━━━━━━━━━━━━━";
             replier.reply(res);
         }
 
-        /** * [1] 게임봇 방 (관리자 전용 제어 센터)
-         */
+        // [1] 관리자 전용 (게임봇 방)
         if (room.trim() === libConst.ErrorLogRoom.trim()) {
-            switch (command) {
-                case "도움말":
-                case "명령어":
-                    replier.reply(Helper.getAdminHelp());
-                    break;
-
-                case "관리자임명":
-                    if (params.length < 1) return replier.reply("⚠️ 사용법: .관리자임명 [닉네임]");
-                    let targetAdd = params[0];
-                    let adminsAdd = DB.getAdmins();
-                    
-                    if (adminsAdd.indexOf(targetAdd) === -1) {
-                        adminsAdd.push(targetAdd);
-                        DB.saveAdmins(adminsAdd);
-                        replier.reply("✅ " + targetAdd + " 님을 관리자로 임명했습니다.");
-                        
-                        // LOL실험실 방에 공지 발송
-                        Api.replyRoom(libConst.MainRoomName, 
-                            "📢 [관리자 임명 공지]\n" +
-                            "━━━━━━━━━━━━━━━\n" +
-                            targetAdd + " 님이 새로운 관리자로 지정되었습니다.\n" +
-                            "━━━━━━━━━━━━━━━"
-                        );
-                    } else {
-                        replier.reply("⚠️ 이미 관리자인 유저입니다.");
-                    }
-                    break;
-
-                case "관리자해임":
-                    if (params.length < 1) return replier.reply("⚠️ 사용법: .관리자해임 [닉네임]");
-                    let targetDel = params[0];
-                    let adminsDel = DB.getAdmins();
-                    let idx = adminsDel.indexOf(targetDel);
-                    
-                    if (idx !== -1) {
-                        adminsDel.splice(idx, 1);
-                        DB.saveAdmins(adminsDel);
-                        replier.reply("🗑️ " + targetDel + " 님을 해임했습니다.");
-                    } else {
-                        replier.reply("⚠️ 관리자 명단에 없는 유저입니다.");
-                    }
-                    break;
-
-                case "정보":
-                    replyBox("관리자 시스템 정보", 
-                        "• 서버 버전: " + libConst.Version + "\n" +
-                        "• 에러 수집: 활성화 (방향: " + libConst.ErrorLogRoom + ")\n" +
-                        "• 타겟 방: " + libConst.MainRoomName + "\n" +
-                        "• 모듈 상태: DB/Obj/Login/Helper 정상"
-                    );
-                    break;
+            if (command === "관리자임명") {
+                let admins = DB.getAdmins();
+                if (admins.indexOf(params[0]) === -1) {
+                    admins.push(params[0]);
+                    DB.saveAdmins(admins);
+                    replier.reply("✅ " + params[0] + " 임명 완료");
+                }
             }
+            if (command === "도움말") replier.reply(Helper.getAdminHelp());
             return;
         }
 
-        /** * [2] LOL실험실 방 (퍼블릭 채팅방)
-         */
+        // [2] 유저 전용 (LOL실험실 방)
         if (room.trim() === libConst.MainRoomName.trim()) {
+            if (command === "정보") {
+                let admins = DB.getAdmins();
+                replyBox("시스템 정보", "• 버전: v" + libConst.Version + "\n• 관리자: (" + admins.join(", ") + ")");
+            }
+            if (command === "도움말") replier.reply(Helper.getMainHelp());
+            return;
+        }
+
+        // [3] 개인톡 (가입/로그인)
+        if (!isGroupChat) {
+            switch (command) {
+                case "가입":
+                    if (params.length < 2) return replyBox("가입 실패", "⚠️ .가입 [ID] [PW]");
+                    // 핵심: DB와 Obj를 '배달'해줍니다.
+                    var regRes = Login.tryRegister(params[0], params[1], sender, DB, Obj);
+                    replyBox("가입 결과", regRes.msg);
+                    break;
+
+                case "로그인":
+                    if (params.length < 2) return replyBox("로그인 실패", "⚠️ .로그인 [ID] [PW]");
+                    // 핵심: DB를 '배달'해줍니다.
+                    var logRes = Login.tryLogin(params[0], params[1], DB);
+                    replyBox("로그인 결과", logRes.msg);
+                    break;
+            }
+        }
+
+    } catch (e) {
+        var fullPath = e.fileName || "알 수 없는 파일";
+        var fileName = fullPath.split("/").pop(); 
+        var errorLog = "🚨 [에러 리포트]\n━━━━━━━━━━━━━━━\n• 파일: " + fileName + "\n• 라인: " + e.lineNumber + "\n• 내용: " + e.message + "\n━━━━━━━━━━━━━━━";
+        Api.replyRoom(libConst.ErrorLogRoom, errorLog);
+    }
+}
