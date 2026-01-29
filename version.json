@@ -1,6 +1,6 @@
 {
-    "version": "1.6.2",
+    "version": "1.6.4",
     "updateDate": "2026-01-30",
     "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
-    "note": "v1.6.2 통합 업데이트: 로그인 연동, 메뉴 번호 시스템, 무접두사 숫자 명령어 및 보안 강화"
+    "note": "v1.6.4 : 개인톡/그룹톡 닉네임 일치 안내 강화 및 주의사항 고정"
 }
