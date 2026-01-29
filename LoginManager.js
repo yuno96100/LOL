@@ -1,7 +1,7 @@
 // LoginManager.js
 function bridge() {
     return {
-        // main.js에서 DB와 Obj 모듈을 인자로 전달받도록 설계 변경
+        // 인자로 DB와 Obj를 직접 전달받음
         tryRegister: function(_id, _pw, _sender, DB, Obj) {
             if (!DB) return { success: false, msg: "❌ 시스템 오류: DB 모듈 연결 실패" };
             if (DB.isExisted(_id)) return { success: false, msg: "❌ 이미 사용 중인 ID입니다." };
