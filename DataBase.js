@@ -18,7 +18,10 @@ function bridge() {
                 return JSON.parse(FileStream.read(path));
             } catch (e) { return null; }
         },
-        loadUser: function(id) { return this.readUser(id); }, // 호환성 유지
+        // 🚨 [중요] LoginManager에서 호출하는 함수 이름을 readUser와 연결
+        loadUser: function(id) {
+            return this.readUser(id);
+        },
         isExisted: function(id) {
             if (!id) return false;
             return new java.io.File(libConst.UserPath + id + ".json").exists();
