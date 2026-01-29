@@ -18,11 +18,20 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let isAdminRoom = (room.trim() === libConst.ErrorLogRoom.trim());
         let isMainRoom = (room.trim() === libConst.MainRoomName.trim());
 
+        // [1] 대기 입력 상태 우선 처리
         if (session.waitAction) {
             handleWaitAction(sender, msg, replier);
             return;
         }
 
+        // [2] 메뉴 밖 전용 명령어: .업데이트 (Prefix 포함 필수)
+        if (msg === libConst.Prefix + "업데이트") {
+            replier.reply("🖥️ [ 시스템 정보 ]\n• 버전: v" + libConst.Version + "\n• 유저: " + DB.getUserList().length + "명\n• 상태: 정상 작동 중");
+            session.isMenuOpen = false;
+            return;
+        }
+
+        // [3] 관리자 확인 로직
         if (isAdminRoom && global.adminAction[sender]) {
             if (msg === "확인") {
                 let action = global.adminAction[sender];
@@ -41,10 +50,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
+        // [4] 메뉴 호출 및 번호 처리
         let command = "";
-        if (isPrefix) {
-            if (msg.slice(libConst.Prefix.length) === "메뉴") command = "메뉴";
-            else return replier.reply("⚠️ '" + libConst.Prefix + "메뉴'를 먼저 입력해주세요.");
+        if (msg === libConst.Prefix + "메뉴") {
+            command = "메뉴";
         } else if (!isNaN(msg)) {
             if (session.isMenuOpen) {
                 let mapped = Helper.getRootCmdByNum(room, isAdminRoom, isMainRoom, isLoggedIn, msg.trim());
@@ -54,6 +63,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
         } else return;
 
+        // [5] 실행 로직
         switch (command) {
             case "메뉴":
                 session.isMenuOpen = true;
@@ -124,7 +134,7 @@ function handleWaitAction(sender, msg, replier) {
             break;
 
         case "로그인_ID":
-            if (!DB.isExisted(input)) return replier.reply("❌ 가입되지 않은 닉네임입니다. 다시 입력하거나 '취소'를 입력하세요.");
+            if (!DB.isExisted(input)) return replier.reply("❌ 가입되지 않은 닉네임입니다.");
             session.tempData = input;
             session.waitAction = "로그인_PW";
             replier.reply("🔓 [" + input + "] 계정의 비밀번호를 입력해주세요.");
