@@ -1,21 +1,18 @@
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
 const ErrorLogRoom = "게임봇"; 
-const Version = "1.5.2"; 
-
-const RootPath = "sdcard/LOL/";      
-const DBPath = RootPath + "DB/";     
+const Version = "1.5.3"; 
 
 function bridge() {
     return {
         Prefix: Prefix,
         MainRoomName: MainRoomName,
         ErrorLogRoom: ErrorLogRoom,
-        RootPath: RootPath,
-        DBPath: DBPath,
-        UserPath: DBPath + "Users/",
-        BackupPath: DBPath + "Backup/",
-        AdminPath: DBPath + "Admins.json",
+        RootPath: "sdcard/LOL/",
+        DBPath: "sdcard/LOL/DB/",
+        UserPath: "sdcard/LOL/DB/Users/",
+        BackupPath: "sdcard/LOL/DB/Backup/",
+        AdminPath: "sdcard/LOL/DB/Admins.json",
         Version: Version
     };
 }
