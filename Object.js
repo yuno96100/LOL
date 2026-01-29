@@ -1,20 +1,18 @@
 function bridge() {
     return {
-        getNewUser: function(_id, _pw, _name) {
+        getNewUser: function(id, pw, nick) {
             return {
                 info: {
-                    id: _id,
-                    pw: _pw,
-                    name: _name, 
-                    title: "브론즈",
+                    id: id,
+                    pw: pw,
+                    name: nick,
+                    originalNickname: nick, // 가입 시 카톡 닉네임 영구 기록
                     joinDate: new Date().toLocaleString()
                 },
                 status: {
                     level: 1,
                     exp: 0,
-                    money: 1000,
-                    win: 0,
-                    loss: 0
+                    money: 1000
                 },
                 inventory: []
             };
