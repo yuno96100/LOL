@@ -1,6 +1,6 @@
 {
-    "version": "1.5.2",
+    "version": "1.5.4",
     "updateDate": "2026-01-29",
     "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
-    "note": "v1.5.2 : 번호로 메뉴 진입 기능 추가, 닉네임 연동 및 메뉴 명칭 통일"
+    "note": "v1.5.4 : 메뉴 활성화 상태 체크 로직 추가 (카테고리 진입 제한)"
 }
