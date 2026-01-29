@@ -5,7 +5,7 @@ function bridge() {
                 info: {
                     id: _id,
                     pw: _pw,
-                    name: _name, // 사용자가 입력한 닉네임이 여기 저장됩니다.
+                    name: _name, 
                     title: "브론즈",
                     joinDate: new Date().toLocaleString()
                 },
