@@ -1,6 +1,14 @@
 // version.js
-const VersionInfo = {
-    version: "1.3.5",
-    updateDate: "2026-01-29",
-    note: "통합 메뉴 시스템(.메뉴) 및 상황별 명령어 필터링 적용 완료"
-};
+{
+    "version": "1.3.6",
+    "updateDate": "2026-01-29",
+    "files": [
+        "main.js",
+        "Const.js",
+        "DataBase.js",
+        "Object.js",
+        "LoginManager.js",
+        "Helper.js"
+    ],
+    "note": "v1.3.6 : 통합 메뉴 시스템 안정화 및 전체 파일 리스트 동기화"
+}
