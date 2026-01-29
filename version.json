@@ -1,6 +1,6 @@
 {
-    "version": "1.7.1",
+    "version": "1.7.2",
     "updateDate": "2026-01-30",
-    "files": ["main.js", "Const.js", "DataBase.js", "Helper.js"],
-    "note": "v1.7.1 : 유저 복구 시점 안내 가이드 추가 및 복구 로직 명세화"
+    "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
+    "note": "v1.7.2 : 그룹톡 및 관리자 방 명칭 변경 반영 (소환사의협곡 / 소환사의협곡관리)"
 }
