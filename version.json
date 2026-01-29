@@ -1,6 +1,6 @@
 {
-    "version": "1.5.9",
+    "version": "1.6.2",
     "updateDate": "2026-01-30",
     "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
-    "note": "v1.5.9 : 미가입 유저 개인톡 진입 시 가입 무한 안내 로직 적용"
+    "note": "v1.6.2 : 개인톡-그룹톡 로그인 상태 연동 및 미로그인 시 그룹톡 이용 차단 적용"
 }
