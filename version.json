@@ -1,6 +1,6 @@
 {
-    "version": "1.5.5",
+    "version": "1.5.9",
     "updateDate": "2026-01-30",
     "files": ["main.js", "Const.js", "DataBase.js", "Object.js", "LoginManager.js", "Helper.js"],
-    "note": "v1.5.5 : Helper 함수 참조 에러 수정 및 메뉴 상태 체크 강화"
+    "note": "v1.5.9 : 미가입 유저 개인톡 진입 시 가입 무한 안내 로직 적용"
 }
