@@ -18,13 +18,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let isAdminRoom = (room.trim() === libConst.ErrorLogRoom.trim());
         let isMainRoom = (room.trim() === libConst.MainRoomName.trim());
 
-        // [1] 대기 중인 액션(입력 단계)이 최우선
         if (session.waitAction) {
             handleWaitAction(sender, msg, replier);
             return;
         }
 
-        // [2] 관리자 확인 로직
         if (isAdminRoom && global.adminAction[sender]) {
             if (msg === "확인") {
                 let action = global.adminAction[sender];
@@ -43,7 +41,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
-        // [3] 명령어 및 번호 처리
         let command = "";
         if (isPrefix) {
             if (msg.slice(libConst.Prefix.length) === "메뉴") command = "메뉴";
@@ -57,7 +54,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
         } else return;
 
-        // [4] 실행 로직
         switch (command) {
             case "메뉴":
                 session.isMenuOpen = true;
@@ -139,19 +135,18 @@ function handleWaitAction(sender, msg, replier) {
             if (res.success) {
                 session.data = res.data;
                 replier.reply("✅ 로그인 성공! 반갑습니다, " + res.data.info.name + "님.");
-                session.waitAction = null; // 성공 시에만 초기화
+                session.waitAction = null;
                 session.tempData = null;
                 session.isMenuOpen = false;
             } else {
                 replier.reply("🚫 " + res.msg + "\n다시 입력하시거나 '취소'를 입력해주세요.");
-                // 비번 틀리면 waitAction을 유지하여 다시 입력받게 함
             }
             break;
 
         case "상세조회":
             let ud = DB.readUser(input);
             if (!ud) return replier.reply("❌ 유저 없음.");
-            replier.reply("👤 [" + ud.info.name + "] 비번: " + ud.info.pw + " / 돈: " + ud.status.money);
+            replier.reply("👤 [" + ud.info.name + "] 비번: " + ud.info.pw + " / 돈: " + ud.status.money + "G");
             session.waitAction = null;
             session.isMenuOpen = false;
             break;
