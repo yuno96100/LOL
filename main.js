@@ -1,9 +1,13 @@
-// main.js 상단 모듈 로드 부분 확인
+/**
+ * main.js
+ * 버전: v1.1.9
+ */
+
 const libConst = Bridge.getScopeOf("Const.js").bridge();
+const DB = Bridge.getScopeOf("DataBase.js").bridge();
 const Login = Bridge.getScopeOf("LoginManager.js").bridge();
 const Helper = Bridge.getScopeOf("Helper.js").bridge();
 
-// (중략 - v1.1.4와 동일한 response 함수 로직)
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     
     try {
@@ -22,25 +26,61 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             replier.reply(res);
         }
 
-        /** [1] 단체톡방 로직 **/
+        /** [1] 게임봇 방 (관리자 전용) **/
+        if (room.trim() === libConst.ErrorLogRoom.trim()) {
+            switch (command) {
+                case "도움말":
+                case "명령어":
+                    replier.reply(Helper.getAdminHelp());
+                    break;
+
+                case "관리자임명":
+                    if (params.length < 1) return replier.reply("⚠️ 사용법: .관리자임명 [닉네임]");
+                    let targetAdd = params[0];
+                    let adminsAdd = DB.getAdmins();
+                    
+                    if (adminsAdd.indexOf(targetAdd) === -1) {
+                        adminsAdd.push(targetAdd);
+                        DB.saveAdmins(adminsAdd);
+                        replier.reply("✅ " + targetAdd + " 님을 관리자로 임명했습니다.");
+                        Api.replyRoom(libConst.MainRoomName, "📢 [관리자 임명 공지]\n━━━━━━━━━━━━━━━\n" + targetAdd + " 님이 새로운 관리자로 지정되었습니다.\n━━━━━━━━━━━━━━━");
+                    } else {
+                        replier.reply("⚠️ 이미 관리자인 유저입니다.");
+                    }
+                    break;
+
+                case "관리자해임":
+                    if (params.length < 1) return replier.reply("⚠️ 사용법: .관리자해임 [닉네임]");
+                    let targetDel = params[0];
+                    let adminsDel = DB.getAdmins();
+                    let idx = adminsDel.indexOf(targetDel);
+                    
+                    if (idx !== -1) {
+                        adminsDel.splice(idx, 1);
+                        DB.saveAdmins(adminsDel);
+                        replier.reply("🗑️ " + targetDel + " 님을 해임했습니다.");
+                    } else {
+                        replier.reply("⚠️ 관리자 명단에 없는 유저입니다.");
+                    }
+                    break;
+
+                case "정보":
+                    replyBox("관리자 시스템 정보", "• 서버 버전: " + libConst.Version + "\n• 에러 수집: 활성화\n• 타겟 방: " + libConst.MainRoomName);
+                    break;
+            }
+            return;
+        }
+
+        /** [2] LOL실험실 방 (퍼블릭) **/
         if (room.trim() === libConst.MainRoomName.trim()) {
             switch (command) {
                 case "등록":
-                    replyBox("유저 등록 안내", 
-                        sender + "님, 가입 안내입니다.\n" +
-                        libConst.AdminName + "에게 1:1 메시지로\n" +
-                        "'.가입 [ID] [PW]'를 보내주세요."
-                    );
+                    replyBox("유저 등록 안내", sender + "님, 가입 안내입니다.\n관리자를 태그하여 1:1 메시지로\n'.가입 [ID] [PW]'를 보내주세요.");
                     break;
                 case "정보":
-                    var systemInfo = "• 서버 버전: v" + libConst.Version + "\n" +
-                                     "• 관리 주체: " + libConst.AdminName + "\n\n" +
-                                     "[🛡️ 보호막 시스템]\n" +
-                                     "• 에러 트래킹: 전용 채널 전송\n" +
-                                     "• 보고 위치: [" + libConst.ErrorLogRoom + "]\n\n" +
-                                     "[📍 접속 정보]\n" +
-                                     "• 현재 방: " + room;
-                    replyBox("시스템 상세 정보", systemInfo);
+                    let admins = DB.getAdmins();
+                    let adminStr = admins.length > 0 ? admins.join(", ") : "없음";
+                    replyBox("시스템 정보", "• 버전: v" + libConst.Version + "\n• 관리자: (" + adminStr + ")\n• 상태: 정상 가동 중");
                     break;
                 case "도움말":
                     replier.reply(Helper.getMainHelp());
@@ -49,7 +89,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
-        /** [2] 개인톡방 로직 **/
+        /** [3] 개인톡 로직 **/
         if (!isGroupChat) {
             let isLoggedIn = false; 
             switch (command) {
@@ -61,9 +101,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     if (params.length < 2) return replyBox("로그인 실패", "⚠️ .로그인 [ID] [PW]");
                     replyBox("로그인 결과", Login.tryLogin(params[0], params[1]).msg);
                     break;
-                case "정보":
-                    replyBox("개인 세션 정보", "• 대상: " + sender + "\n• 상태: 인증 필요");
-                    break;
                 case "도움말":
                     replier.reply(Helper.getPrivateHelp(isLoggedIn));
                     break;
@@ -71,24 +108,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
     } catch (e) {
-        // [수정 포인트] 에러 발생 시 지정된 "게임봇" 방으로만 메시지를 보냅니다.
         var fullPath = e.fileName || "알 수 없는 파일";
         var fileName = fullPath.split("/").pop(); 
-
-        var errorLog = "🚨 [실험실 에러 리포트]\n";
-        errorLog += "━━━━━━━━━━━━━━━\n";
-        errorLog += "• 발생 위치: " + room + "\n";
-        errorLog += "• 에러 파일: " + fileName + "\n";
-        errorLog += "• 라인 번호: " + e.lineNumber + "줄\n";
-        errorLog += "• 에러 내용: " + e.message + "\n";
-        errorLog += "━━━━━━━━━━━━━━━";
-        
-        // Api.replyRoom을 사용하여 특정 방으로 메시지 전송
+        var errorLog = "🚨 [에러 리포트]\n━━━━━━━━━━━━━━━\n• 방: " + room + "\n• 파일: " + fileName + "\n• 라인: " + e.lineNumber + "\n• 내용: " + e.message + "\n━━━━━━━━━━━━━━━";
         Api.replyRoom(libConst.ErrorLogRoom, errorLog);
-        
-        // 현재 방에는 간략한 안내만 (선택 사항)
-        // replier.reply("⚠️ 시스템 오류가 발생하여 관리자에게 보고되었습니다.");
-        
-        Log.e("Error in " + fileName + " (Line " + e.lineNumber + "): " + e.message);
+        Log.e("Error: " + e.message);
     }
 }
