@@ -16,20 +16,21 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let isAdminRoom = (room.trim() === libConst.ErrorLogRoom.trim());
         let isMainRoom = (room.trim() === libConst.MainRoomName.trim());
 
-        // [1] 가입 안내 문구 정의
+        // [1] 안내 문구 정의
         const NickWarning = "\n\n⚠️ 주의: 개인톡과 단체톡의 카카오톡 닉네임이 같아야 같은 유저로 인식합니다.";
         const NameUsage = "\n💡 가입 시 닉네임은 내 정보에 출력되는 닉네임 입니다.";
 
-        // [2] 관리자 2차 확인
+        // [2] 관리자 2차 확인 로직 (확인/취소 응답 처리)
         if (isAdminRoom && global.adminAction[sender]) {
             let action = global.adminAction[sender];
             if (msg === "확인") {
-                if (action.type === "삭제") DB.deleteUser(action.target);
-                else if (action.type === "초기화") {
+                if (action.type === "삭제") {
+                    DB.deleteUser(action.target);
+                } else if (action.type === "초기화") {
                     let u = DB.readUser(action.target);
-                    DB.writeUser(action.target, Obj.getNewUser(u.info.id, u.info.pw, u.info.name));
+                    if (u) DB.writeUser(action.target, Obj.getNewUser(u.info.id, u.info.pw, u.info.name));
                 }
-                replier.reply("✅ [" + action.target + "] " + action.type + " 완료.");
+                replier.reply("✅ [" + action.target + "] " + action.type + " 처리가 완료되었습니다.");
                 delete global.adminAction[sender];
             } else if (msg === "취소") {
                 delete global.adminAction[sender];
@@ -49,7 +50,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             command = msg.trim();
         } else { return; }
 
-        // [4] 번호 -> 명령어 변환
+        // [4] 번호 -> 명령어 변환 (Helper 연동)
         if (!isNaN(command)) {
             let mapped = Helper.getRootCmdByNum(room, isMainRoom, isLoggedIn, command);
             if (mapped) command = mapped;
@@ -96,16 +97,42 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             case "유저조회":
                 if (!isAdminRoom) return;
                 if (params.length > 0) {
-                    let ud = DB.readUser(params[0]);
-                    if (!ud) return replier.reply("❌ 유저가 없습니다.");
+                    let targetId = params[0].trim();
+                    let ud = DB.readUser(targetId);
+                    if (!ud) return replier.reply("❌ [" + targetId + "] 유저가 없습니다.");
                     let detail = "👤 [ " + ud.info.name + " 상세 ]\n━━━━━━━━━━━━━━━\n• ID: " + ud.info.id + "\n• 가입일: " + ud.info.joinDate + "\n• 돈: " + ud.status.money + "G\n━━━━━━━━━━━━━━━";
                     replier.reply(detail);
-                } else replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", userSession, DB));
+                } else {
+                    replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", userSession, DB));
+                }
                 break;
 
-            case "유저제어":
+            case "삭제":
                 if (!isAdminRoom) return;
-                replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저제어", userSession, DB));
+                if (params.length < 1) return replier.reply("📝 " + libConst.Prefix + "삭제 [ID] 형식으로 입력해주세요.");
+                let targetDelete = params[0].trim();
+                if (!DB.isExisted(targetDelete)) return replier.reply("❌ [" + targetDelete + "] 유저를 찾을 수 없습니다.");
+                
+                global.adminAction[sender] = { type: "삭제", target: targetDelete };
+                replier.reply("⚠️ [" + targetDelete + "] 유저를 정말로 삭제하시겠습니까?\n'확인' 또는 '취소'를 입력해 주세요.");
+                break;
+
+            case "초기화":
+                if (!isAdminRoom) return;
+                if (params.length < 1) return replier.reply("📝 " + libConst.Prefix + "초기화 [ID] 형식으로 입력해주세요.");
+                let targetReset = params[0].trim();
+                if (!DB.isExisted(targetReset)) return replier.reply("❌ [" + targetReset + "] 유저를 찾을 수 없습니다.");
+                
+                global.adminAction[sender] = { type: "초기화", target: targetReset };
+                replier.reply("⚠️ [" + targetReset + "] 유저를 초기화하시겠습니까?\n'확인' 또는 '취소'를 입력해 주세요.");
+                break;
+
+            case "복구":
+                if (!isAdminRoom) return;
+                if (params.length < 1) return replier.reply("📝 " + libConst.Prefix + "복구 [ID] 형식으로 입력해주세요.");
+                let targetRestore = params[0].trim();
+                if (DB.restoreUser(targetRestore)) replier.reply("✅ [" + targetRestore + "] 복구 완료.");
+                else replier.reply("❌ 복구 실패 (파일 없음).");
                 break;
 
             case "로그아웃":
@@ -116,6 +143,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
             case "내정보":
             case "도움말":
+            case "유저제어":
                 replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, command, userSession, DB));
                 break;
         }
