@@ -1,6 +1,5 @@
 /**
- * main.js
- * 버전: v1.3.5
+ * main.js (v1.4.3)
  */
 const libConst = Bridge.getScopeOf("Const.js").bridge();
 const DB = Bridge.getScopeOf("DataBase.js").bridge();
@@ -20,110 +19,81 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let userSession = sessions[sender];
         let isLoggedIn = !!userSession;
 
+        // [통합 메뉴 시스템]
         if (command === "메뉴") {
-            return replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn));
+            return replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, params[0], userSession, DB));
         }
 
-        function replyBox(title, content) {
-            var res = "━━━━━━━━━━━━━━━\n🧪 " + title + "\n━━━━━━━━━━━━━━━\n" + content + "\n━━━━━━━━━━━━━━━";
-            replier.reply(res);
+        // [정보 및 업데이트 알림]
+        if (command === "정보") {
+            let note = "🧪 LOL봇 버전: " + libConst.Version + "\n";
+            note += "📝 패치내용: 닉네임-데이터 동기화 및 생략 없는 코드 정리\n";
+            note += "상태: 모든 시스템 정상";
+            
+            replier.reply(note);
+            
+            if (room.trim() === libConst.ErrorLogRoom.trim()) {
+                Api.replyRoom(libConst.MainRoomName, "📢 [업데이트 알림]\n" + note);
+            }
+            return;
         }
 
+        // [1] 관리자 전용 기능 (게임봇 방)
         if (room.trim() === libConst.ErrorLogRoom.trim()) {
             switch (command) {
-                case "도움말": replier.reply(Helper.getAdminHelp()); break;
                 case "유저조회":
                     let userList = DB.getUserList();
-                    if (userList.length === 0) return replier.reply("가입 유저 없음");
-                    replyBox("가입 유저 명단", userList.join("\n"));
-                    break;
-                case "유저정보":
-                    if (params.length < 1) return replier.reply("⚠️ .유저정보 [ID]");
-                    let target = DB.loadUser(params[0]);
-                    if (!target) return replier.reply("❌ 존재하지 않는 ID");
-                    replyBox("상세 정보", "👤 이름: " + target.info.name + "\n📈 LV: " + target.status.level + "\n⚔️ 전적: " + target.status.win + "승 " + target.status.loss + "패");
+                    replier.reply("📋 전체 유저: " + userList.join(", "));
                     break;
                 case "유저초기화":
-                    if (params.length < 1) return replier.reply("⚠️ .유저초기화 [ID]");
+                    if (params.length < 1) return;
                     let targetInit = DB.loadUser(params[0]);
-                    if (!targetInit) return replier.reply("❌ 대상 없음");
-                    DB.deleteUser(params[0]);
-                    DB.saveUser(params[0], Obj.getNewUser(targetInit.info.id, targetInit.info.pw, targetInit.info.name));
-                    replier.reply("🧹 " + params[0] + " 초기화 완료 (백업됨)");
+                    if (targetInit) {
+                        DB.deleteUser(params[0]);
+                        DB.saveUser(params[0], Obj.getNewUser(targetInit.info.id, targetInit.info.pw, targetInit.info.name));
+                        replier.reply("🧹 " + params[0] + " 초기화 완료");
+                    }
                     break;
                 case "유저삭제":
-                    if (params.length < 1) return replier.reply("⚠️ .유저삭제 [ID]");
-                    if (DB.deleteUser(params[0])) replier.reply("🗑️ " + params[0] + " 삭제됨 (백업됨)");
+                    if (params.length < 1) return;
+                    if (DB.deleteUser(params[0])) replier.reply("🗑️ " + params[0] + " 삭제됨");
                     break;
                 case "유저롤백":
-                    if (params.length < 1) return replier.reply("⚠️ .유저롤백 [ID]");
+                    if (params.length < 1) return;
                     if (DB.rollbackUser(params[0])) replier.reply("⏪ " + params[0] + " 복구됨");
                     break;
-                case "관리자임명":
-                    let adminsA = DB.getAdmins();
-                    if (adminsA.indexOf(params[0]) === -1) {
-                        adminsA.push(params[0]);
-                        DB.saveAdmins(adminsA);
-                        replier.reply("✅ " + params[0] + " 임명");
-                    }
-                    break;
-                case "관리자해임":
-                    let adminsD = DB.getAdmins();
-                    let idx = adminsD.indexOf(params[0]);
-                    if (idx !== -1) {
-                        adminsD.splice(idx, 1);
-                        DB.saveAdmins(adminsD);
-                        replier.reply("🗑️ " + params[0] + " 해임");
-                    }
-                    break;
-                case "정보":
-                    replyBox("서버 정보", "• 버전: " + libConst.Version + "\n• 세션: " + Object.keys(sessions).length);
-                    break;
             }
             return;
         }
 
-        if (room.trim() === libConst.MainRoomName.trim()) {
-            switch (command) {
-                case "도움말": replier.reply(Helper.getMainHelp()); break;
-                case "정보":
-                    let admins = DB.getAdmins();
-                    replyBox("시스템 정보", "• 버전: " + libConst.Version + "\n• 관리자: " + admins.join(", "));
-                    break;
-                case "등록":
-                    replyBox("가입 안내", "개인톡으로 '.가입 [ID] [PW]'를 보내주세요.");
-                    break;
-            }
-            return;
-        }
-
+        // [2] 유저 전용 기능 (개인톡)
         if (!isGroupChat) {
             switch (command) {
                 case "가입":
-                    if (params.length < 2) return replyBox("가입 실패", ".가입 [ID] [PW]");
-                    var regRes = Login.tryRegister(params[0], params[1], sender, DB, Obj);
-                    replyBox("가입 결과", regRes.msg);
-                    if (regRes.success) Api.replyRoom(libConst.ErrorLogRoom, "🔔 가입: " + sender + "(" + params[0] + ")");
+                    if (params.length < 2) {
+                        return replier.reply("⚠️ 사용법: " + libConst.Prefix + "가입 [닉네임] [PW]\n(아이디가 닉네임이 됩니다)");
+                    }
+                    var regRes = Login.tryRegister(params[0], params[1], params[0], DB, Obj);
+                    replier.reply(regRes.msg);
+                    if (regRes.success) Api.replyRoom(libConst.ErrorLogRoom, "🔔 가입알림: " + params[0]);
                     break;
                 case "로그인":
-                    if (params.length < 2) return replyBox("로그인 실패", ".로그인 [ID] [PW]");
+                    if (params.length < 2) return replier.reply("⚠️ 사용법: " + libConst.Prefix + "로그인 [닉네임] [PW]");
                     var logRes = Login.tryLogin(params[0], params[1], DB);
                     if (logRes.success) sessions[sender] = logRes.data;
-                    replyBox("로그인 결과", logRes.msg);
+                    replier.reply(logRes.msg);
                     break;
                 case "내정보":
-                    if (!isLoggedIn) return replyBox("실패", "로그인이 필요합니다.");
-                    replyBox("내 정보", "👤 이름: " + userSession.info.name + "\n📈 LV: " + userSession.status.level + "\n⚔️ " + userSession.status.win + "승 " + userSession.status.loss + "패");
+                    if (isLoggedIn) replier.reply(Helper.getMenu(room, isGroupChat, isLoggedIn, "내정보", userSession, DB));
+                    else replier.reply("❌ 로그인이 필요한 기능입니다.");
                     break;
                 case "로그아웃":
                     delete sessions[sender];
-                    replier.reply("🚪 로그아웃 되었습니다.");
+                    replier.reply("🚪 로그아웃 완료");
                     break;
-                case "도움말": replier.reply(Helper.getPrivateHelp(isLoggedIn)); break;
             }
         }
     } catch (e) {
-        var errorLog = "🚨 [에러] " + e.message + " (라인: " + e.lineNumber + ")";
-        Api.replyRoom(libConst.ErrorLogRoom, errorLog);
+        Api.replyRoom(libConst.ErrorLogRoom, "🚨 에러 발생\n내용: " + e.message + "\n라인: " + e.lineNumber);
     }
 }
