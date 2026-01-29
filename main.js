@@ -16,6 +16,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         let isAdminRoom = (room.trim() === libConst.ErrorLogRoom.trim());
         let isMainRoom = (room.trim() === libConst.MainRoomName.trim());
 
+        // [1] 관리자 승인 로직
         if (isAdminRoom && global.adminAction[sender]) {
             if (msg === "확인") {
                 let action = global.adminAction[sender];
@@ -24,7 +25,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     let u = DB.readUser(action.target);
                     if (u) DB.writeUser(action.target, Obj.getNewUser(u.info.id, u.info.pw, u.info.name));
                 }
-                replier.reply("✅ [" + action.target + "] 처리 완료.");
+                replier.reply("✅ [" + action.target + "] " + action.type + " 처리 완료.");
                 delete global.adminAction[sender];
                 session.isMenuOpen = false;
             } else if (msg === "취소") {
@@ -35,6 +36,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
+        // [2] 메뉴 및 번호 처리
         let command = "";
         if (isPrefix) {
             if (msg.slice(libConst.Prefix.length) === "메뉴") command = "메뉴";
@@ -49,6 +51,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         } else return;
 
+        // [3] 실행 로직
         switch (command) {
             case "메뉴":
                 session.isMenuOpen = true; session.waitAction = null; session.tempData = null;
@@ -56,12 +59,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 break;
             case "가입":
                 if (isGroupChat) { session.isMenuOpen = false; return replier.reply("📢 가입은 '1:1 개인 채팅'에서만 가능합니다."); }
-                replier.reply("📝 사용할 [닉네임] [비밀번호]를 입력해주세요.\n(예: 홍길동 1234)");
+                replier.reply("📝 [게임 닉네임] [비밀번호]를 입력해주세요.\n(예: 홍길동 1234)\n\n💡 로그인 시 아이디는 현재 본인의 [카카오톡 닉네임]을 입력하게 됩니다.");
                 session.waitAction = "가입";
                 break;
             case "로그인":
                 if (isGroupChat) { session.isMenuOpen = false; return replier.reply("📢 로그인은 '1:1 개인 채팅'에서만 가능합니다."); }
-                replier.reply("🔑 [아이디]를 입력해주세요.\n(취소하려면 '취소' 입력)");
+                replier.reply("🔑 본인의 [카카오톡 닉네임]을 입력해주세요.");
                 session.waitAction = "로그인_ID";
                 break;
             case "정보":
@@ -78,15 +81,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 break;
             case "유저조회":
                 if (!isAdminRoom) return;
-                // [수정] 목록을 먼저 보여준 후 입력을 기다립니다.
-                replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", session.data, DB) + "\n\n🔍 상세조회할 유저의 ID를 입력해주세요.");
+                replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", session.data, DB) + "\n\n🔍 상세조회할 유저의 [카카오톡 닉네임]을 입력해주세요.");
                 session.waitAction = "상세조회";
                 break;
             case "삭제":
             case "초기화":
             case "복구":
                 if (!isAdminRoom) return;
-                replier.reply("🛠️ " + command + "할 대상의 ID 입력.");
+                replier.reply("🛠️ " + command + "할 유저의 [카카오톡 닉네임]을 입력해주세요.");
                 session.waitAction = command;
                 break;
             case "도움말":
@@ -108,11 +110,12 @@ function handleWaitAction(sender, msg, replier) {
     switch (action) {
         case "가입":
             let p = input.split(" ");
-            if (p.length < 2) return replier.reply("❌ [닉네임] [비번] 순으로 다시 입력해주세요.");
-            replier.reply(Login.tryRegister(sender, p[1], p[0], DB, Obj).msg);
+            if (p.length < 2) return replier.reply("❌ [게임 닉네임] [비번] 순으로 다시 입력해주세요.");
+            let regRes = Login.tryRegister(sender, p[1], p[0], DB, Obj);
+            replier.reply(regRes.msg + (regRes.success ? "\n🔑 로그인 아이디는 본인의 카카오톡 닉네임인 [" + sender + "] 입니다." : ""));
             break;
         case "로그인_ID":
-            if (!DB.isExisted(input)) return replier.reply("❌ 존재하지 않는 아이디입니다.\n다시 입력하시거나 '취소'를 입력해주세요.");
+            if (!DB.isExisted(input)) return replier.reply("❌ 가입되지 않은 카카오톡 닉네임입니다.\n정확히 입력하시거나 '취소'를 입력해주세요.");
             session.tempData = input;
             session.waitAction = "로그인_PW";
             replier.reply("🔓 [" + input + "] 계정의 비밀번호를 입력해주세요.");
@@ -129,12 +132,11 @@ function handleWaitAction(sender, msg, replier) {
         case "상세조회":
             let ud = DB.readUser(input);
             if (!ud) return replier.reply("❌ 유저를 찾을 수 없습니다.");
-            let detail = "👤 [ " + ud.info.name + " 상세 ]\n• ID: " + ud.info.id + "\n• 레벨: " + ud.status.level + "\n• 보유금: " + ud.status.money + "G";
-            replier.reply(detail);
+            replier.reply("👤 [ " + ud.info.name + " 상세 ]\n• 카톡닉네임: " + ud.info.id + "\n• 레벨: " + ud.status.level + "\n• 보유금: " + ud.status.money + "G");
             break;
         case "삭제":
         case "초기화":
-            if (!DB.isExisted(input)) return replier.reply("❌ 대상 없음.");
+            if (!DB.isExisted(input)) return replier.reply("❌ 대상이 없습니다.");
             global.adminAction[sender] = { type: action, target: input };
             replier.reply("⚠️ [" + input + "] " + action + " 하시겠습니까? (확인/취소)");
             return;
