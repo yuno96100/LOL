@@ -2,7 +2,7 @@
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
 const ErrorLogRoom = "게임봇"; 
-const Version = "1.2.0"; // 관리자 시스템 버그 수정 및 안정화
+const Version = "1.2.1"; // 가입 로직 지연 로딩(Lazy Load) 적용
 
 const RootPath = "sdcard/LOL/";      
 const DBPath = RootPath + "DB/";     
