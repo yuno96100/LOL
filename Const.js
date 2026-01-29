@@ -1,8 +1,7 @@
-// Const.js
 const Prefix = "."; 
 const MainRoomName = "LOL실험실"; 
 const ErrorLogRoom = "게임봇"; 
-const Version = "1.3.5"; 
+const Version = "1.4.3"; 
 
 const RootPath = "sdcard/LOL/";      
 const DBPath = RootPath + "DB/";     
