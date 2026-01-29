@@ -77,12 +77,17 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 replier.reply("🚪 로그아웃 되었습니다.");
                 break;
             case "유저조회":
+                if (!isAdminRoom) return;
+                // [수정] 목록을 먼저 보여준 후 입력을 기다립니다.
+                replier.reply(Helper.getMenu(room, isMainRoom, isLoggedIn, "유저조회", session.data, DB) + "\n\n🔍 상세조회할 유저의 ID를 입력해주세요.");
+                session.waitAction = "상세조회";
+                break;
             case "삭제":
             case "초기화":
             case "복구":
                 if (!isAdminRoom) return;
                 replier.reply("🛠️ " + command + "할 대상의 ID 입력.");
-                session.waitAction = (command === "유저조회") ? "상세조회" : command;
+                session.waitAction = command;
                 break;
             case "도움말":
             case "인벤토리":
@@ -123,8 +128,9 @@ function handleWaitAction(sender, msg, replier) {
             break;
         case "상세조회":
             let ud = DB.readUser(input);
-            if (!ud) return replier.reply("❌ 유저 없음.");
-            replier.reply("👤 [ " + ud.info.name + " ] 정보 확인됨.");
+            if (!ud) return replier.reply("❌ 유저를 찾을 수 없습니다.");
+            let detail = "👤 [ " + ud.info.name + " 상세 ]\n• ID: " + ud.info.id + "\n• 레벨: " + ud.status.level + "\n• 보유금: " + ud.status.money + "G";
+            replier.reply(detail);
             break;
         case "삭제":
         case "초기화":
