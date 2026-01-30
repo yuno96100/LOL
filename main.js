@@ -1,108 +1,125 @@
 /* ============================================================
-   [SECTION 1] 라이브러리 직접 로드 및 전역 객체 신규 생성
+   [SECTION 1] 메모리 강제 세척 및 라이브러리 초기화
    ============================================================ */
-// 구버전 변수들과 충돌을 피하기 위해 새 이름 사용
+// 구버전 에러의 원인인 global.libs와 global.L을 강제 삭제하여 충돌 방지
+delete global.libs;
+delete global.L;
+
+// 새로운 접두사(_)를 사용하여 라이브러리 직접 로드 (가장 안정적임)
 var _C = Bridge.getScopeOf("Const.js").bridge();
 var _D = Bridge.getScopeOf("DataBase.js").bridge();
 var _O = Bridge.getScopeOf("Object.js").bridge();
 var _L = Bridge.getScopeOf("LoginManager.js").bridge();
 var _H = Bridge.getScopeOf("Helper.js").bridge();
 
-// global.sessions 대신 global.USER_SESSION 으로 이름 변경 (잔상 제거)
-if (!global.USER_SESSION) global.USER_SESSION = {};
-if (!global.ADMIN_QUEUE) global.ADMIN_QUEUE = {};
+// 충돌 방지를 위해 전역 저장소 이름 변경
+if (!global.SESSIONS_V4) global.SESSIONS_V4 = {};
+if (!global.ADMIN_QUEUE_V4) global.ADMIN_QUEUE_V4 = {};
 
 /* ============================================================
-   [SECTION 2] 메인 응답 엔진
+   [SECTION 2] 응답 엔진 (Response Engine)
    ============================================================ */
 function response(room, msg, sender, isGroupChat, replier) {
     if (!msg) return;
     var input = msg.trim();
     
-    // [보안] 새 이름의 세션 생성
-    if (!global.USER_SESSION[sender]) {
-        global.USER_SESSION[sender] = { isMenuOpen: false, data: null, waitAction: null, currentView: "메인" };
+    // [보안] 신규 세션 생성
+    if (!global.SESSIONS_V4[sender]) {
+        global.SESSIONS_V4[sender] = { isMenuOpen: false, data: null, waitAction: null, currentView: "메인" };
     }
-    var session = global.USER_SESSION[sender];
+    var session = global.SESSIONS_V4[sender];
 
-    /* [2-1] 필터링 섹션 (Line 32 부근)
-       - 속성 참조를 최소화하여 Undefined 에러를 원천 차단합니다. */
-    var prefix = "."; // Const 호출 없이 직접 지정하여 에러 방지
-    if (input === "취소") { /* 패스 */ }
-    else if (session.waitAction) { /* 패스 */ }
-    else if (input.startsWith(prefix) || !isNaN(input)) { /* 패스 */ }
-    else { return; } // 관련 없는 메시지 즉시 종료
+    /* [2-1] 필터링 (Line 32 방어)
+       객체 참조를 완전히 배제한 순수 문자열 비교로 렉과 에러 방지 */
+    var isCancel = (input === "취소");
+    var isCommand = input.startsWith("."); // Prefix 직접 지정
+    var isNumber = !isNaN(input);
+    var isWaiting = !!session.waitAction;
+
+    if (!isCancel && !isCommand && !isNumber && !isWaiting) return;
 
     try {
-        /* [2-2] 공통 제어: 취소 */
-        if (input === "취소") {
+        /* [2-2] 공통 제어 : 취소 처리 */
+        if (isCancel) {
             session.isMenuOpen = false;
             session.waitAction = null;
-            global.ADMIN_QUEUE[sender] = null;
-            return replier.reply("❌ 취소되었습니다.");
+            global.ADMIN_QUEUE_V4[sender] = null;
+            return replier.reply("❌ 모든 작업을 중단합니다.");
         }
 
         var isAdminRoom = (room === _C.ErrorLogRoom);
         var isMainRoom = (room === _C.MainRoomName);
 
-        /* [2-3] 상태별 로직 분기 */
-        
-        // A. 관리자 2차 확인 (삭제/초기화)
-        if (isAdminRoom && global.ADMIN_QUEUE[sender]) {
-            adminConfirmLogic(sender, input, replier);
+        /* [2-3] 로직 분기 (가독성 섹션화) */
+
+        // A. 관리자 2차 확인 (확인/취소 입력 대기)
+        if (isAdminRoom && global.ADMIN_QUEUE_V4[sender]) {
+            adminActionHandler(sender, input, replier);
             return;
         }
 
-        // B. 입력값 대기 (가입/로그인 등)
+        // B. 유저 입력 대기 (닉네임 등 텍스트 입력)
         if (session.waitAction) {
-            waitInputLogic(sender, input, replier, session, isAdminRoom);
+            inputWaitHandler(sender, input, replier, session, isAdminRoom);
             return;
         }
 
-        // C. 메뉴판 호출
-        if (input === prefix + "메뉴") {
+        // C. 메뉴판 열기
+        if (input === ".메뉴") {
             session.isMenuOpen = true;
             session.currentView = "메인";
-            replier.reply(_H.getMenu(room, isMainRoom, isAdminRoom, !!session.data, "메인", session.data, _D));
+            var menuMsg = _H.getMenu(room, isMainRoom, isAdminRoom, !!session.data, "메인", session.data, _D);
+            replier.reply(menuMsg);
             return;
         }
 
-        // D. 숫자 선택
-        if (session.isMenuOpen && !isNaN(input)) {
-            menuSelectLogic(input, sender, session, replier, room, isMainRoom, isAdminRoom);
+        // D. 숫자 선택 처리
+        if (session.isMenuOpen && isNumber) {
+            selectionHandler(input, sender, session, replier, room, isMainRoom, isAdminRoom);
         }
 
     } catch (e) {
-        // 에러 발생 시 어느 객체에서 났는지 명확히 추적
-        var errorMsg = "🚨 [v2.3.3] " + e.message + " (L:" + e.lineNumber + ")";
-        Api.replyRoom(_C.ErrorLogRoom, errorMsg);
+        // 에러 발생 시 관리자방에 상세 보고
+        var errReport = "🚨 [v2.3.4 에러]\n- 내용: " + e.message + "\n- 위치: Line " + e.lineNumber;
+        Api.replyRoom(_C.ErrorLogRoom, errReport);
     }
 }
 
 /* ============================================================
-   [SECTION 3] 세부 로직 함수 섹션
+   [SECTION 3] 세부 기능 로직 (Logic Handlers)
    ============================================================ */
 
-function menuSelectLogic(num, sender, session, replier, room, isMain, isAdmin) {
+/**
+ * [가독성] 숫자 선택에 따른 명령 실행
+ */
+function selectionHandler(num, sender, session, replier, room, isMain, isAdmin) {
+    // 유저조회 상세 보기 모드인 경우
     if (session.currentView === "유저조회") {
         var idx = parseInt(num) - 1;
         if (global.tempUserList && global.tempUserList[idx]) {
             var u = _D.readUser(global.tempUserList[idx]);
-            if (u) replier.reply("👤 [" + u.info.name + "]\n• LV: " + u.status.level + "\n• GOLD: " + u.status.money + "G");
+            if (u) {
+                var detail = "👤 [" + u.info.name + "] 정보\n" + "━".repeat(10) + "\n• LV: " + u.status.level + "\n• GOLD: " + u.status.money + "G";
+                replier.reply(detail);
+            }
             return;
         }
     }
     
+    // 일반 메뉴 번호 이동
     var cmd = _H.getRootCmdByNum(isAdmin, isMain, !!session.data, num);
     if (cmd) {
         session.currentView = cmd;
         if (cmd === "로그아웃") {
             session.data = null; session.isMenuOpen = false;
             replier.reply("🚪 로그아웃되었습니다.");
-        } else if (["가입", "로그인", "삭제", "초기화", "복구"].indexOf(cmd) >= 0) {
-            replier.reply("💬 " + cmd + "할 내용을 입력해주세요. (취소: '취소')");
+        } else if (["가입", "로그인", "삭제", "초기화", "복구"].indexOf(cmd) >= -1) {
+            // 입력이 필요한 커맨드들
+            var prompt = "💬 " + cmd + "할 대상을 입력해주세요. (취소: '취소')";
+            replier.reply(prompt);
             session.waitAction = cmd;
         } else {
+            // 일반 메뉴 출력 (상점, 내정보 등)
             var res = _H.getMenu(room, isMain, isAdmin, !!session.data, cmd, session.data, _D);
             if (res) replier.reply(res);
             if (cmd !== "유저조회" && cmd !== "상점" && cmd !== "내정보") session.isMenuOpen = false;
@@ -110,26 +127,46 @@ function menuSelectLogic(num, sender, session, replier, room, isMain, isAdmin) {
     }
 }
 
-function waitInputLogic(sender, msg, replier, session, isAdminRoom) {
+/**
+ * [가입/로그인] 텍스트 입력 처리
+ */
+function inputWaitHandler(sender, msg, replier, session, isAdminRoom) {
     var act = session.waitAction;
-    if (act === "가입") replier.reply(_L.tryRegister(sender, msg, _D, _O).msg);
-    else if (act === "로그인") {
+    if (act === "가입") {
+        replier.reply(_L.tryRegister(sender, msg, _D, _O).msg);
+    } else if (act === "로그인") {
         var res = _L.tryLogin(msg, _D);
-        if (res.success) { session.data = res.data; replier.reply("✅ 로그인 성공!"); }
-        else replier.reply("🚫 " + res.msg);
+        if (res.success) {
+            session.data = res.data;
+            replier.reply("✅ [" + res.data.info.name + "]님 로그인 성공!");
+        } else replier.reply("🚫 " + res.msg);
     } else if (isAdminRoom && (act === "삭제" || act === "초기화")) {
-        global.ADMIN_QUEUE[sender] = { type: act, target: msg };
-        replier.reply("⚠️ [" + msg + "] " + act + " 진행? (확인/취소)");
+        global.ADMIN_QUEUE_V4[sender] = { type: act, target: msg };
+        replier.reply("⚠️ [" + msg + "] 유저를 " + act + "하시겠습니까? ('확인' 입력 시 실행)");
     } else if (isAdminRoom && act === "복구") {
-        replier.reply(_D.restoreUser(msg) ? "✅ 복구 성공" : "❌ 실패");
+        replier.reply(_D.restoreUser(msg) ? "✅ 복구 성공" : "❌ 복구 실패");
     }
     session.waitAction = null;
 }
 
-function adminConfirmLogic(sender, msg, replier) {
-    var q = global.ADMIN_QUEUE[sender];
+/**
+ * [관리자] 삭제/초기화 최종 확인 처리
+ */
+function adminActionHandler(sender, msg, replier) {
+    var q = global.ADMIN_QUEUE_V4[sender];
     if (msg === "확인") {
-        if (q.type === "삭제") _D.deleteUser(q.target);
-        else if (q.type === "초기화") {
+        if (q.type === "삭제") {
+            var success = _D.deleteUser(q.target);
+            replier.reply(success ? "✅ 유저 삭제(백업) 완료." : "❌ 해당 유저가 없습니다.");
+        } else if (q.type === "초기화") {
             var u = _D.readUser(q.target);
-            if (u) _D.writeUser(q.target, _O.getNewUser(u.info.id, "0",
+            if (u) {
+                _D.writeUser(q.target, _O.getNewUser(u.info.id, "0", u.info.name));
+                replier.reply("✅ 유저 정보가 초기화되었습니다.");
+            }
+        }
+    } else {
+        replier.reply("❌ 작업이 취소되었습니다.");
+    }
+    delete global.ADMIN_QUEUE_V4[sender];
+}
