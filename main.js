@@ -1,115 +1,151 @@
-function getLib() {
-    if (!global.L) {
-        global.L = {
-            Const: Bridge.getScopeOf("Const.js").bridge(),
-            DB: Bridge.getScopeOf("DataBase.js").bridge(),
-            Obj: Bridge.getScopeOf("Object.js").bridge(),
-            Login: Bridge.getScopeOf("LoginManager.js").bridge(),
-            Helper: Bridge.getScopeOf("Helper.js").bridge()
+/* ==========================================
+   1. 라이브러리 및 전역 세션 관리 (Global Setup)
+   ========================================== */
+function L() {
+    if (!global.libs) {
+        global.libs = {
+            C: Bridge.getScopeOf("Const.js").bridge(),
+            D: Bridge.getScopeOf("DataBase.js").bridge(),
+            O: Bridge.getScopeOf("Object.js").bridge(),
+            Log: Bridge.getScopeOf("LoginManager.js").bridge(),
+            H: Bridge.getScopeOf("Helper.js").bridge()
         };
     }
-    return global.L;
+    return global.libs;
 }
 
-if (!global.sessions) global.sessions = {}; 
-if (!global.adminAction) global.adminAction = {}; 
-if (!global.tempUserList) global.tempUserList = []; 
+if (!global.sessions) global.sessions = {};
+if (!global.adminAction) global.adminAction = {};
 
-function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
-    const L = getLib();
-    let input = msg.trim();
-    if (!input.startsWith(L.Const.Prefix) && isNaN(input) && !global.sessions[sender]?.waitAction && input !== "취소") return;
+/* ==========================================
+   2. 메인 응답 엔진 (Response Engine)
+   ========================================== */
+function response(room, msg, sender, isGroupChat, replier) {
+    const lib = L();
+    const input = msg ? msg.trim() : "";
+    
+    // [세션 초기화]
+    if (!global.sessions[sender]) {
+        global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, currentView: "메인" };
+    }
+    const session = global.sessions[sender];
+
+    // [섹션 A: 필터링] 무관한 메시지 즉시 차단
+    if (!input.startsWith(lib.C.Prefix) && isNaN(input) && !session.waitAction && input !== "취소") return;
 
     try {
-        if (!global.sessions[sender]) {
-            global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, currentView: "메인" };
-        }
-        let session = global.sessions[sender];
-
+        /* [섹션 B: 공통 제어] 취소 로직 */
         if (input === "취소") {
-            if (session.isMenuOpen || session.waitAction || global.adminAction[sender]) {
-                session.isMenuOpen = false; session.waitAction = null; session.currentView = "메인";
-                global.adminAction[sender] = null;
-                return replier.reply("❌ 취소되었습니다.");
-            }
-            return;
+            session.isMenuOpen = false; session.waitAction = null;
+            global.adminAction[sender] = null;
+            return replier.reply("❌ 모든 작업을 중단하고 메인으로 돌아갑니다.");
         }
 
-        let roomName = room.trim();
-        let isAdminRoom = (roomName === L.Const.ErrorLogRoom);
-        let isMainRoom = (roomName === L.Const.MainRoomName);
+        const isAdminRoom = (room === lib.C.ErrorLogRoom);
+        const isMainRoom = (room === lib.C.MainRoomName);
 
+        /* [섹션 C: 상태별 분기] 관리자 확인 / 입력 대기 / 메뉴 호출 */
+        // C-1. 관리자 확인 단계
         if (isAdminRoom && global.adminAction[sender]) {
-            handleAdminConfirm(sender, input, replier, L);
+            handleAdminAction(sender, input, replier, lib);
             return;
         }
 
+        // C-2. 가입/로그인 등 입력 대기 단계
         if (session.waitAction) {
-            handleWaitAction(sender, input, replier, session, isAdminRoom, L);
+            handleInputWait(sender, input, replier, session, isAdminRoom, lib);
             return;
         }
 
-        if (input === L.Const.Prefix + "메뉴") {
+        // C-3. 명령어 호출 (.메뉴)
+        if (input === lib.C.Prefix + "메뉴") {
             session.isMenuOpen = true; session.currentView = "메인";
-            replier.reply(L.Helper.getMenu(roomName, isMainRoom, isAdminRoom, !!session.data, "메인", session.data, L.DB));
+            replier.reply(lib.H.getMenu(room, isMainRoom, isAdminRoom, !!session.data, "메인", session.data, lib.D));
             return;
         }
 
+        // C-4. 메뉴 열림 상태에서 숫자 선택
         if (session.isMenuOpen && !isNaN(input)) {
-            if (session.currentView === "유저조회") {
-                let idx = parseInt(input) - 1;
-                if (global.tempUserList[idx]) return showUserDetail(global.tempUserList[idx], replier, L);
-            }
-            let cmd = L.Helper.getRootCmdByNum(isAdminRoom, isMainRoom, !!session.data, input);
-            if (cmd) { session.currentView = cmd; executeCommand(cmd, sender, session, isGroupChat, replier, roomName, isMainRoom, isAdminRoom, L); }
+            handleMenuSelection(input, sender, session, replier, room, isMainRoom, isAdminRoom, lib);
         }
-    } catch (e) { Api.replyRoom(L.Const.ErrorLogRoom, "🚨 에러: " + e.message + " (Line: " + e.lineNumber + ")"); }
+
+    } catch (e) { 
+        Api.replyRoom(lib.C.ErrorLogRoom, "🚨 [v2.3.0] 에러 발생: " + e.message + " (L:" + e.lineNumber + ")"); 
+    }
 }
 
-function executeCommand(cmd, sender, session, isGroupChat, replier, room, isMainRoom, isAdminRoom, L) {
-    const msgMap = { "가입": "📝 사용할 닉네임", "로그인": "🔑 본인 닉네임", "삭제": "🛠️ 삭제 대상", "초기화": "🛠️ 초기화 대상", "복구": "🛠️ 복구 대상" };
-    if (msgMap[cmd]) {
-        replier.reply(msgMap[cmd] + " 입력 (취소: '취소')");
+/* ==========================================
+   3. 세부 액션 처리부 (Action Handlers)
+   ========================================== */
+
+// [메뉴 숫자 선택 처리]
+function handleMenuSelection(num, sender, session, replier, room, isMain, isAdmin, lib) {
+    if (session.currentView === "유저조회") {
+        let idx = parseInt(num) - 1;
+        if (global.tempUserList && global.tempUserList[idx]) {
+            return showUserDetail(global.tempUserList[idx], replier, lib);
+        }
+    }
+    
+    let cmd = lib.H.getRootCmdByNum(isAdmin, isMain, !!session.data, num);
+    if (cmd) {
+        session.currentView = cmd;
+        executeFinalCommand(cmd, sender, session, replier, room, isMain, isAdmin, lib);
+    }
+}
+
+// [최종 명령어 실행]
+function executeFinalCommand(cmd, sender, session, replier, room, isMain, isAdmin, lib) {
+    const inputMaps = { "가입": "📝 닉네임", "로그인": "🔑 닉네임", "삭제": "🛠️ 삭제대상", "초기화": "🛠️ 초기화대상", "복구": "🛠️ 복구대상" };
+    
+    if (inputMaps[cmd]) {
+        replier.reply(inputMaps[cmd] + "을(를) 입력해주세요.\n(중단하려면 '취소' 입력)");
         session.waitAction = cmd;
     } else if (cmd === "로그아웃") {
-        session.data = null; session.isMenuOpen = false; replier.reply("🚪 로그아웃 되었습니다.");
+        session.data = null; session.isMenuOpen = false;
+        replier.reply("🚪 안전하게 로그아웃되었습니다.");
     } else {
-        let res = L.Helper.getMenu(room, isMainRoom, isAdminRoom, !!session.data, cmd, session.data, L.DB);
-        if (res) replier.reply(res);
+        let menuMsg = lib.H.getMenu(room, isMain, isAdmin, !!session.data, cmd, session.data, lib.D);
+        if (menuMsg) replier.reply(menuMsg);
+        // 정보성 메뉴가 아니면 메뉴 상태 자동 닫기
         if (cmd !== "유저조회" && cmd !== "상점" && cmd !== "내정보") session.isMenuOpen = false;
     }
 }
 
-function handleWaitAction(sender, msg, replier, session, isAdminRoom, L) {
-    let action = session.waitAction;
-    if (action === "가입") replier.reply(L.Login.tryRegister(sender, msg, L.DB, L.Obj).msg);
-    else if (action === "로그인") {
-        let res = L.Login.tryLogin(msg, L.DB);
-        if (res.success) { session.data = res.data; replier.reply("✅ 로그인 성공!"); }
+// [입력 대기 처리]
+function handleInputWait(sender, msg, replier, session, isAdmin, lib) {
+    let act = session.waitAction;
+    if (act === "가입") replier.reply(lib.Log.tryRegister(sender, msg, lib.D, lib.O).msg);
+    else if (act === "로그인") {
+        let res = lib.Log.tryLogin(msg, lib.D);
+        if (res.success) { session.data = res.data; replier.reply("✅ [" + res.data.info.name + "]님으로 로그인되었습니다."); }
         else replier.reply("🚫 " + res.msg);
-    } else if (isAdminRoom && (action === "삭제" || action === "초기화")) {
-        global.adminAction[sender] = { type: action, target: msg };
-        replier.reply("⚠️ [" + msg + "] " + action + " 진행? (확인/취소)");
-    } else if (isAdminRoom && action === "복구") replier.reply(L.DB.restoreUser(msg) ? "✅ 복구 완료" : "❌ 복구 실패");
+    } else if (isAdmin && (act === "삭제" || act === "초기화")) {
+        global.adminAction[sender] = { type: act, target: msg };
+        replier.reply("⚠️ [" + msg + "] " + act + "을(를) 진행하시겠습니까? (확인/취소)");
+    } else if (isAdmin && act === "복구") {
+        replier.reply(lib.D.restoreUser(msg) ? "✅ 성공적으로 복구되었습니다." : "❌ 복구 실패 (파일 없음)");
+    }
     session.waitAction = null; session.isMenuOpen = false;
 }
 
-function handleAdminConfirm(sender, msg, replier, L) {
-    let action = global.adminAction[sender];
-    if (!action) return;
+// [관리자 확인 처리]
+function handleAdminAction(sender, msg, replier, lib) {
+    let a = global.adminAction[sender];
     if (msg === "확인") {
-        if (action.type === "삭제") L.DB.deleteUser(action.target);
-        else if (action.type === "초기화") {
-            let u = L.DB.readUser(action.target);
-            if (u) L.DB.writeUser(action.target, L.Obj.getNewUser(u.info.id, "0", u.info.name));
+        if (a.type === "삭제") lib.D.deleteUser(a.target);
+        else if (a.type === "초기화") {
+            let u = lib.D.readUser(a.target);
+            if (u) lib.D.writeUser(a.target, lib.O.getNewUser(u.info.id, "0", u.info.name));
         }
-        replier.reply("✅ 완료.");
-    } else replier.reply("❌ 취소.");
+        replier.reply("✅ 요청하신 작업이 완료되었습니다.");
+    } else replier.reply("❌ 작업을 취소했습니다.");
     delete global.adminAction[sender];
 }
 
-function showUserDetail(userId, replier, L) {
-    let u = L.DB.readUser(userId);
-    if (!u) return;
-    replier.reply("👤 [" + u.info.name + "] 정보\n• LV: " + u.status.level + "\n• GOLD: " + u.status.money + "G");
+// [상세 정보 표시]
+function showUserDetail(id, replier, lib) {
+    let u = lib.D.readUser(id);
+    if (!u) return replier.reply("❌ 유저 정보를 불러올 수 없습니다.");
+    replier.reply("👤 [" + u.info.name + "] 상세 정보\n" + "━".repeat(12) + "\n• 레벨: " + u.status.level + "\n• 골드: " + u.status.money + "G\n• 가입: " + new Date(u.info.joinDate).toLocaleDateString());
 }
