@@ -1,5 +1,5 @@
 const Prefix = "."; 
-const Version = "2.1.6"; 
+const Version = "2.2.6"; 
 
 function bridge() {
     return {
