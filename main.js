@@ -1,164 +1,91 @@
 /* ============================================================
-   [SECTION 1] 구버전 메모리 강제 소거 (에러 귀신 퇴치)
+   [SECTION 1] 엔진 초기화 및 메모리 세척
    ============================================================ */
-delete global.libs;
-delete global.L;
-delete global.sessions;
-
-// 전용 라이브러리 로드 함수 (필요할 때만 호출하여 Undefined 방지)
-function getLib(name) {
-    try {
-        return Bridge.getScopeOf(name).bridge();
-    } catch (e) {
-        return null;
+// 모든 전역 변수를 초기화하여 구버전 에러(두유노)의 뿌리를 뽑습니다.
+(function cleanMemory() {
+    var keys = ["libs", "L", "sessions", "USER_SESSIONS_FINAL", "USER_SESSIONS_V4"];
+    for (var i = 0; i < keys.length; i++) {
+        delete global[keys[i]];
     }
-}
+})();
 
-// 새로운 세션 저장소 (기존과 이름 겹치지 않게)
-if (!global.USER_SESSIONS_FINAL) global.USER_SESSIONS_FINAL = {};
-if (!global.ADMIN_QUEUE_FINAL) global.ADMIN_QUEUE_FINAL = {};
+// 새 저장소 선언
+if (!global.SESSIONS_FIX) global.SESSIONS_FIX = {};
 
 /* ============================================================
-   [SECTION 2] 응답 엔진 (Response Engine)
+   [SECTION 2] 메인 응답 엔진
    ============================================================ */
 function response(room, msg, sender, isGroupChat, replier) {
     if (!msg) return;
     var input = msg.trim();
     
-    // 세션 초기화
-    if (!global.USER_SESSIONS_FINAL[sender]) {
-        global.USER_SESSIONS_FINAL[sender] = { isMenuOpen: false, data: null, waitAction: null, currentView: "메인" };
+    // [보안] 세션 생성
+    if (!global.SESSIONS_FIX[sender]) {
+        global.SESSIONS_FIX[sender] = { isMenuOpen: false, data: null, waitAction: null };
     }
-    var session = global.USER_SESSIONS_FINAL[sender];
+    var session = global.SESSIONS_FIX[sender];
 
-    /* [2-1] 필터링 (에러 발생 가능성 0% 지점) */
-    var isCancel = (input === "취소");
-    var isMenuCmd = (input === ".메뉴"); // Prefix 직접 지정
-    var isNumber = !isNaN(input);
-    var isWaiting = !!session.waitAction;
+    // [2-1] 필터링 (라이브러리 참조 없이 직접 처리)
+    if (input === ".메뉴") {
+        try {
+            // 라이브러리 로드 시도
+            var _C = Bridge.getScopeOf("Const.js").bridge();
+            var _D = Bridge.getScopeOf("DataBase.js").bridge();
+            var _H = Bridge.getScopeOf("Helper.js").bridge();
 
-    // 위 조건 중 아무것도 해당 안 되면 즉시 종료
-    if (!isCancel && !isMenuCmd && !isNumber && !isWaiting) return;
-
-    try {
-        /* [2-2] 라이브러리 로드 (사용 직전 로드하여 안전성 확보) */
-        var _C = getLib("Const.js");
-        var _D = getLib("DataBase.js");
-        var _H = getLib("Helper.js");
-
-        if (!_C || !_D || !_H) return; // 라이브러리 로드 실패 시 중단
-
-        /* [2-3] 공통 제어 : 취소 */
-        if (isCancel) {
-            session.isMenuOpen = false;
-            session.waitAction = null;
-            global.ADMIN_QUEUE_FINAL[sender] = null;
-            return replier.reply("❌ 모든 작업을 중단합니다.");
-        }
-
-        var isAdminRoom = (room === _C.ErrorLogRoom);
-        var isMainRoom = (room === _C.MainRoomName);
-
-        /* [2-4] 로직 분기 */
-
-        // A. 관리자 2차 확인 대기
-        if (isAdminRoom && global.ADMIN_QUEUE_FINAL[sender]) {
-            handleAdminAction(sender, input, replier, _D);
-            return;
-        }
-
-        // B. 유저 입력 대기
-        if (session.waitAction) {
-            handleWaitInput(sender, input, replier, session, isAdminRoom, _D);
-            return;
-        }
-
-        // C. 메뉴판 열기
-        if (isMenuCmd) {
             session.isMenuOpen = true;
-            session.currentView = "메인";
-            var menuMsg = _H.getMenu(room, isMainRoom, isAdminRoom, !!session.data, "메인", session.data, _D);
-            replier.reply(menuMsg);
-            return;
+            
+            // Helper가 정상일 경우 메뉴 출력
+            if (_H && _H.getMenu) {
+                var menu = _H.getMenu(room, (room === _C.MainRoomName), (room === _C.ErrorLogRoom), !!session.data, "메인", session.data, _D);
+                replier.reply(menu);
+            } else {
+                // Helper가 에러일 경우 자체 기본 메뉴 출력 (비상용)
+                replier.reply("🏰 [비상 메뉴판]\n" + "━".repeat(12) + "\n시스템 복구 중입니다.\n1. 가입하기\n2. 로그인\n" + "━".repeat(12));
+            }
+        } catch (e) {
+            replier.reply("⚠️ 라이브러리 로드 실패. 스크립트를 새로고침 해주세요.\n에러: " + e.message);
         }
+        return;
+    }
 
-        // D. 숫자 선택
-        if (session.isMenuOpen && isNumber) {
-            handleSelection(input, sender, session, replier, room, isMainRoom, isAdminRoom, _D, _H);
-        }
+    // [2-2] 숫자 입력 처리 (메뉴가 열려 있을 때)
+    if (session.isMenuOpen && !isNaN(input)) {
+        handleBasicSelection(input, sender, session, replier, room);
+    }
 
-    } catch (e) {
-        // 에러 방어
-        var _C_Err = getLib("Const.js");
-        if (_C_Err) Api.replyRoom(_C_Err.ErrorLogRoom, "🚨 [v2.3.5 에러]\n- " + e.message + "\n- L: " + e.lineNumber);
+    // [2-3] 취소 로직
+    if (input === "취소") {
+        session.isMenuOpen = false;
+        session.waitAction = null;
+        replier.reply("❌ 모든 작업이 취소되었습니다.");
     }
 }
 
 /* ============================================================
-   [SECTION 3] 핸들러 함수 (Handlers)
+   [SECTION 3] 기초 핸들러 (의존성 최소화)
    ============================================================ */
-
-function handleSelection(num, sender, session, replier, room, isMain, isAdmin, _D, _H) {
-    if (session.currentView === "유저조회") {
-        var idx = parseInt(num) - 1;
-        if (global.tempUserList && global.tempUserList[idx]) {
-            var u = _D.readUser(global.tempUserList[idx]);
-            if (u) replier.reply("👤 [" + u.info.name + "] 정보\n• LV: " + u.status.level + "\n• GOLD: " + u.status.money + "G");
-            return;
+function handleBasicSelection(num, sender, session, replier, room) {
+    try {
+        var _C = Bridge.getScopeOf("Const.js").bridge();
+        var _D = Bridge.getScopeOf("DataBase.js").bridge();
+        var _H = Bridge.getScopeOf("Helper.js").bridge();
+        
+        var isAdmin = (room === _C.ErrorLogRoom);
+        var isMain = (room === _C.MainRoomName);
+        var cmd = _H.getRootCmdByNum(isAdmin, isMain, !!session.data, num);
+        
+        if (cmd) {
+            if (cmd === "가입" || cmd === "로그인") {
+                replier.reply("💬 " + cmd + "하실 닉네임을 입력해주세요.");
+                session.waitAction = cmd;
+                session.isMenuOpen = false;
+            } else {
+                var res = _H.getMenu(room, isMain, isAdmin, !!session.data, cmd, session.data, _D);
+                if (res) replier.reply(res);
+            }
         }
+    } catch (e) {
+        replier.reply("🚨 선택 처리 중 에러: " + e.message);
     }
-    
-    var cmd = _H.getRootCmdByNum(isAdmin, isMain, !!session.data, num);
-    if (cmd) {
-        session.currentView = cmd;
-        if (cmd === "로그아웃") {
-            session.data = null; session.isMenuOpen = false;
-            replier.reply("🚪 로그아웃되었습니다.");
-        } else if (["가입", "로그인", "삭제", "초기화", "복구"].indexOf(cmd) !== -1) {
-            replier.reply("💬 " + cmd + "할 내용을 입력해주세요. (취소: '취소')");
-            session.waitAction = cmd;
-        } else {
-            var res = _H.getMenu(room, isMain, isAdmin, !!session.data, cmd, session.data, _D);
-            if (res) replier.reply(res);
-            if (cmd !== "유저조회" && cmd !== "상점" && cmd !== "내정보") session.isMenuOpen = false;
-        }
-    }
-}
-
-function handleWaitInput(sender, msg, replier, session, isAdminRoom, _D) {
-    var _L = getLib("LoginManager.js");
-    var _O = getLib("Object.js");
-    var act = session.waitAction;
-
-    if (act === "가입") {
-        replier.reply(_L.tryRegister(sender, msg, _D, _O).msg);
-    } else if (act === "로그인") {
-        var res = _L.tryLogin(msg, _D);
-        if (res.success) {
-            session.data = res.data;
-            replier.reply("✅ [" + res.data.info.name + "]님 로그인!");
-        } else replier.reply("🚫 " + res.msg);
-    } else if (isAdminRoom && (act === "삭제" || act === "초기화")) {
-        global.ADMIN_QUEUE_FINAL[sender] = { type: act, target: msg };
-        replier.reply("⚠️ [" + msg + "] 정말 " + act + "할까요? ('확인' 입력 시 실행)");
-    } else if (isAdminRoom && act === "복구") {
-        replier.reply(_D.restoreUser(msg) ? "✅ 복구 성공" : "❌ 실패");
-    }
-    session.waitAction = null;
-}
-
-function handleAdminAction(sender, msg, replier, _D) {
-    var q = global.ADMIN_QUEUE_FINAL[sender];
-    var _O = getLib("Object.js");
-    if (msg === "확인") {
-        if (q.type === "삭제") _D.deleteUser(q.target);
-        else if (q.type === "초기화") {
-            var u = _D.readUser(q.target);
-            if (u) _D.writeUser(q.target, _O.getNewUser(u.info.id, "0", u.info.name));
-        }
-        replier.reply("✅ 완료되었습니다.");
-    } else {
-        replier.reply("❌ 취소되었습니다.");
-    }
-    delete global.ADMIN_QUEUE_FINAL[sender];
 }
