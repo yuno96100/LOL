@@ -1,6 +1,6 @@
 {
-    "version": "2.1.5",
+    "version": "2.1.6",
     "updateDate": "2026-01-30",
-    "files": ["main.js", "Helper.js", "DataBase.js", "Const.js"],
-    "note": "v2.1.5 : 유저 목록 상태 표시(로그인 현황) 및 상세 조회 기능 강화"
+    "files": ["main.js", "DataBase.js", "Helper.js", "Const.js", "Object.js", "LoginManager.js"],
+    "note": "v2.1.6 : 생략 없는 전체 시스템 통합본 (유저 상태 표시 및 상세조회 강화)"
 }
