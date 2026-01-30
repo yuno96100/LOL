@@ -4,7 +4,7 @@ function bridge() {
             return {
                 info: {
                     id: id,
-                    pw: "0", // 비밀번호 미사용
+                    pw: "0",
                     name: nick,
                     joinDate: new Date().getTime()
                 },
