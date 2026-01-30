@@ -3,7 +3,6 @@ const libConst = Bridge.getScopeOf("Const.js").bridge();
 function bridge() {
     return {
         isExisted: function(id) {
-            if (!id) return false;
             return new java.io.File(libConst.UserPath + id + ".json").exists();
         },
         writeUser: function(id, data) {
@@ -13,9 +12,6 @@ function bridge() {
                 FileStream.write(libConst.UserPath + id + ".json", JSON.stringify(data, null, 4));
                 return true;
             } catch (e) { return false; }
-        },
-        saveUser: function(id, data) { 
-            return this.writeUser(id, data); 
         },
         readUser: function(id) {
             try {
@@ -27,13 +23,11 @@ function bridge() {
         getAllUserIds: function() {
             var folder = new java.io.File(libConst.UserPath);
             if (!folder.exists()) folder.mkdirs();
-            var files = folder.listFiles();
+            var files = folder.list();
             var list = [];
             if (files) {
                 for (var i = 0; i < files.length; i++) {
-                    if (files[i].isFile() && files[i].getName().endsWith(".json")) {
-                        list.push(files[i].getName().replace(".json", ""));
-                    }
+                    if (files[i].endsWith(".json")) list.push(files[i].replace(".json", ""));
                 }
             }
             return list;
