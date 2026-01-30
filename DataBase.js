@@ -3,6 +3,7 @@ const libConst = Bridge.getScopeOf("Const.js").bridge();
 function bridge() {
     return {
         isExisted: function(id) {
+            if (!id) return false;
             return new java.io.File(libConst.UserPath + id + ".json").exists();
         },
         writeUser: function(id, data) {
@@ -13,7 +14,9 @@ function bridge() {
                 return true;
             } catch (e) { return false; }
         },
-        saveUser: function(id, data) { return this.writeUser(id, data); },
+        saveUser: function(id, data) { 
+            return this.writeUser(id, data); 
+        },
         readUser: function(id) {
             try {
                 var path = libConst.UserPath + id + ".json";
@@ -21,7 +24,6 @@ function bridge() {
                 return JSON.parse(FileStream.read(path));
             } catch (e) { return null; }
         },
-        // 모든 유저 ID 목록 반환
         getAllUserIds: function() {
             var folder = new java.io.File(libConst.UserPath);
             if (!folder.exists()) folder.mkdirs();
@@ -35,6 +37,14 @@ function bridge() {
                 }
             }
             return list;
+        },
+        deleteUser: function(id) {
+            try {
+                var from = new java.io.File(libConst.UserPath + id + ".json");
+                var toFolder = new java.io.File(libConst.BackupPath);
+                if (!toFolder.exists()) toFolder.mkdirs();
+                return from.renameTo(new java.io.File(libConst.BackupPath + id + ".json"));
+            } catch (e) { return false; }
         }
     };
 }
