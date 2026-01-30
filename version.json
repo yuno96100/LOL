@@ -1,6 +1,6 @@
 {
-    "version": "2.2.4",
+    "version": "2.2.6",
     "updateDate": "2026-01-30",
-    "files": ["main.js", "Helper.js"],
-    "note": "v2.2.4 : 라이브러리 전역 캐싱 적용으로 전 구간 응답 속도 비약적 향상"
+    "files": ["main.js", "Helper.js", "DataBase.js", "Const.js", "Object.js", "LoginManager.js"],
+    "note": "v2.2.6 : 모든 최적화 및 기능 통합 완료 (생략 없는 전체 파일)"
 }
