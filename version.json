@@ -1,6 +1,6 @@
 {
-    "version": "2.3.0",
-    "updateDate": "2026-01-30",
-    "files": ["main.js", "Helper.js", "DataBase.js", "Const.js", "Object.js", "LoginManager.js"],
-    "note": "v2.3.0 : 전 구간 가독성 최적화(섹션화) 및 에러 방어 로직 강화"
+    "version": "2.4.2",
+    "updateDate": "2026-01-31",
+    "files": ["main.js", "Const.js"],
+    "note": "v2.4.2 : 초기 안정화 버전으로 롤백 및 방어 로직 복구 (봇 비활성화 이슈 해결)"
 }
