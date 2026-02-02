@@ -1,72 +1,56 @@
 /**
- * [main.js] v3.3.2
+ * [main.js] v3.3.6
+ * 모듈별 상태 정밀 진단 버전
  */
-var C, D, O, LoginM, LoginL;
-var errorLog = "";
 
+var C = null, D = null, O = null, LoginM = null, LoginL = null;
+var loadStatus = {
+    Const: "Wait",
+    Database: "Wait",
+    Object: "Wait",
+    LoginMenu: "Wait",
+    LoginLogic: "Wait"
+};
+var debugMsg = "";
+
+// [초기화 영역] 모든 모듈을 하나씩 정밀하게 로드합니다.
 try {
-    // 파일 경로 변수화 (디버깅 용도)
-    var path_C = "modules/Const.js";
-    var path_Logic = "modules/common/login/logic.js";
+    // 1. Const 로드
+    var scC = Bridge.getScopeOf("modules/Const.js");
+    if (scC) { C = scC.bridge(); loadStatus.Const = "✅ OK"; } 
+    else { loadStatus.Const = "❌ File Not Found"; }
 
-    C = Bridge.getScopeOf(path_C).bridge();
-    D = Bridge.getScopeOf("modules/common/database.js").bridge();
-    O = Bridge.getScopeOf("modules/common/object.js").bridge();
-    LoginM = Bridge.getScopeOf("modules/common/login/menu.js").bridge();
-    
-    // ⭐️ 문제의 logic.js 로드 시도
-    var scopeL = Bridge.getScopeOf(path_Logic);
-    if (!scopeL) {
-        errorLog = "❌ 파일을 찾을 수 없음: " + path_Logic;
+    // 2. Database 로드
+    var scD = Bridge.getScopeOf("modules/common/database.js");
+    if (scD) { D = scD.bridge(); loadStatus.Database = "✅ OK"; } 
+    else { loadStatus.Database = "❌ File Not Found"; }
+
+    // 3. Object 로드
+    var scO = Bridge.getScopeOf("modules/common/object.js");
+    if (scO) { O = scO.bridge(); loadStatus.Object = "✅ OK"; } 
+    else { loadStatus.Object = "❌ File Not Found"; }
+
+    // 4. Login Menu 로드
+    var scLM = Bridge.getScopeOf("modules/common/login/menu.js");
+    if (scLM) { LoginM = scLM.bridge(); loadStatus.LoginMenu = "✅ OK"; } 
+    else { loadStatus.LoginMenu = "❌ File Not Found"; }
+
+    // 5. Login Logic 로드 (현재 에러 지점)
+    var scLL = Bridge.getScopeOf("modules/common/login/logic.js");
+    if (!scLL) {
+        loadStatus.LoginLogic = "❌ File Not Found";
     } else {
-        LoginL = scopeL.bridge();
+        try {
+            LoginL = scLL.bridge();
+            if (LoginL) loadStatus.LoginLogic = "✅ OK";
+            else loadStatus.LoginLogic = "❌ Bridge Return Null";
+        } catch (innerE) {
+            loadStatus.LoginLogic = "❌ Syntax Error: " + innerE.message;
+        }
     }
 } catch (e) {
-    errorLog = "🚨 로드 중 오류: " + e.message;
+    debugMsg = "🚨 치명적 초기화 오류: " + e.message + " (Line: " + e.lineNumber + ")";
 }
 
-if (!global.sessions) global.sessions = {};
-
-function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
-    if (!msg) return;
-    msg = msg.trim();
-
-    if (!global.sessions[sender]) {
-        global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
-    }
-    var session = global.sessions[sender];
-
-    try {
-        if (msg === "취소") {
-            session.isMenuOpen = false;
-            session.waitAction = null;
-            return replier.reply("❌ 취소되었습니다.");
-        }
-
-        // ⭐️ [디버깅] 테스트 입력 시 상태 보고
-        if (msg === (C ? C.Prefix : ".") + "테스트") {
-            if (errorLog) {
-                return replier.reply("⚠️ [로드 실패 알림]\n" + errorLog + "\n\n💡 해결법: 깃허브의 version.json 경로가 " + path_Logic + "와 일치하는지 확인하세요.");
-            }
-            return replier.reply("✅ [v3.3.2] 모든 모듈 로드 성공!\nPrefix: " + C.Prefix);
-        }
-
-        // 정상 로직 (LoginL이 있을 때만 실행)
-        if (C && !session.data && msg === C.Prefix + "메뉴") {
-            if (isGroupChat) return replier.reply("개인톡에서 이용해 주세요.");
-            session.isMenuOpen = true;
-            return replier.reply(LoginM.render(false));
-        }
-
-        if (LoginL && !session.data && !isGroupChat && (session.isMenuOpen || session.waitAction)) {
-            if (session.waitAction) return replier.reply(LoginL.handleWait(msg, session, D, O));
-            if (!isNaN(msg)) {
-                var res = LoginL.execute(msg, session);
-                if (res && res.msg) replier.reply(res.msg);
-            }
-        }
-
-    } catch (e) {
-        replier.reply("🚨 실행 에러: " + e.message);
-    }
-}
+// 전역 세션 관리
+if (!global.sessions)
