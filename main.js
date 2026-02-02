@@ -1,6 +1,3 @@
-/* ============================================================
-   [SECTION 1] 모듈 로드
-   ============================================================ */
 var C = Bridge.getScopeOf("Const.js").bridge();
 var D = Bridge.getScopeOf("modules/common/database.js").bridge();
 var O = Bridge.getScopeOf("modules/common/object.js").bridge();
@@ -12,9 +9,8 @@ if (!global.sessions) global.sessions = {};
 function response(room, msg, sender, isGroupChat, replier) {
     if (!msg) return;
     msg = msg.trim();
-
     if (!global.sessions[sender]) {
-        global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, currentView: "MAIN" };
+        global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
     }
     var session = global.sessions[sender];
 
@@ -24,46 +20,44 @@ function response(room, msg, sender, isGroupChat, replier) {
             return replier.reply("❌ 취소되었습니다.");
         }
 
-        // 1. 방별 경로 설정
-        var path = "";
-        if (room === C.ErrorLogRoom) path = "modules/admin/";
-        else if (room === C.MainRoomName) path = "modules/group/";
-        else if (!isGroupChat) path = "modules/user/";
-        else return;
-
-        // 2. 방별 모듈 동적 로드
-        var M = Bridge.getScopeOf(path + "menu.js").bridge();
-        var L = Bridge.getScopeOf(path + "logic.js").bridge();
-
-        // 3. 입력 대기 우선 처리 (로그인/가입 포함)
-        if (session.waitAction) {
-            if (["로그인", "가입"].indexOf(session.waitAction) !== -1) {
-                replier.reply(LoginL.handleWait(msg, session, D, O));
-            } else {
-                replier.reply(L.handleWait(msg, session, D, O));
+        // [인증 체크] 로그인이 안 된 경우
+        if (!session.data) {
+            if (msg === C.Prefix + "메뉴") {
+                if (isGroupChat) {
+                    return replier.reply("『 🏰 소환사의 협곡 』\n" + "━".repeat(12) + "\n신원 확인이 필요합니다.\n\n💬 개인톡에서 '.메뉴'를 입력해\n가입 및 로그인을 진행해 주세요!\n" + "━".repeat(12));
+                } else {
+                    session.isMenuOpen = true;
+                    return replier.reply(LoginM.render(false));
+                }
+            }
+            if (!isGroupChat && (session.waitAction || session.isMenuOpen)) {
+                if (session.waitAction) return replier.reply(LoginL.handleWait(msg, session, D, O));
+                if (!isNaN(msg)) {
+                    var res = LoginL.execute(msg, session);
+                    if (res.msg) replier.reply(res.msg);
+                }
             }
             return;
         }
 
-        // 4. 메뉴 호출
+        // [로그인 유저] 방별 메뉴 출력
         if (msg === C.Prefix + "메뉴") {
             session.isMenuOpen = true;
-            if (!session.data) {
-                session.currentView = "LOGIN";
-                return replier.reply(LoginM.render(false));
-            }
-            session.currentView = "ROOM";
+            var path = isGroupChat ? "modules/group/" : "modules/user/";
+            if (room === C.ErrorLogRoom) path = "modules/admin/";
+            
+            var M = Bridge.getScopeOf(path + "menu.js").bridge();
             return replier.reply(M.render(session.data));
         }
 
-        // 5. 번호 선택
-        if (session.isMenuOpen && !isNaN(msg)) {
-            var res = (session.currentView === "LOGIN") ? LoginL.execute(msg, session) : L.execute(msg, session, D, O);
+        // 번호 조작 (개인톡에서만 활성화 예시)
+        if (session.isMenuOpen && !isNaN(msg) && !isGroupChat) {
+            var UserL = Bridge.getScopeOf("modules/user/logic.js").bridge();
+            var res = UserL.execute(msg, session, D, O);
             if (res.msg) replier.reply(res.msg);
-            if (res.closeMenu) session.isMenuOpen = false;
         }
 
     } catch (e) {
-        Api.replyRoom(C.ErrorLogRoom, "🚨 에러: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(C.ErrorLogRoom, "🚨 에러: " + e.message);
     }
 }
