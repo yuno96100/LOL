@@ -3,7 +3,7 @@
     "updateDate": "2026-02-03",
     "files": [
         "main.js",
-        "Const.js",
+        "modules/Const.js",
         "modules/common/database.js",
         "modules/common/object.js",
         "modules/common/login/menu.js",
