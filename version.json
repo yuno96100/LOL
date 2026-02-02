@@ -4,6 +4,7 @@
     "files": [
         "main.js",
         "Const.js",
+        "bot.json",
         "modules/common/database.js",
         "modules/common/object.js",
         "modules/common/login/menu.js",
