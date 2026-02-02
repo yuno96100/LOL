@@ -1,7 +1,7 @@
 /* ============================================================
    [SECTION] 데이터베이스 관리 (Const.UserPath 사용)
    ============================================================ */
-var C = Bridge.getScopeOf("Const.js").bridge();
+var C = Bridge.getScopeOf("modules/Const.js").bridge();
 
 function bridge() {
     var checkFolder = function(path) {
