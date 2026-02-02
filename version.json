@@ -1,6 +1,18 @@
 {
-    "version": "2.4.2",
-    "updateDate": "2026-01-31",
-    "files": ["main.js", "Const.js", "Helper.js", "DataBase.js", "Object.js", "LoginManager.js"],
-    "note": "v2.4.2 : 봇 비활성화 이슈 해결 및 전 파일 섹션화 (생략 없는 풀 버전)"
+    "version": "2.6.7",
+    "updateDate": "2026-02-03",
+    "files": [
+        "main.js",
+        "Const.js",
+        "modules/common/database.js",
+        "modules/common/object.js",
+        "modules/common/login/menu.js",
+        "modules/common/login/logic.js",
+        "modules/user/menu.js",
+        "modules/user/logic.js",
+        "modules/group/menu.js",
+        "modules/group/logic.js",
+        "modules/admin/menu.js"
+    ],
+    "note": "v2.6.7 : 개인톡 가입/조작 및 단톡방 안내 시스템 통합 완료"
 }
