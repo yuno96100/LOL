@@ -1,13 +1,29 @@
 /**
- * [main.js]
- * 세션 기반 메인 컨트롤러 (v3.2.0)
+ * [main.js] v3.2.1
+ * 생존 신고 및 모듈 로드 상태 확인 버전
  */
 
-var C = Bridge.getScopeOf("modules/Const.js").bridge();
-var D = Bridge.getScopeOf("modules/common/database.js").bridge();
-var O = Bridge.getScopeOf("modules/common/object.js").bridge();
-var LoginM = Bridge.getScopeOf("modules/common/login/menu.js").bridge();
-var LoginL = Bridge.getScopeOf("modules/common/login/logic.js").bridge();
+var C = null, D = null, O = null, LoginM = null, LoginL = null;
+
+// 모듈 로드 상태를 확인하기 위한 변수
+var loadStatus = "";
+
+try {
+    C = Bridge.getScopeOf("modules/Const.js").bridge();
+    loadStatus += "✅ Const 로드 완료\n";
+} catch(e) { loadStatus += "❌ Const 로드 실패\n"; }
+
+try {
+    D = Bridge.getScopeOf("modules/common/database.js").bridge();
+    loadStatus += "✅ Database 로드 완료\n";
+} catch(e) { loadStatus += "❌ Database 로드 실패\n"; }
+
+try {
+    O = Bridge.getScopeOf("modules/common/object.js").bridge();
+    LoginM = Bridge.getScopeOf("modules/common/login/menu.js").bridge();
+    LoginL = Bridge.getScopeOf("modules/common/login/logic.js").bridge();
+    loadStatus += "✅ 공통 모듈 로드 완료";
+} catch(e) { loadStatus += "❌ 일부 공통 모듈 누락"; }
 
 if (!global.sessions) global.sessions = {};
 
@@ -15,70 +31,36 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (!msg) return;
     msg = msg.trim();
 
+    // 1. 최우선 테스트 (Prefix 상관없이 반응)
+    if (msg === "핑") {
+        return replier.reply("퐁! 🏓\n현재 모듈 로드 상태:\n" + loadStatus);
+    }
+
+    // 2. Prefix 테스트
+    if (C && msg === C.Prefix + "테스트") {
+        return replier.reply("✅ 시스템 응답 정상 (Prefix: " + C.Prefix + ")");
+    }
+
     if (!global.sessions[sender]) {
         global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
     }
     var session = global.sessions[sender];
 
     try {
-        // [공통 명령어] 취소
         if (msg === "취소") {
-            session.isMenuOpen = false; 
-            session.waitAction = null;
-            return replier.reply("❌ 모든 작업이 취소되었습니다.");
+            session.isMenuOpen = false; session.waitAction = null;
+            return replier.reply("❌ 취소되었습니다.");
         }
 
-        // ⭐️ [신규] 테스트 응답 기능
-        // Const.js의 Prefix가 '.'이라면 '.테스트'에 반응합니다.
-        if (msg === C.Prefix + "테스트") {
-            var status = "✅ [시스템 연결 테스트]\n";
-            status += "━".repeat(12) + "\n";
-            status += "📡 응답 상태: 정상\n";
-            status += "🔑 내 해시: " + String(imageDB.getProfileHash()).trim() + "\n";
-            status += "📦 현재 버전: " + (C.VERSION || "v3.2.0") + "\n";
-            status += "━".repeat(12);
-            return replier.reply(status);
-        }
-
-        // [인증 체크] 로그인이 안 된 경우
-        if (!session.data) {
-            if (msg === C.Prefix + "메뉴") {
-                if (isGroupChat) {
-                    return replier.reply("『 🏰 소환사의 협곡 』\n" + "━".repeat(12) + "\n신원 확인이 필요합니다.\n\n💬 개인톡에서 '" + C.Prefix + "메뉴'를 입력해 가입 및 로그인을 진행해 주세요!\n" + "━".repeat(12));
-                } else {
-                    session.isMenuOpen = true;
-                    return replier.reply(LoginM.render(false));
-                }
+        // 로그인 전 로직
+        if (!session.data && C && msg === C.Prefix + "메뉴") {
+            if (isGroupChat) return replier.reply("개인톡으로 와주세요.");
+            if (LoginM) {
+                session.isMenuOpen = true;
+                return replier.reply(LoginM.render(false));
             }
-            if (!isGroupChat && (session.waitAction || session.isMenuOpen)) {
-                if (session.waitAction) return replier.reply(LoginL.handleWait(msg, session, D, O));
-                if (!isNaN(msg)) {
-                    var res = LoginL.execute(msg, session);
-                    if (res && res.msg) replier.reply(res.msg);
-                }
-            }
-            return;
         }
-
-        // [로그인 완료 사용자 로직]
-        if (msg === C.Prefix + "메뉴") {
-            session.isMenuOpen = true;
-            var path = isGroupChat ? "modules/group/" : "modules/user/";
-            if (room === C.ErrorLogRoom) path = "modules/admin/";
-            
-            var M = Bridge.getScopeOf(path + "menu.js").bridge();
-            return replier.reply(M.render(session.data));
-        }
-
-        if (session.isMenuOpen && !isNaN(msg) && !isGroupChat) {
-            var UserL = Bridge.getScopeOf("modules/user/logic.js").bridge();
-            var res = UserL.execute(msg, session, D, O);
-            if (res && res.msg) replier.reply(res.msg);
-        }
-
     } catch (e) {
-        var errorMsg = "🚨 [main] 에러 발생\n사유: " + e.message + "\n라인: " + e.lineNumber;
-        if (C && C.ErrorLogRoom) Api.replyRoom(C.ErrorLogRoom, errorMsg);
-        else replier.reply(errorMsg);
+        replier.reply("🚨 에러: " + e.message);
     }
 }
