@@ -1,1 +1,6 @@
-
+{
+    "name": "LOL",
+    "status": true,
+    "compileStatus": true,
+    "scriptName": "main"
+}
