@@ -1,5 +1,5 @@
 function bridge() {
-    var C = Bridge.getScopeOf("Const.js").bridge();
+    var C = Bridge.getScopeOf("modules/Const.js").bridge();
     
     return {
         execute: function(num, session) {
