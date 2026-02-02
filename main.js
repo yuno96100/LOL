@@ -1,3 +1,4 @@
+// [모듈 로드] Const.js 위치 변경에 따른 경로 수정
 var C = Bridge.getScopeOf("modules/Const.js").bridge();
 var D = Bridge.getScopeOf("modules/common/database.js").bridge();
 var O = Bridge.getScopeOf("modules/common/object.js").bridge();
@@ -9,6 +10,7 @@ if (!global.sessions) global.sessions = {};
 function response(room, msg, sender, isGroupChat, replier) {
     if (!msg) return;
     msg = msg.trim();
+    
     if (!global.sessions[sender]) {
         global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
     }
@@ -16,7 +18,8 @@ function response(room, msg, sender, isGroupChat, replier) {
 
     try {
         if (msg === "취소") {
-            session.isMenuOpen = false; session.waitAction = null;
+            session.isMenuOpen = false; 
+            session.waitAction = null;
             return replier.reply("❌ 취소되었습니다.");
         }
 
@@ -58,6 +61,7 @@ function response(room, msg, sender, isGroupChat, replier) {
         }
 
     } catch (e) {
+        // C.ErrorLogRoom이 정상 로드되어야 작동합니다.
         Api.replyRoom(C.ErrorLogRoom, "🚨 에러: " + e.message);
     }
 }
