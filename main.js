@@ -1,4 +1,4 @@
-var C = Bridge.getScopeOf("Const.js").bridge();
+var C = Bridge.getScopeOf("modules/Const.js").bridge();
 var D = Bridge.getScopeOf("modules/common/database.js").bridge();
 var O = Bridge.getScopeOf("modules/common/object.js").bridge();
 var LoginM = Bridge.getScopeOf("modules/common/login/menu.js").bridge();
