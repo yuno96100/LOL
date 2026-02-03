@@ -6,7 +6,7 @@
         "modules/Const.js",
         "modules/common/database.js",
         "modules/common/object.js",
-        "modules/common/Login.js",
+        "modules/Login.js",
         "modules/user/menu.js",
         "modules/user/logic.js",
         "modules/group/menu.js",
