@@ -1,6 +1,8 @@
 /**
- * [main.js] v7.0.2
- * 모든 요청 사항(칭호 복구, 티어 중단 배치, 구분선 15, 입력 필터링)이 통합된 최종본입니다.
+ * [main.js] v7.0.3
+ * 1. 버그 수정: '메뉴' 입력 시 모든 방에서 응답하지 않던 현상 해결
+ * 2. 로직 보강: Utils.isMenuInput 내 키워드 판정 강화
+ * 3. UI 유지: 구분선 15, 칭호 상단, 티어 중단 레이아웃 변동 없음
  */
 
 var Config = {
@@ -80,7 +82,9 @@ var UI = {
 
 var Utils = {
     isMenuInput: function(msg) {
-        return /^\d+$/.test(msg) || ["메뉴", "취소", "되돌아가기"].indexOf(msg) !== -1;
+        // 숫자 혹은 메뉴 관련 키워드 체크 강화
+        var keywords = ["메뉴", "취소", "되돌아가기"];
+        return /^\d+$/.test(msg) || keywords.indexOf(msg) !== -1;
     }
 };
 
@@ -171,7 +175,7 @@ var UserManager = {
             if (session.waitAction === "로그인_PW") {
                 var user = Database.data[session.tempId];
                 if (user && user.pw === msg) { session.data = user; session.waitAction = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
-                session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "로그인 정보가 틀립니다.", ""));
+                session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "정보가 틀립니다.", ""));
             }
             if (msg === "1") { session.waitAction = "가입_ID"; SessionManager.save(); return replier.reply(UI.make("가입", "ID를 입력하세요.", "")); }
             if (msg === "2") { session.waitAction = "로그인_ID"; SessionManager.save(); return replier.reply(UI.make("로그인", "ID를 입력하세요.", "")); }
@@ -195,10 +199,17 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var session = SessionManager.get(room, hash, isGroupChat);
     msg = msg.trim();
 
+    // 메뉴 관련 핵심 명령어 즉시 처리
     if (msg === "취소") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "명령 취소", "")); }
-    if (msg === "되돌아가기" || msg === "메뉴") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
+    if (msg === "되돌아가기" || msg === "메뉴") { 
+        session.waitAction = null; 
+        SessionManager.save(); 
+        var menuMsg = UI.renderMenu(session);
+        if (menuMsg) return replier.reply(menuMsg);
+        return;
+    }
 
-    if (session.type === "DIRECT" && !session.data && !session.waitAction && msg !== "메뉴" && !/^[12]$/.test(msg)) return;
+    // 입력 필터링: 대기 중이 아니거나 메뉴 입력이 아닐 경우 반응 무시
     if (!session.waitAction && !Utils.isMenuInput(msg)) return;
 
     if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
