@@ -1,6 +1,6 @@
 /**
- * [main.js] v5.3.1
- * Api.replyTo 오류 수정 및 세션별 확장 포인트 유지
+ * [main.js] v5.3.2
+ * Api.replyRoom 호환성 패치 및 문의 시스템 복구
  */
 
 // ㅡㅡㅡㅡㅡㅡㅡ [1. 설정 및 상수] ㅡㅡㅡㅡㅡㅡㅡ
@@ -37,6 +37,22 @@ var UI = {
         return "사용 불가 공간";
     }
 };
+
+// [도우미 함수: 엔진별 전송 방식 호환성 처리]
+function sendToRoom(roomName, message) {
+    try {
+        if (typeof Api !== 'undefined' && Api.replyRoom) {
+            Api.replyRoom(roomName, message);
+        } else if (typeof Api !== 'undefined' && Api.reply) {
+            Api.reply(roomName, message);
+        } else {
+            // 엔진이 구버전이거나 다른 경우 로그 기록
+            Log.error(roomName + "으로 전송 실패: 지원하지 않는 엔진 함수");
+        }
+    } catch (e) {
+        Log.error("전송 중 에러: " + e);
+    }
+}
 
 // ㅡㅡㅡㅡㅡㅡㅡ [3. 모듈: 데이터베이스 및 세션] ㅡㅡㅡㅡㅡㅡㅡ
 var Database = {
@@ -75,7 +91,7 @@ var SessionManager = {
 var AdminManager = {
     handle: function(msg, session, replier) {
         if (!session.waitAction) {
-            if (msg === "1") return replier.reply(UI.make("시스템 상태", "⚙️ v5.3.1\n📂 유저수: " + Object.keys(Database.data).length));
+            if (msg === "1") return replier.reply(UI.make("시스템 상태", "⚙️ v5.3.2\n📂 유저수: " + Object.keys(Database.data).length));
             if (msg === "2") {
                 var list = Object.keys(Database.data);
                 session.userListCache = list;
@@ -122,8 +138,7 @@ var AdminManager = {
         if (session.waitAction === "문의_답변작성") {
             var targetHash = SessionManager.idToHash[session.targetUser];
             if (targetHash && SessionManager.sessions[targetHash]) {
-                // Api.replyTo 대신 Api.reply(방이름, 내용) 사용
-                Api.reply(SessionManager.sessions[targetHash].lastRoom, UI.make("📩 관리자 답변", msg, "문의해주셔서 감사합니다."));
+                sendToRoom(SessionManager.sessions[targetHash].lastRoom, UI.make("📩 관리자 답변", msg, "문의해주셔서 감사합니다."));
                 session.waitAction = "관리_유저제어";
                 return replier.reply(UI.make("발송 완료", session.targetUser + "에게 전달했습니다."));
             }
@@ -169,8 +184,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "DIRECT") {
             if (session.waitAction === "문의_내용작성") {
                 SessionManager.idToHash[session.data ? session.tempId : sender] = hash;
-                // Api.replyTo -> Api.reply로 변경하여 오류 해결
-                Api.reply(Config.AdminRoom, UI.make("관리자 알림", "📩 신규 문의 접수\n발신: " + sender + "\n내용: " + msg));
+                // 호환성 함수 사용
+                sendToRoom(Config.AdminRoom, UI.make("관리자 알림", "📩 신규 문의 접수\n발신: " + sender + "\n내용: " + msg));
                 session.waitAction = null;
                 return replier.reply(UI.make("접수 완료", "관리자에게 문의가 전달되었습니다."));
             }
