@@ -1,17 +1,18 @@
 /**
- * [main.js] v3.5.2
+ * [main.js] v3.5.3
  * All-in-One 통합 버전
  */
 
-// [1] 설정값 직접 정의
+// ㅡㅡㅡㅡㅡㅡㅡ [1. 설정 및 상수] ㅡㅡㅡㅡㅡㅡㅡ
 var Config = {
     Prefix: ".",
     AdminHash: "2056407147"
 };
 
+// ㅡㅡㅡㅡㅡㅡㅡ [2. 전역 세션 관리] ㅡㅡㅡㅡㅡㅡㅡ
 if (!global.sessions) global.sessions = {};
 
-// [2] 로그인 시스템 로직 통합
+// ㅡㅡㅡㅡㅡㅡㅡ [3. 로그인 시스템 로직] ㅡㅡㅡㅡㅡㅡㅡ
 var LoginSystem = {
     render: function(isLogged) {
         if (isLogged) return "✅ 이미 로그인된 상태입니다.";
@@ -50,38 +51,47 @@ var LoginSystem = {
     }
 };
 
+// ㅡㅡㅡㅡㅡㅡㅡ [4. 메인 응답 함수] ㅡㅡㅡㅡㅡㅡㅡ
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (!msg) return;
     msg = msg.trim();
 
+    // 유저 세션 초기화
     if (!global.sessions[sender]) {
         global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
     }
     var session = global.sessions[sender];
 
     try {
+        // ㅡㅡㅡㅡㅡㅡㅡ [기능: 공통 명령어] ㅡㅡㅡㅡㅡㅡㅡ
         if (msg === "취소") {
             session.isMenuOpen = false;
             session.waitAction = null;
-            return replier.reply("❌ 취소되었습니다.");
+            return replier.reply("❌ 모든 진행이 취소되었습니다.");
         }
 
         if (msg === Config.Prefix + "테스트") {
-            return replier.reply("✅ [v3.5.2] 통합 버전 정상 가동 중!");
+            return replier.reply("✅ [v3.5.3] 코드 경계선 적용 및 통합 로직 가동 중!");
         }
 
+        // ㅡㅡㅡㅡㅡㅡㅡ [기능: 로그인 및 메뉴] ㅡㅡㅡㅡㅡㅡㅡ
         if (!session.data && msg === Config.Prefix + "메뉴") {
             if (isGroupChat) return replier.reply("⚠️ 개인톡 전용입니다.");
             session.isMenuOpen = true;
             return replier.reply(LoginSystem.render(false));
         }
 
+        // ㅡㅡㅡㅡㅡㅡㅡ [기능: 입력 처리] ㅡㅡㅡㅡㅡㅡㅡ
         if (!session.data && !isGroupChat && (session.isMenuOpen || session.waitAction)) {
-            if (session.waitAction) return replier.reply(LoginSystem.handleWait(msg, session));
-            if (!isNaN(msg)) return replier.reply(LoginSystem.execute(msg, session));
+            if (session.waitAction) {
+                return replier.reply(LoginSystem.handleWait(msg, session));
+            }
+            if (!isNaN(msg)) {
+                return replier.reply(LoginSystem.execute(msg, session));
+            }
         }
 
     } catch (e) {
-        replier.reply("🚨 에러: " + e.message + " (L:" + e.lineNumber + ")");
+        replier.reply("🚨 실행 에러: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
