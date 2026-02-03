@@ -1,6 +1,6 @@
 /**
- * [main.js] v3.7.3
- * UI 통합 + 백업 엔진 + 인터셉터 경로 감시 완전체
+ * [main.js] v3.7.4
+ * 모든 세부 안내창 UI 적용 및 인터셉터/백업 통합
  */
 
 // ㅡㅡㅡㅡㅡㅡㅡ [1. 설정 및 상수] ㅡㅡㅡㅡㅡㅡㅡ
@@ -10,7 +10,7 @@ var Config = {
     BotName: "소환사의 협곡",
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     BACKUP_PATH: "/sdcard/msgbot/Bots/main/database.bak",
-    INTERCEPT_PATH: "/sdcard/msgbot/intercept.txt", // 인터셉트 파일 경로
+    INTERCEPT_PATH: "/sdcard/msgbot/intercept.txt",
     LINE: "━━━━━━━━━━━━━━"
 };
 
@@ -30,7 +30,6 @@ var UI = {
 
 // ㅡㅡㅡㅡㅡㅡㅡ [3. 시스템 및 인터셉트 엔진] ㅡㅡㅡㅡㅡㅡㅡ
 var Engine = {
-    // [데이터 저장 및 백업]
     saveData: function(data) {
         new java.lang.Thread(function() {
             try {
@@ -47,13 +46,12 @@ var Engine = {
         }).start();
     },
 
-    // [매크로드로이드 인터셉터 감시 로직]
     checkExternal: function() {
         var file = new java.io.File(Config.INTERCEPT_PATH);
         if (file.exists()) {
             try {
                 var raw = FileStream.read(Config.INTERCEPT_PATH);
-                file.delete(); // 읽은 즉시 삭제하여 중복 처리 방지
+                file.delete();
                 var p = raw.split("|");
                 return { sender: p[0], msg: p[1], room: p[2] };
             } catch (e) { return null; }
@@ -81,7 +79,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (!msg) return;
     msg = msg.trim();
     
-    // 세션 초기화
     var sessionKey = sender + "@" + room;
     if (!global.sessions[sessionKey]) {
         global.sessions[sessionKey] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
@@ -89,17 +86,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     var session = global.sessions[sessionKey];
 
     try {
-        // ⭐️ [매크로드로이드 외부 발동 인터셉트 확인]
+        // [외부 발동 인터셉트 확인]
         var ext = Engine.checkExternal();
-        if (ext) {
-            // 외부 파일에 데이터가 있을 경우 여기서 처리 (예: 로그 남기기 또는 특정 동작 수행)
-            // Log.info("인터셉터 수신: " + ext.msg);
-        }
+        if (ext) { /* 필요 시 로직 구현 */ }
 
         // [공통: 취소]
         if (msg === "취소") {
             session.isMenuOpen = false; session.waitAction = null;
-            return replier.reply("❌ 모든 작업이 취소되었습니다.");
+            return replier.reply(UI.make("❌ 모든 작업이 취소되었습니다."));
         }
 
         // ㅡㅡㅡㅡㅡㅡㅡ [기능: 메뉴 및 로그인/가입] ㅡㅡㅡㅡㅡㅡㅡ
@@ -109,7 +103,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         if (!session.data && (session.isMenuOpen || session.waitAction)) {
-            // [회원가입 로직]
+            
+            // [회원가입 단계별 UI]
             if (session.waitAction === "가입_아이디") {
                 if (UserData[msg]) return replier.reply(UI.make("⚠️ 중복된 아이디입니다.\n다른 아이디를 입력해주세요."));
                 session.tempId = msg; session.waitAction = "가입_비밀번호";
@@ -122,9 +117,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 return replier.reply(UI.make("✨ 회원가입 완료!\n로그인을 진행해주세요."));
             }
 
-            // [로그인 로직]
+            // [로그인 단계별 UI]
             if (session.waitAction === "로그인_아이디") {
-                if (!UserData[msg]) return replier.reply(UI.make("❌ 등록되지 않은 아이디입니다."));
+                if (!UserData[msg]) return replier.reply(UI.make("❌ 등록되지 않은 아이디입니다.\n아이디를 다시 확인해주세요."));
                 session.tempId = msg; session.waitAction = "로그인_비밀번호";
                 return replier.reply(UI.make("🔑 아이디: " + msg + "\n비밀번호를 입력해주세요."));
             }
@@ -134,12 +129,18 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     session.waitAction = null; session.isMenuOpen = false;
                     return replier.reply(UI.make("✅ 로그인 성공!\n반갑습니다, " + session.tempId + " 소환사님."));
                 }
-                return replier.reply(UI.make("❌ 비밀번호가 틀렸습니다."));
+                return replier.reply(UI.make("❌ 비밀번호가 틀렸습니다.\n다시 시도하거나 '취소'를 입력하세요."));
             }
 
-            // [메뉴 숫자 선택]
-            if (msg === "1") { session.waitAction = "가입_아이디"; return replier.reply(UI.make("📝 가입하실 아이디를 입력해주세요.")); }
-            if (msg === "2") { session.waitAction = "로그인_아이디"; return replier.reply(UI.make("🔑 로그인 아이디를 입력해주세요.")); }
+            // [메인 메뉴 선택]
+            if (msg === "1") { 
+                session.waitAction = "가입_아이디"; 
+                return replier.reply(UI.make("📝 회원가입\n\n가입하실 아이디를 입력해주세요.")); 
+            }
+            if (msg === "2") { 
+                session.waitAction = "로그인_아이디"; 
+                return replier.reply(UI.make("🔑 로그인\n\n아이디를 입력해주세요.")); 
+            }
         }
 
         // ㅡㅡㅡㅡㅡㅡㅡ [기능: 로그인 유저 전용] ㅡㅡㅡㅡㅡㅡㅡ
@@ -149,6 +150,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
     } catch (e) {
-        replier.reply("🚨 시스템 오류: " + e.message);
+        replier.reply(UI.make("🚨 시스템 오류\n사유: " + e.message));
     }
 }
