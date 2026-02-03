@@ -1,6 +1,6 @@
 /**
- * [main.js] v3.5.6
- * 채팅방별 분기 처리 (Multi-Room Session)
+ * [main.js] v3.7.3
+ * UI 통합 + 백업 엔진 + 인터셉터 경로 감시 완전체
  */
 
 // ㅡㅡㅡㅡㅡㅡㅡ [1. 설정 및 상수] ㅡㅡㅡㅡㅡㅡㅡ
@@ -8,135 +8,147 @@ var Config = {
     Prefix: ".",
     AdminHash: "2056407147",
     BotName: "소환사의 협곡",
-    DB_PATH: "/sdcard/msgbot/Bots/main/database.json"
+    DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
+    BACKUP_PATH: "/sdcard/msgbot/Bots/main/database.bak",
+    INTERCEPT_PATH: "/sdcard/msgbot/intercept.txt", // 인터셉트 파일 경로
+    LINE: "━━━━━━━━━━━━━━"
 };
 
-// ㅡㅡㅡㅡㅡㅡㅡ [2. 데이터베이스 로직] ㅡㅡㅡㅡㅡㅡㅡ
-var Database = {
-    save: function(data) {
-        FileStream.write(Config.DB_PATH, JSON.stringify(data, null, 4));
-    },
-    load: function() {
-        var file = new java.io.File(Config.DB_PATH);
-        if (!file.exists()) return {};
-        try {
-            return JSON.parse(FileStream.read(Config.DB_PATH));
-        } catch(e) { return {}; }
-    }
-};
-
-// ㅡㅡㅡㅡㅡㅡㅡ [3. 전역 세션 및 데이터] ㅡㅡㅡㅡㅡㅡㅡ
-if (!global.sessions) global.sessions = {};
-var UserData = Database.load();
-
-// ㅡㅡㅡㅡㅡㅡㅡ [4. 로그인 시스템 로직] ㅡㅡㅡㅡㅡㅡㅡ
-var LoginSystem = {
-    render: function(roomName) {
-        var menu = "『 🏰 " + Config.BotName + " 』\n";
-        menu += "📍 접속 위치: " + roomName + "\n"; // 분기점 확인용
-        menu += "ㅡㅡㅡㅡㅡㅡㅡ\n";
-        menu += "1. 회원가입\n";
-        menu += "2. 로그인\n";
-        menu += "ㅡㅡㅡㅡㅡㅡㅡ\n";
-        menu += "💬 번호를 선택하거나 '취소'를 입력하세요.";
-        return menu;
+// ㅡㅡㅡㅡㅡㅡㅡ [2. UI 엔진] ㅡㅡㅡㅡㅡㅡㅡ
+var UI = {
+    make: function(content) {
+        return "『 " + Config.BotName + " 』\n" +
+               Config.LINE + "\n" +
+               content + "\n" +
+               Config.LINE;
     },
     
-    // (execute 및 handleWait 로직은 이전과 동일하되 세션 데이터만 활용)
-    execute: function(msg, session) {
-        if (msg === "1") {
-            session.waitAction = "가입_아이디";
-            return "📝 가입하실 [아이디]를 입력해주세요.";
-        }
-        if (msg === "2") {
-            session.waitAction = "로그인_아이디";
-            return "🔑 [아이디]를 입력해주세요.";
-        }
-        return "❌ 1번 또는 2번을 선택해주세요.";
-    },
-
-    handleWait: function(msg, session) {
-        if (session.waitAction === "가입_아이디") {
-            if (UserData[msg]) return "⚠️ 이미 존재하는 아이디입니다.";
-            session.tempId = msg;
-            session.waitAction = "가입_비밀번호";
-            return "✅ 아이디: " + msg + "\n🔐 사용할 [비밀번호]를 입력하세요.";
-        }
-        if (session.waitAction === "가입_비밀번호") {
-            UserData[session.tempId] = { pw: msg, level: 1, gold: 1000 };
-            Database.save(UserData);
-            session.waitAction = null;
-            session.isMenuOpen = false;
-            return "✨ 회원가입 완료! 로그인을 시도해주세요.";
-        }
-        if (session.waitAction === "로그인_아이디") {
-            if (!UserData[msg]) return "❌ 등록되지 않은 아이디입니다.";
-            session.tempId = msg;
-            session.waitAction = "로그인_비밀번호";
-            return "🔑 비밀번호를 입력해주세요.";
-        }
-        if (session.waitAction === "로그인_비밀번호") {
-            if (UserData[session.tempId].pw === msg) {
-                session.data = UserData[session.tempId];
-                session.waitAction = null;
-                session.isMenuOpen = false;
-                return "✅ 로그인 성공! [" + session.tempId + "]님 환영합니다.";
-            }
-            return "❌ 비밀번호가 틀렸습니다.";
-        }
-        return "알 수 없는 진행 상태입니다.";
+    mainMenu: function() {
+        return this.make("1. 회원가입\n2. 로그인") + "\n💬 번호를 입력해주세요.";
     }
 };
 
-// ㅡㅡㅡㅡㅡㅡㅡ [5. 메인 응답 함수] ㅡㅡㅡㅡㅡㅡㅡ
+// ㅡㅡㅡㅡㅡㅡㅡ [3. 시스템 및 인터셉트 엔진] ㅡㅡㅡㅡㅡㅡㅡ
+var Engine = {
+    // [데이터 저장 및 백업]
+    saveData: function(data) {
+        new java.lang.Thread(function() {
+            try {
+                var content = JSON.stringify(data, null, 4);
+                var finalFile = new java.io.File(Config.DB_PATH);
+                var parentDir = finalFile.getParentFile();
+                if (!parentDir.exists()) parentDir.mkdirs();
+                
+                var tempFile = new java.io.File(Config.DB_PATH + ".tmp");
+                FileStream.write(tempFile.getPath(), content);
+                if (finalFile.exists()) FileStream.copy(Config.DB_PATH, Config.BACKUP_PATH);
+                tempFile.renameTo(finalFile);
+            } catch (e) { Log.error("데이터 저장 실패: " + e); }
+        }).start();
+    },
+
+    // [매크로드로이드 인터셉터 감시 로직]
+    checkExternal: function() {
+        var file = new java.io.File(Config.INTERCEPT_PATH);
+        if (file.exists()) {
+            try {
+                var raw = FileStream.read(Config.INTERCEPT_PATH);
+                file.delete(); // 읽은 즉시 삭제하여 중복 처리 방지
+                var p = raw.split("|");
+                return { sender: p[0], msg: p[1], room: p[2] };
+            } catch (e) { return null; }
+        }
+        return null;
+    }
+};
+
+// 전역 세션 및 데이터 로드
+if (!global.sessions) global.sessions = {};
+var UserData = (function() {
+    var file = new java.io.File(Config.DB_PATH);
+    if (!file.exists()) return {};
+    try {
+        return JSON.parse(FileStream.read(Config.DB_PATH));
+    } catch(e) {
+        var bak = new java.io.File(Config.BACKUP_PATH);
+        if (bak.exists()) return JSON.parse(FileStream.read(Config.BACKUP_PATH));
+        return {};
+    }
+})();
+
+// ㅡㅡㅡㅡㅡㅡㅡ [4. 메인 응답 로직] ㅡㅡㅡㅡㅡㅡㅡ
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (!msg) return;
     msg = msg.trim();
-
-    // ⭐️ 핵심: 채팅방별 분기를 위한 고유 키 생성 (유저명 + 방이름)
-    var sessionKey = sender + "@" + room;
     
+    // 세션 초기화
+    var sessionKey = sender + "@" + room;
     if (!global.sessions[sessionKey]) {
-        global.sessions[sessionKey] = { 
-            isMenuOpen: false, 
-            data: null, 
-            waitAction: null, 
-            id: sender,
-            room: room 
-        };
+        global.sessions[sessionKey] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
     }
     var session = global.sessions[sessionKey];
 
     try {
-        // [공통 명령어]
+        // ⭐️ [매크로드로이드 외부 발동 인터셉트 확인]
+        var ext = Engine.checkExternal();
+        if (ext) {
+            // 외부 파일에 데이터가 있을 경우 여기서 처리 (예: 로그 남기기 또는 특정 동작 수행)
+            // Log.info("인터셉터 수신: " + ext.msg);
+        }
+
+        // [공통: 취소]
         if (msg === "취소") {
-            session.isMenuOpen = false;
-            session.waitAction = null;
-            return replier.reply("❌ [" + room + "]에서의 진행이 취소되었습니다.");
+            session.isMenuOpen = false; session.waitAction = null;
+            return replier.reply("❌ 모든 작업이 취소되었습니다.");
         }
 
-        if (msg === Config.Prefix + "테스트") {
-            return replier.reply("✅ [v3.5.6] 세션 분리 완료\n📍 현재 방: " + room);
-        }
-
-        // [메뉴 및 입력 로직]
+        // ㅡㅡㅡㅡㅡㅡㅡ [기능: 메뉴 및 로그인/가입] ㅡㅡㅡㅡㅡㅡㅡ
         if (!session.data && msg === Config.Prefix + "메뉴") {
-            // 개인톡 뿐만 아니라 단톡방 분기 테스트를 위해 조건 완화 (필요시 조정)
             session.isMenuOpen = true;
-            return replier.reply(LoginSystem.render(room));
+            return replier.reply(UI.mainMenu());
         }
 
-        // 입력 대기 상태 처리
         if (!session.data && (session.isMenuOpen || session.waitAction)) {
-            if (session.waitAction) {
-                return replier.reply(LoginSystem.handleWait(msg, session));
+            // [회원가입 로직]
+            if (session.waitAction === "가입_아이디") {
+                if (UserData[msg]) return replier.reply(UI.make("⚠️ 중복된 아이디입니다.\n다른 아이디를 입력해주세요."));
+                session.tempId = msg; session.waitAction = "가입_비밀번호";
+                return replier.reply(UI.make("📝 아이디: " + msg + "\n🔐 사용할 비밀번호를 입력해주세요."));
             }
-            if (!isNaN(msg)) {
-                return replier.reply(LoginSystem.execute(msg, session));
+            if (session.waitAction === "가입_비밀번호") {
+                UserData[session.tempId] = { pw: msg, level: 1, gold: 1000 };
+                Engine.saveData(UserData);
+                session.waitAction = null; session.isMenuOpen = false;
+                return replier.reply(UI.make("✨ 회원가입 완료!\n로그인을 진행해주세요."));
             }
+
+            // [로그인 로직]
+            if (session.waitAction === "로그인_아이디") {
+                if (!UserData[msg]) return replier.reply(UI.make("❌ 등록되지 않은 아이디입니다."));
+                session.tempId = msg; session.waitAction = "로그인_비밀번호";
+                return replier.reply(UI.make("🔑 아이디: " + msg + "\n비밀번호를 입력해주세요."));
+            }
+            if (session.waitAction === "로그인_비밀번호") {
+                if (UserData[session.tempId].pw === msg) {
+                    session.data = UserData[session.tempId];
+                    session.waitAction = null; session.isMenuOpen = false;
+                    return replier.reply(UI.make("✅ 로그인 성공!\n반갑습니다, " + session.tempId + " 소환사님."));
+                }
+                return replier.reply(UI.make("❌ 비밀번호가 틀렸습니다."));
+            }
+
+            // [메뉴 숫자 선택]
+            if (msg === "1") { session.waitAction = "가입_아이디"; return replier.reply(UI.make("📝 가입하실 아이디를 입력해주세요.")); }
+            if (msg === "2") { session.waitAction = "로그인_아이디"; return replier.reply(UI.make("🔑 로그인 아이디를 입력해주세요.")); }
+        }
+
+        // ㅡㅡㅡㅡㅡㅡㅡ [기능: 로그인 유저 전용] ㅡㅡㅡㅡㅡㅡㅡ
+        if (session.data && msg === Config.Prefix + "정보") {
+            var info = "👤 소환사: " + session.tempId + "\n🎖 레벨: " + session.data.level + "\n💰 골드: " + session.data.gold;
+            return replier.reply(UI.make(info));
         }
 
     } catch (e) {
-        replier.reply("🚨 에러: " + e.message);
+        replier.reply("🚨 시스템 오류: " + e.message);
     }
 }
