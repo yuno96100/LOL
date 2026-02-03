@@ -1,7 +1,7 @@
 /**
- * [main.js] v7.0.5
- * 1. 도배 방지: 세션(waitAction) 활성 상태에서 메뉴 번호가 아닌 일반 대화는 무시
- * 2. 롤백 유지: v6.9.9의 기본 흐름을 유지하여 메뉴 응답성 확보
+ * [main.js] v7.0.6
+ * 1. 응답 복구: '메뉴', '취소' 등 시스템 키워드를 필터링보다 먼저 처리하여 응답성 확보
+ * 2. 도배 방지 유지: 세션 대기 중 번호가 아닌 일반 대화에는 메뉴판 재출력 안 함
  * 3. UI 설정: 구분선 길이 15, 칭호 상단, 티어 중단 레이아웃 유지
  */
 
@@ -122,10 +122,7 @@ var SessionManager = {
 // ━━━━━━━━ [4. 모듈: 관리자 로직] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
-        var isNum = /^\d+$/.test(msg);
-        
         if (session.waitAction === "관리_유저선택") {
-            if (!isNum) return; // 숫자가 아니면 무시
             var idx = parseInt(msg) - 1;
             if (session.userListCache[idx]) {
                 session.targetUser = session.userListCache[idx];
@@ -136,16 +133,12 @@ var AdminManager = {
                 return replier.reply(UI.make("유저 상세 관리", profile, "1. 데이터 수정\n2. 데이터 초기화\n3. 계정 삭제"));
             }
         }
-        
-        if (msg === "1") return replier.reply(UI.make("시스템 정보", "📡 서버: ACTIVE\n👥 등록 유저: " + Object.keys(Database.data).length + "명", ""));
+        if (msg === "1") return replier.reply(UI.make("시스템 정보", "📡 서버: ACTIVE\n👥 등록: " + Object.keys(Database.data).length + "명", ""));
         if (msg === "2") {
             var list = Object.keys(Database.data);
             session.userListCache = list; session.waitAction = "관리_유저선택"; SessionManager.save();
-            return replier.reply(UI.make("소환사 명부", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "💡 번호를 입력하세요."));
+            return replier.reply(UI.make("소환사 명부", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "💡 번호 입력"));
         }
-        
-        // 대기 상태가 아닐 때만 메뉴 출력
-        if (!session.waitAction && isNum) return replier.reply(UI.renderMenu(session));
     }
 };
 
@@ -154,11 +147,10 @@ var GroupManager = {
     handle: function(msg, session, replier, sender) {
         if (msg === "1") {
             var d = Database.data[sender]; 
-            if (!d) return replier.reply(UI.make("안내", "⚠️ 등록되지 않은 소환사입니다.", ""));
+            if (!d) return replier.reply(UI.make("안내", "⚠️ 개인톡에서 가입을 진행해주세요.", ""));
             var info = "👤 소환사: " + sender + "\n🏅 칭호: [" + (d.title || "뉴비") + "]\n" + Config.LINE + "\n🏆 티어: " + getTierInfo(d.lp) + " (" + (d.lp || 0) + " LP)\n" + Config.LINE + "\n⭐ 레벨: Lv." + d.level + "\n⚔️ 전적: " + d.win + "승 " + d.lose + "패";
             return replier.reply(UI.make("내 정보 확인", info, ""));
         }
-        if (/^\d+$/.test(msg)) return replier.reply(UI.renderMenu(session));
     }
 };
 
@@ -166,10 +158,7 @@ var GroupManager = {
 var UserManager = {
     handle: function(msg, session, replier, sender) {
         var d = session.data;
-        var isNum = /^\d+$/.test(msg);
-
         if (!d) {
-            // 로그인/가입 절차 중에는 텍스트 입력 허용
             if (session.waitAction === "가입_ID") { session.tempId = msg; session.waitAction = "가입_PW"; SessionManager.save(); return replier.reply(UI.make("가입", "비밀번호를 입력하세요.", "")); }
             if (session.waitAction === "가입_PW") {
                 Database.data[session.tempId] = { pw: msg, gold: 1000, level: 1, lp: 0, win: 0, lose: 0, title: "뉴비", collection: { titles: ["뉴비"], characters: [] } };
@@ -179,7 +168,7 @@ var UserManager = {
             if (session.waitAction === "로그인_PW") {
                 var user = Database.data[session.tempId];
                 if (user && user.pw === msg) { session.data = user; session.waitAction = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
-                session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "정보가 올바르지 않습니다.", ""));
+                session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "정보가 틀립니다.", ""));
             }
             if (msg === "1") { session.waitAction = "가입_ID"; SessionManager.save(); return replier.reply(UI.make("가입", "ID를 입력하세요.", "")); }
             if (msg === "2") { session.waitAction = "로그인_ID"; SessionManager.save(); return replier.reply(UI.make("로그인", "ID를 입력하세요.", "")); }
@@ -190,9 +179,6 @@ var UserManager = {
             }
             if (msg === "4") { session.data = null; session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "로그아웃 되었습니다.", "")); }
         }
-        
-        // 대기 중이 아닐 때 숫자를 입력하면 메뉴 출력
-        if (!session.waitAction && isNum) return replier.reply(UI.renderMenu(session));
     }
 };
 
@@ -206,18 +192,21 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var session = SessionManager.get(room, hash, isGroupChat);
     msg = msg.trim();
 
+    // 1. [최우선] 시스템 키워드 처리 (언제 어디서든 응답)
     if (msg === "취소") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "취소되었습니다.", "")); }
-    if (msg === "되돌아가기" || msg === "메뉴") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
+    if (msg === "되돌아가기" || msg === "메뉴") { 
+        session.waitAction = null; 
+        SessionManager.save(); 
+        return replier.reply(UI.renderMenu(session)); 
+    }
 
-    // 핵심: 관리자 세션 처리
-    if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
+    // 2. 숫자 입력이거나 특정 세션 대기 중일 때만 핸들러 실행 (잡담 무시)
+    var isNumber = /^\d+$/.test(msg);
+    if (session.waitAction || isNumber) {
+        if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
+        if (session.type === "GROUP") return GroupManager.handle(msg, session, replier, sender);
+        if (session.type === "DIRECT") return UserManager.handle(msg, session, replier, sender);
+    }
     
-    // 핵심: 단체방/개인방 처리 (숫자나 메뉴 키워드일 때만 반응하여 대화 도배 방지)
-    var isSystemMsg = /^\d+$/.test(msg) || ["메뉴", "취소", "되돌아가기"].indexOf(msg) !== -1;
-    
-    // 세션 대기 중이 아닐 때 일반 대화는 완전 무시
-    if (!session.waitAction && !isSystemMsg) return;
-
-    if (session.type === "GROUP") return GroupManager.handle(msg, session, replier, sender);
-    if (session.type === "DIRECT") return UserManager.handle(msg, session, replier, sender);
+    // 이외의 일반 대화는 무시 (봇이 끼어들지 않음)
 }
