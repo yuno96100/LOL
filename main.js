@@ -1,34 +1,47 @@
 /**
- * [main.js] v3.3.8
- * 괄호 구조 및 모듈 로드 정밀 교정본
+ * [main.js] v3.4.0
+ * 파일 시스템 직접 검증 버전
  */
 
 var C = null, D = null, O = null, LoginM = null, LoginL = null;
-var errorLog = "";
+var diag = "";
 
-try {
-    // 1. 기초 모듈 로드
-    var scC = Bridge.getScopeOf("modules/Const.js");
-    var scD = Bridge.getScopeOf("modules/common/database.js");
-    var scO = Bridge.getScopeOf("modules/common/object.js");
-    var scLM = Bridge.getScopeOf("modules/common/login/menu.js");
-    var scLL = Bridge.getScopeOf("modules/common/login/logic.js");
+function loadModule(path) {
+    try {
+        // 1. 실제 파일이 물리적으로 존재하는지 먼저 확인
+        var file = new java.io.File("/sdcard/msgbot/Bots/main/" + path);
+        if (!file.exists()) return { status: "❌ 물리적 파일 없음", scope: null };
 
-    if (scC) C = scC.bridge();
-    if (scD) D = scD.bridge();
-    if (scO) O = scO.bridge();
-    if (scLM) LoginM = scLM.bridge();
-    
-    // 2. Logic 모듈 정밀 로드
-    if (scLL) {
-        LoginL = scLL.bridge();
-        if (!LoginL) errorLog = "❌ logic.js의 bridge() 리턴값이 없습니다.";
-    } else {
-        errorLog = "❌ logic.js 파일을 찾을 수 없습니다.";
+        // 2. Bridge 시도
+        var scope = Bridge.getScopeOf(path);
+        if (!scope) return { status: "❌ Bridge 로드 실패 (null)", scope: null };
+
+        return { status: "✅ 성공", scope: scope };
+    } catch (e) {
+        return { status: "🚨 오류: " + e.message, scope: null };
     }
-} catch (e) {
-    errorLog = "🚨 초기화 오류: " + e.message + " (L:" + e.lineNumber + ")";
 }
+
+// 모듈 로드 실행
+var resC = loadModule("modules/Const.js");
+if (resC.scope) C = resC.scope.bridge();
+
+var resD = loadModule("modules/common/database.js");
+if (resD.scope) D = resD.scope.bridge();
+
+var resO = loadModule("modules/common/object.js");
+if (resO.scope) O = resO.scope.bridge();
+
+var resM = loadModule("modules/common/login/menu.js");
+if (resM.scope) LoginM = resM.scope.bridge();
+
+var resL = loadModule("modules/common/login/logic.js");
+if (resL.scope) {
+    LoginL = resL.scope.bridge();
+}
+
+// 진단 결과 로그 생성
+diag = "C: " + resC.status + "\nD: " + resD.status + "\nO: " + resO.status + "\nM: " + resM.status + "\nL: " + resL.status;
 
 if (!global.sessions) global.sessions = {};
 
@@ -41,44 +54,34 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     }
     var session = global.sessions[sender];
 
+    // 테스트 명령어
+    var prefix = (C && C.Prefix) ? C.Prefix : ".";
+    if (msg === prefix + "테스트") {
+        var report = "🔍 [v3.4.0 물리적 경로 진단]\n" + "━".repeat(12) + "\n" + diag;
+        if (LoginL) report += "\n" + "━".repeat(12) + "\n✨ 전 시스템 가동 준비 완료!";
+        return replier.reply(report);
+    }
+
     try {
-        // [공통] 취소 로직
         if (msg === "취소") {
-            session.isMenuOpen = false;
-            session.waitAction = null;
+            session.isMenuOpen = false; session.waitAction = null;
             return replier.reply("❌ 취소되었습니다.");
         }
 
-        // [점검] 테스트 로직
-        var prefix = (C && C.Prefix) ? C.Prefix : ".";
-        if (msg === prefix + "테스트") {
-            if (errorLog) return replier.reply("⚠️ 진단 결과:\n" + errorLog);
-            return replier.reply("✅ [v3.3.8] 시스템 정상 가동 중!");
-        }
-
-        // [비로그인] 메뉴 호출
         if (C && !session.data && msg === C.Prefix + "메뉴") {
             if (isGroupChat) return replier.reply("개인톡에서 이용해 주세요.");
-            if (LoginM) {
-                session.isMenuOpen = true;
-                return replier.reply(LoginM.render(false));
-            }
+            session.isMenuOpen = true;
+            return replier.reply(LoginM.render(false));
         }
 
-        // [입력 처리]
-        if (!session.data && !isGroupChat && (session.isMenuOpen || session.waitAction)) {
-            if (!LoginL) return replier.reply("❌ 로직 모듈 로드 실패 상태입니다.");
-            
-            if (session.waitAction) {
-                return replier.reply(LoginL.handleWait(msg, session, D, O));
-            }
-            
+        if (LoginL && !session.data && !isGroupChat && (session.isMenuOpen || session.waitAction)) {
+            if (session.waitAction) return replier.reply(LoginL.handleWait(msg, session, D, O));
             if (!isNaN(msg)) {
                 var res = LoginL.execute(msg, session);
                 if (res && res.msg) replier.reply(res.msg);
             }
         }
     } catch (e) {
-        replier.reply("🚨 실행 에러: " + e.message + " (L:" + e.lineNumber + ")");
+        replier.reply("🚨 에러: " + e.message);
     }
 }
