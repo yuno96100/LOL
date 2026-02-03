@@ -7,9 +7,9 @@
 var Config = {
     Prefix: ".",
     AdminHash: "2056407147", // 여기에 조회한 해시를 넣으세요
-    AdminName: "데미갓", 
-    AdminRoom: "관리자 전용방", // 여기에 조회한 관리자방 이름을 넣으세요
-    GroupRoom: "메인 단톡방",   // 여기에 조회한 단톡방 이름을 넣으세요
+    AdminName: "관리자", 
+    AdminRoom: "소환사의협곡관리", // 여기에 조회한 관리자방 이름을 넣으세요
+    GroupRoom: "소환사의협곡",   // 여기에 조회한 단톡방 이름을 넣으세요
     BotName: "소환사의 협곡",
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     BACKUP_PATH: "/sdcard/msgbot/Bots/main/database.bak",
