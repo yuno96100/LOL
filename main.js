@@ -1,11 +1,12 @@
 /**
- * [main.js] v6.2.0
- * 1. 모듈화: AdminManager(관리자)와 UserManager(유저 개인톡) 로직 완전 분리
- * 2. 프로필 최적화: '내 정보'에서 캐릭터 리스트 제외 (골드/기본정보만 표시)
- * 3. UI 스타일: '━━━━━━━━' 라인 디자인 전역 적용
+ * [main.js] v6.3.2
+ * 1. 관리자: 시스템 관제, 유저 상세 조회 및 제어(초기화/삭제)
+ * 2. 유저: 회원가입, 로그인, 상세 프로필, 칭호 장착, 문의하기
+ * 3. 칭호: 첫 로그인 시 '뉴비' 자동 지급 및 장착
+ * 4. UI: 전역 '━━━━━━━━' 경계선 및 박스 스타일 적용
  */
 
-// ㅡㅡㅡㅡㅡㅡㅡ [1. 설정 및 상수] ㅡㅡㅡㅡㅡㅡㅡ
+// ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
     Prefix: ".",
     AdminHash: "2056407147",      
@@ -36,7 +37,7 @@ function getCharacterInfo(charName) {
     return { role: "미분류", icon: "❓" };
 }
 
-// ㅡㅡㅡㅡㅡㅡㅡ [2. 모듈: UI 엔진] ㅡㅡㅡㅡㅡㅡㅡ
+// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     make: function(title, content, help) {
         var base = "『 " + title + " 』\n" + Config.LINE + "\n" + content + "\n" + Config.LINE;
@@ -44,16 +45,16 @@ var UI = {
         return base;
     },
     renderMenu: function(session) {
-        if (session.type === "ADMIN") return this.make("관리자 메뉴", "1. 시스템 상태\n2. 유저 목록 관리\n3. 데이터 백업", "💡 관리자 전용 제어판");
+        if (session.type === "ADMIN") return this.make("관리자 메뉴", "1. 시스템 상세 상태\n2. 유저 목록 관리\n3. 데이터 백업", "💡 번호를 입력하세요.");
         if (session.type === "DIRECT") {
-            if (!session.data) return this.make("메인 메뉴", "1. 회원가입\n2. 로그인", "💡 로그인이 필요합니다.");
-            return this.make("메인 메뉴", "1. 내 정보\n2. 컬렉션\n3. 로그아웃", "💡 무엇을 도와드릴까요?");
+            if (!session.data) return this.make("메인 메뉴", "1. 회원가입\n2. 로그인\n3. 1:1 문의하기", "💡 인증 후 이용 가능합니다.");
+            return this.make("메인 메뉴", "1. 내 정보\n2. 컬렉션\n3. 로그아웃\n4. 1:1 문의하기", "💡 원하시는 항목을 선택하세요.");
         }
-        return this.make("알림", "인증이 필요한 구역입니다.");
+        return this.make("알림", "접근 권한이 없습니다.");
     }
 };
 
-// ㅡㅡㅡㅡㅡㅡㅡ [3. 데이터베이스 및 세션] ㅡㅡㅡㅡㅡㅡㅡ
+// ━━━━━━━━ [3. 데이터베이스 및 세션] ━━━━━━━━
 var Database = {
     data: {},
     load: function() {
@@ -82,18 +83,21 @@ var SessionManager = {
     }
 };
 
-// ㅡㅡㅡㅡㅡㅡㅡ [4. 모듈: 관리자 전용 로직] ㅡㅡㅡㅡㅡㅡㅡ
+// ━━━━━━━━ [4. 모듈: 관리자 전용 로직] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
         if (!session.waitAction) {
-            if (msg === "1") return replier.reply(UI.make("시스템 상태", "📡 ACTIVE\n👥 유저수: " + Object.keys(Database.data).length + "명"));
+            if (msg === "1") {
+                var status = "📡 서버: ACTIVE\n👥 유저: " + Object.keys(Database.data).length + "명";
+                return replier.reply(UI.make("시스템 정보", status));
+            }
             if (msg === "2") {
                 var list = Object.keys(Database.data);
                 session.userListCache = list;
                 session.waitAction = "관리_유저선택";
-                return replier.reply(UI.make("유저 목록", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "💡 번호 입력"));
+                return replier.reply(UI.make("유저 목록", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "💡 상세 조회를 위해 번호 입력"));
             }
-            if (msg === "3") { /* 백업 로직 */ return replier.reply(UI.make("알림", "백업 완료")); }
+            if (msg === "3") return replier.reply(UI.make("백업", "데이터 백업 완료"));
         }
         
         if (session.waitAction === "관리_유저선택") {
@@ -102,37 +106,42 @@ var AdminManager = {
                 session.targetUser = session.userListCache[idx];
                 var d = Database.data[session.targetUser];
                 session.waitAction = "관리_유저제어";
-                return replier.reply(UI.make("유저 프로필: " + session.targetUser, "💰 골드: " + d.gold + "\n🏅 칭호: " + d.title, "1. 골드 초기화\n2. 계정 삭제"));
+                var profile = "👤 대상: " + session.targetUser + "\n🏅 칭호: [" + d.title + "]\n⭐ 레벨: Lv." + d.level + "\n⚔️ 전적: " + d.win + "승 " + d.lose + "패\n💰 골드: " + d.gold.toLocaleString() + " G";
+                return replier.reply(UI.make("유저 상세 제어", profile, "1. 골드 초기화\n2. 계정 삭제\n🔙 취소: '취소' 입력"));
             }
         }
-        
+
         if (session.waitAction === "관리_유저제어") {
-            if (msg === "1") { session.waitAction = "확인_초기화"; return replier.reply(UI.make("확인", "정말 초기화할까요?", "💡 '네' 입력 시 실행")); }
-            if (msg === "2") { session.waitAction = "확인_삭제"; return replier.reply(UI.make("확인", "정말 삭제할까요?", "💡 '네' 입력 시 실행")); }
+            if (msg === "1") { session.waitAction = "확인_초기화"; return replier.reply(UI.make("⚠️ 확인", "[" + session.targetUser + "] 골드를 초기화하시겠습니까?", "💡 '네' 입력 시 실행")); }
+            if (msg === "2") { session.waitAction = "확인_삭제"; return replier.reply(UI.make("⚠️ 확인", "[" + session.targetUser + "] 유저를 삭제하시겠습니까?", "💡 '네' 입력 시 실행")); }
         }
 
-        if (msg === "네" && session.waitAction === "확인_초기화") {
-            Database.data[session.targetUser].gold = 0; Database.save(Database.data);
-            session.waitAction = null; return replier.reply(UI.make("완료", "골드 초기화 완료"));
-        }
-        if (msg === "네" && session.waitAction === "확인_삭제") {
-            delete Database.data[session.targetUser]; Database.save(Database.data);
-            session.waitAction = null; return replier.reply(UI.make("완료", "계정 삭제 완료"));
+        if (msg === "네") {
+            if (session.waitAction === "확인_초기화") {
+                Database.data[session.targetUser].gold = 0; Database.save(Database.data);
+                session.waitAction = null; return replier.reply(UI.make("완료", "골드 초기화 완료"));
+            }
+            if (session.waitAction === "확인_삭제") {
+                delete Database.data[session.targetUser]; Database.save(Database.data);
+                session.waitAction = null; return replier.reply(UI.make("완료", "계정 삭제 완료"));
+            }
         }
     }
 };
 
-// ㅡㅡㅡㅡㅡㅡㅡ [5. 모듈: 유저 전용 로직 (개인톡)] ㅡㅡㅡㅡㅡㅡㅡ
+// ━━━━━━━━ [5. 모듈: 유저 전용 로직] ━━━━━━━━
 var UserManager = {
-    handle: function(msg, session, replier) {
-        if (!session.data) { // 비로그인 상태
+    handle: function(msg, session, replier, sender) {
+        var d = session.data;
+
+        if (!d) { // 비로그인
             if (session.waitAction === "가입_ID") {
                 if (Database.data[msg]) return replier.reply(UI.make("오류", "중복된 ID입니다."));
                 session.tempId = msg; session.waitAction = "가입_PW";
                 return replier.reply(UI.make("가입", "ID: " + msg + "\n비밀번호를 입력하세요."));
             }
             if (session.waitAction === "가입_PW") {
-                Database.data[session.tempId] = { pw: msg, gold: 0, level: 1, title: "없음", collection: { titles: [], characters: [] }, firstLogin: true };
+                Database.data[session.tempId] = { pw: msg, gold: 0, level: 1, exp: 0, win: 0, lose: 0, title: "없음", collection: { titles: [], characters: [] }, firstLogin: true };
                 Database.save(Database.data); session.waitAction = null;
                 return replier.reply(UI.make("성공", "가입 완료! 로그인을 진행하세요."));
             }
@@ -146,47 +155,71 @@ var UserManager = {
                 if (user.pw === msg) {
                     session.data = user; session.waitAction = null;
                     if (user.firstLogin) {
-                        user.gold += 1000; user.firstLogin = false; Database.save(Database.data);
-                        replier.reply(UI.make("선물", "🎁 첫 로그인 보상 1,000골드 지급!"));
+                        user.gold += 1000; user.title = "뉴비"; user.collection.titles.push("뉴비");
+                        user.firstLogin = false; Database.save(Database.data);
+                        replier.reply(UI.make("선물", "🎁 정착금 1,000G와 [뉴비] 칭호 지급!"));
                     }
                     return replier.reply(UI.renderMenu(session));
                 }
-                return replier.reply(UI.make("오류", "비밀번호가 틀렸습니다."));
+                return replier.reply(UI.make("오류", "비밀번호 불일치"));
+            }
+            if (session.waitAction === "문의_대기") {
+                Api.replyRoom(Config.AdminRoom, "📩 [문의]\n보낸이: " + sender + "\n내용: " + msg);
+                session.waitAction = null; return replier.reply(UI.make("접수", "관리자에게 전달되었습니다."));
             }
             if (msg === "1") { session.waitAction = "가입_ID"; return replier.reply(UI.make("가입", "ID 입력:")); }
             if (msg === "2") { session.waitAction = "로그인_ID"; return replier.reply(UI.make("로그인", "ID 입력:")); }
-        } 
-        else { // 로그인 상태
-            if (session.waitAction === "컬렉션_확인") {
-                if (msg === "1") return replier.reply(UI.make("보유 칭호", session.data.collection.titles.join("\n") || "없음"));
-                if (msg === "2") {
-                    var cList = session.data.collection.characters.map(function(n) {
-                        var i = getCharacterInfo(n); return i.icon + " " + n + " [" + i.role + "]";
-                    });
-                    return replier.reply(UI.make("보유 캐릭터", cList.join("\n") || "없음"));
+            if (msg === "3") { session.waitAction = "문의_대기"; return replier.reply(UI.make("문의", "내용 입력:")); }
+        } else { // 로그인 상태
+            if (session.waitAction === "칭호_선택") {
+                var idx = parseInt(msg) - 1;
+                if (d.collection.titles[idx]) {
+                    d.title = d.collection.titles[idx]; Database.save(Database.data);
+                    session.waitAction = null; return replier.reply(UI.make("변경", "[" + d.title + "] 장착 완료"));
                 }
             }
-            if (msg === "1") return replier.reply(UI.make("내 정보", "👤 닉네임: " + session.tempId + "\n💰 보유 골드: " + session.data.gold.toLocaleString() + " G\n🏅 칭호: [" + session.data.title + "]"));
-            if (msg === "2") { session.waitAction = "컬렉션_확인"; return replier.reply(UI.make("컬렉션", "1. 칭호\n2. 캐릭터")); }
+            if (session.waitAction === "문의_대기") {
+                Api.replyRoom(Config.AdminRoom, "📩 [문의]\n보낸이: " + session.tempId + "\n내용: " + msg);
+                session.waitAction = null; return replier.reply(UI.make("접수", "전달 완료"));
+            }
+
+            if (msg === "1") {
+                var prof = "👤 닉네임: " + session.tempId + "\n🏅 칭호: [" + d.title + "]\n⭐ 레벨: Lv." + d.level + " (" + d.exp + "exp)\n⚔️ 전적: " + d.win + "승 " + d.lose + "패\n" + Config.LINE + "\n💰 골드: " + d.gold.toLocaleString() + " G";
+                return replier.reply(UI.make("내 정보", prof));
+            }
+            if (msg === "2") return replier.reply(UI.make("컬렉션", "1. 보유 칭호 (장착)\n2. 보유 캐릭터"));
             if (msg === "3") { session.data = null; return replier.reply(UI.make("알림", "로그아웃 완료")); }
+            if (msg === "4") { session.waitAction = "문의_대기"; return replier.reply(UI.make("문의", "내용 입력:")); }
+
+            // 컬렉션 세부
+            if (session.lastMsg === "2" && msg === "1") {
+                session.waitAction = "칭호_선택";
+                var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + "["+t+"]"; }).join("\n");
+                return replier.reply(UI.make("칭호 선택", tList, "💡 번호 입력"));
+            }
+            if (session.lastMsg === "2" && msg === "2") {
+                var cList = d.collection.characters.map(function(n) { var i = getCharacterInfo(n); return i.icon + " " + n; }).join("\n");
+                return replier.reply(UI.make("보유 캐릭터", cList || "없음"));
+            }
         }
+        session.lastMsg = msg;
         return replier.reply(UI.renderMenu(session));
     }
 };
 
-// ㅡㅡㅡㅡㅡㅡㅡ [6. 메인 응답 핸들러] ㅡㅡㅡㅡㅡㅡㅡ
+// ━━━━━━━━ [6. 메인 응답 핸들러] ━━━━━━━━
 Database.data = Database.load();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     if (!msg) return;
     var hash = String(imageDB.getProfileHash());
     var session = SessionManager.get(room, hash, isGroupChat);
+    msg = msg.trim();
 
-    if (msg === "돌아가기" || msg === "취소") { session.waitAction = null; return replier.reply(UI.renderMenu(session)); }
+    if (msg === "돌아가기" || msg === "취소" || msg === Config.Prefix + "메뉴") { 
+        session.waitAction = null; return replier.reply(UI.renderMenu(session)); 
+    }
 
     if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
-    if (session.type === "DIRECT") return UserManager.handle(msg, session, replier);
-    if (session.type === "GROUP" && session.data && msg === "1") {
-        return replier.reply(UI.make(session.tempId + "님 정보", "💰 골드: " + session.data.gold.toLocaleString() + " G"));
-    }
+    if (session.type === "DIRECT") return UserManager.handle(msg, session, replier, sender);
 }
