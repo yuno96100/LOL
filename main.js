@@ -1,47 +1,14 @@
 /**
- * [main.js] v3.4.0
- * 파일 시스템 직접 검증 버전
+ * [main.js] v3.4.2
+ * 캐시 초기화를 위해 버전 숫자를 높여 재배포합니다.
  */
 
-var C = null, D = null, O = null, LoginM = null, LoginL = null;
-var diag = "";
-
-function loadModule(path) {
-    try {
-        // 1. 실제 파일이 물리적으로 존재하는지 먼저 확인
-        var file = new java.io.File("/sdcard/msgbot/Bots/main/" + path);
-        if (!file.exists()) return { status: "❌ 물리적 파일 없음", scope: null };
-
-        // 2. Bridge 시도
-        var scope = Bridge.getScopeOf(path);
-        if (!scope) return { status: "❌ Bridge 로드 실패 (null)", scope: null };
-
-        return { status: "✅ 성공", scope: scope };
-    } catch (e) {
-        return { status: "🚨 오류: " + e.message, scope: null };
-    }
-}
-
-// 모듈 로드 실행
-var resC = loadModule("modules/Const.js");
-if (resC.scope) C = resC.scope.bridge();
-
-var resD = loadModule("modules/common/database.js");
-if (resD.scope) D = resD.scope.bridge();
-
-var resO = loadModule("modules/common/object.js");
-if (resO.scope) O = resO.scope.bridge();
-
-var resM = loadModule("modules/common/login/menu.js");
-if (resM.scope) LoginM = resM.scope.bridge();
-
-var resL = loadModule("modules/common/login/logic.js");
-if (resL.scope) {
-    LoginL = resL.scope.bridge();
-}
-
-// 진단 결과 로그 생성
-diag = "C: " + resC.status + "\nD: " + resD.status + "\nO: " + resO.status + "\nM: " + resM.status + "\nL: " + resL.status;
+// 모듈 로드 (가장 표준적인 Bridge 방식)
+var C = Bridge.getScopeOf("modules/Const.js").bridge();
+var D = Bridge.getScopeOf("modules/common/database.js").bridge();
+var O = Bridge.getScopeOf("modules/common/object.js").bridge();
+var LoginM = Bridge.getScopeOf("modules/common/login/menu.js").bridge();
+var LoginL = Bridge.getScopeOf("modules/common/login/logic.js").bridge();
 
 if (!global.sessions) global.sessions = {};
 
@@ -50,38 +17,46 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     msg = msg.trim();
 
     if (!global.sessions[sender]) {
-        global.sessions[sender] = { isMenuOpen: false, data: null, waitAction: null, id: sender };
+        global.sessions[sender] = { 
+            isMenuOpen: false, 
+            data: null, 
+            waitAction: null, 
+            id: sender 
+        };
     }
     var session = global.sessions[sender];
 
-    // 테스트 명령어
-    var prefix = (C && C.Prefix) ? C.Prefix : ".";
-    if (msg === prefix + "테스트") {
-        var report = "🔍 [v3.4.0 물리적 경로 진단]\n" + "━".repeat(12) + "\n" + diag;
-        if (LoginL) report += "\n" + "━".repeat(12) + "\n✨ 전 시스템 가동 준비 완료!";
-        return replier.reply(report);
-    }
-
     try {
         if (msg === "취소") {
-            session.isMenuOpen = false; session.waitAction = null;
+            session.isMenuOpen = false;
+            session.waitAction = null;
             return replier.reply("❌ 취소되었습니다.");
         }
 
-        if (C && !session.data && msg === C.Prefix + "메뉴") {
+        // 테스트 명령어
+        if (msg === C.Prefix + "테스트") {
+            return replier.reply("✅ [v3.4.2] 캐시 초기화 및 로드 성공!");
+        }
+
+        // 로그인 전 메뉴 호출
+        if (!session.data && msg === C.Prefix + "메뉴") {
             if (isGroupChat) return replier.reply("개인톡에서 이용해 주세요.");
             session.isMenuOpen = true;
             return replier.reply(LoginM.render(false));
         }
 
-        if (LoginL && !session.data && !isGroupChat && (session.isMenuOpen || session.waitAction)) {
-            if (session.waitAction) return replier.reply(LoginL.handleWait(msg, session, D, O));
+        // 세션 기반 입력 처리
+        if (!session.data && !isGroupChat && (session.isMenuOpen || session.waitAction)) {
+            if (session.waitAction) {
+                return replier.reply(LoginL.handleWait(msg, session, D, O));
+            }
             if (!isNaN(msg)) {
                 var res = LoginL.execute(msg, session);
                 if (res && res.msg) replier.reply(res.msg);
             }
         }
+
     } catch (e) {
-        replier.reply("🚨 에러: " + e.message);
+        replier.reply("🚨 실행 에러: " + e.message + " (Line: " + e.lineNumber + ")");
     }
 }
