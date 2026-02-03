@@ -17,7 +17,7 @@ var Config = {
     
     // [구분선 조절] 12를 15, 20 등으로 올리면 선이 더 길어집니다.
     LINE_CHAR: "━",
-    LINE_LEN: 12, 
+    LINE_LEN: 15, 
     get LINE() {
         var line = "";
         for(var i=0; i<this.LINE_LEN; i++) line += this.LINE_CHAR;
