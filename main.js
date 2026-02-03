@@ -1,8 +1,8 @@
 /**
- * [main.js] v7.0.7
- * 1. 메뉴 복구: '메뉴' 입력 시 세션/숫자 여부와 상관없이 무조건 응답하도록 최상단 배치
- * 2. 잡담 방지: 시스템 명령어와 숫자가 아닌 일반 대화는 봇이 반응하지 않음
- * 3. 권한 유지: 관리자방은 로그인 여부와 무관하게 동작
+ * [main.js] v7.0.9
+ * 1. 중복 방지: 이해할 수 없는 입력(잡담)에는 응답을 생략하여 중복 UI 출력 차단
+ * 2. 응답성: '메뉴', '취소', '되돌아가기' 및 각 단계별 번호 입력에는 즉각 반응
+ * 3. UI 규격: 구분선 15, 칭호 상단, 티어 중단 레이아웃 고정
  */
 
 var Config = {
@@ -35,19 +35,6 @@ var TierData = [
     { name: "브론즈", icon: "🟤", minLp: 200 },
     { name: "아이언", icon: "⚫", minLp: 0 }
 ];
-
-var SystemData = {
-    roles: {
-        "탱커": { icon: "🛡️", units: ["알리스타", "말파이트", "레오나"] },
-        "전사": { icon: "⚔️", units: ["가렌", "다리우스", "잭스"] },
-        "암살자": { icon: "🗡️", units: ["제드", "카타리나", "탈론"] },
-        "마법사": { icon: "🔮", units: ["럭스", "아리", "빅토르"] },
-        "원거리딜러": { icon: "🏹", units: ["애쉬", "베인", "카이사"] },
-        "서포터": { icon: "✨", units: ["소라카", "유미", "쓰레쉬"] }
-    }
-};
-
-var RoleKeys = Object.keys(SystemData.roles);
 
 function getTierInfo(lp) {
     lp = lp || 0;
@@ -105,7 +92,7 @@ var SessionManager = {
     },
     get: function(room, hash, isGroupChat) {
         if (!this.sessions[hash]) {
-            this.sessions[hash] = { data: null, waitAction: null, tempId: null, userListCache: [], targetUser: null, selectedRole: null, editTargetField: null };
+            this.sessions[hash] = { data: null, waitAction: null, tempId: null, userListCache: [] };
         }
         var s = this.sessions[hash];
         if (room === Config.AdminRoom) s.type = "ADMIN";
@@ -116,25 +103,26 @@ var SessionManager = {
     }
 };
 
+// ━━━━━━━━ 핸들러 모듈 ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
         if (session.waitAction === "관리_유저선택") {
             var idx = parseInt(msg) - 1;
             if (session.userListCache[idx]) {
                 session.targetUser = session.userListCache[idx];
-                session.waitAction = "관리_유저제어_메뉴";
-                SessionManager.save();
+                session.waitAction = "관리_유저제어_메뉴"; SessionManager.save();
                 var d = Database.data[session.targetUser];
                 var profile = "👤 대상: " + session.targetUser + "\n🏅 칭호: [" + (d.title || "뉴비") + "]\n" + Config.LINE + "\n🏆 티어: " + getTierInfo(d.lp) + " (" + (d.lp || 0) + " LP)\n" + Config.LINE + "\n💰 골드: " + (d.gold || 0).toLocaleString() + " G\n⭐ 레벨: Lv." + (d.level || 1) + "\n⚔️ 전적: " + (d.win || 0) + "승 " + (d.lose || 0) + "패";
                 return replier.reply(UI.make("유저 상세 관리", profile, "1. 데이터 수정\n2. 데이터 초기화\n3. 계정 삭제"));
             }
         }
-        if (msg === "1") return replier.reply(UI.make("시스템 정보", "📡 서버: ACTIVE\n👥 등록: " + Object.keys(Database.data).length + "명", ""));
+        if (msg === "1") return replier.reply(UI.make("시스템 정보", "📡 서버: ACTIVE\n👥 등록 유저: " + Object.keys(Database.data).length + "명", ""));
         if (msg === "2") {
             var list = Object.keys(Database.data);
             session.userListCache = list; session.waitAction = "관리_유저선택"; SessionManager.save();
-            return replier.reply(UI.make("소환사 명부", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "💡 번호 입력"));
+            return replier.reply(UI.make("소환사 명부", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "💡 번호를 입력하세요."));
         }
+        if (/^\d+$/.test(msg)) return replier.reply(UI.renderMenu(session));
     }
 };
 
@@ -146,6 +134,7 @@ var GroupManager = {
             var info = "👤 소환사: " + sender + "\n🏅 칭호: [" + (d.title || "뉴비") + "]\n" + Config.LINE + "\n🏆 티어: " + getTierInfo(d.lp) + " (" + (d.lp || 0) + " LP)\n" + Config.LINE + "\n⭐ 레벨: Lv." + d.level + "\n⚔️ 전적: " + d.win + "승 " + d.lose + "패";
             return replier.reply(UI.make("내 정보 확인", info, ""));
         }
+        if (/^\d+$/.test(msg)) return replier.reply(UI.renderMenu(session));
     }
 };
 
@@ -173,9 +162,11 @@ var UserManager = {
             }
             if (msg === "4") { session.data = null; session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "로그아웃 되었습니다.", "")); }
         }
+        if (/^\d+$/.test(msg)) return replier.reply(UI.renderMenu(session));
     }
 };
 
+// ━━━━━━━━ 메인 리스너 ━━━━━━━━
 Database.data = Database.load();
 SessionManager.load();
 
@@ -185,21 +176,20 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var session = SessionManager.get(room, hash, isGroupChat);
     msg = msg.trim();
 
-    // [1단계] 시스템 명령어는 모든 필터링을 무시하고 최우선 실행
-    if (msg === "취소") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "명령 취소", "")); }
-    if (msg === "되돌아가기" || msg === "메뉴") { 
-        session.waitAction = null; 
-        SessionManager.save(); 
-        return replier.reply(UI.renderMenu(session)); 
-    }
+    // [필터 1] 시스템 명령어 처리 (최우선)
+    if (msg === "취소") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "취소되었습니다.", "")); }
+    if (msg === "되돌아가기" || msg === "메뉴") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
 
-    // [2단계] 실행 조건 판단: 현재 세션 대기 중이거나, 숫자 입력일 때만 핸들러 실행
-    var isNumber = /^\d+$/.test(msg);
-    if (session.waitAction || isNumber) {
+    // [필터 2] 반응 조건 설정
+    var isNumber = /^\d+$/.test(msg); // 숫자 입력인가?
+    var isWait = session.waitAction !== null; // 무언가(ID/PW 등)를 기다리는 중인가?
+
+    // 시스템 명령어, 숫자, 대기 상황 중 하나라도 해당하면 실행
+    if (isNumber || isWait) {
         if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
         if (session.type === "GROUP") return GroupManager.handle(msg, session, replier, sender);
         if (session.type === "DIRECT") return UserManager.handle(msg, session, replier, sender);
     }
     
-    // [3단계] 위 조건에 해당하지 않는 '일반 대화'는 봇이 아예 무시함 (메뉴 재출력 안 함)
+    // 그 외의 일반 채팅(잡담)은 아예 response 함수를 종료시켜 봇이 반응하지 않게 함
 }
