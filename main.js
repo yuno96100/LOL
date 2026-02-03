@@ -1,11 +1,10 @@
 /**
- * [main.js] v7.0.6
- * 1. 응답 복구: '메뉴', '취소' 등 시스템 키워드를 필터링보다 먼저 처리하여 응답성 확보
- * 2. 도배 방지 유지: 세션 대기 중 번호가 아닌 일반 대화에는 메뉴판 재출력 안 함
- * 3. UI 설정: 구분선 길이 15, 칭호 상단, 티어 중단 레이아웃 유지
+ * [main.js] v7.0.7
+ * 1. 메뉴 복구: '메뉴' 입력 시 세션/숫자 여부와 상관없이 무조건 응답하도록 최상단 배치
+ * 2. 잡담 방지: 시스템 명령어와 숫자가 아닌 일반 대화는 봇이 반응하지 않음
+ * 3. 권한 유지: 관리자방은 로그인 여부와 무관하게 동작
  */
 
-// ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
     Prefix: ".",
     AdminHash: "2056407147",      
@@ -58,7 +57,6 @@ function getTierInfo(lp) {
     return "⚫ 아이언";
 }
 
-// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     make: function(title, content, help) {
         var line = Config.LINE;
@@ -77,7 +75,6 @@ var UI = {
     }
 };
 
-// ━━━━━━━━ [3. 데이터베이스 및 세션 매니저] ━━━━━━━━
 var Database = {
     data: {},
     load: function() {
@@ -119,7 +116,6 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 모듈: 관리자 로직] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
         if (session.waitAction === "관리_유저선택") {
@@ -142,7 +138,6 @@ var AdminManager = {
     }
 };
 
-// ━━━━━━━━ [5. 모듈: 단체톡방 로직] ━━━━━━━━
 var GroupManager = {
     handle: function(msg, session, replier, sender) {
         if (msg === "1") {
@@ -154,7 +149,6 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [6. 모듈: 개인톡방 로직] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier, sender) {
         var d = session.data;
@@ -182,7 +176,6 @@ var UserManager = {
     }
 };
 
-// ━━━━━━━━ [7. 메인 응답 핸들러] ━━━━━━━━
 Database.data = Database.load();
 SessionManager.load();
 
@@ -192,15 +185,15 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var session = SessionManager.get(room, hash, isGroupChat);
     msg = msg.trim();
 
-    // 1. [최우선] 시스템 키워드 처리 (언제 어디서든 응답)
-    if (msg === "취소") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "취소되었습니다.", "")); }
+    // [1단계] 시스템 명령어는 모든 필터링을 무시하고 최우선 실행
+    if (msg === "취소") { session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("알림", "명령 취소", "")); }
     if (msg === "되돌아가기" || msg === "메뉴") { 
         session.waitAction = null; 
         SessionManager.save(); 
         return replier.reply(UI.renderMenu(session)); 
     }
 
-    // 2. 숫자 입력이거나 특정 세션 대기 중일 때만 핸들러 실행 (잡담 무시)
+    // [2단계] 실행 조건 판단: 현재 세션 대기 중이거나, 숫자 입력일 때만 핸들러 실행
     var isNumber = /^\d+$/.test(msg);
     if (session.waitAction || isNumber) {
         if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
@@ -208,5 +201,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "DIRECT") return UserManager.handle(msg, session, replier, sender);
     }
     
-    // 이외의 일반 대화는 무시 (봇이 끼어들지 않음)
+    // [3단계] 위 조건에 해당하지 않는 '일반 대화'는 봇이 아예 무시함 (메뉴 재출력 안 함)
 }
