@@ -1,8 +1,8 @@
 /**
- * [main.js] v6.5.4
- * 1. UI 최적화: '보유 칭호 (장착)' -> '보유 칭호', '보유 캐릭터 명단' -> '보유 캐릭터' 명칭 변경
- * 2. 간섭 해결: 하위 메뉴 번호 입력 시 메인 메뉴로 튕기는 로직 버그 수정 완료
- * 3. 가이드: 하단 안내 문구를 '🔙 돌아가기'로 통일
+ * [main.js] v6.6.0
+ * 1. 내비게이션: '돌아가기' 시 메인이 아닌 '이전 카테고리'로 이동 (Stack 방식)
+ * 2. 메뉴 구조: 칭호/캐릭터 상세 페이지 -> 컬렉션 -> 메인 순서로 복귀
+ * 3. UI 유지: 간소화된 명칭(보유 칭호, 보유 캐릭터) 및 구획 디자인 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -153,7 +153,7 @@ var UserManager = {
             if (msg === "2") { session.waitAction = "로그인_ID"; return replier.reply(UI.make("로그인", "ID 입력:")); }
         } else { // 로그인 영역
             
-            // [A] 하위 메뉴/액션 로직 우선 처리 (간섭 방지)
+            // [A] 하위 메뉴/액션 로직 우선 처리
             if (session.waitAction === "상점_구매진행") {
                 var cIdx = parseInt(msg) - 1;
                 if (AllCharacters[cIdx]) {
@@ -169,7 +169,7 @@ var UserManager = {
                 if (d.collection.titles[tidx]) { d.title = d.collection.titles[tidx]; Database.save(Database.data); session.waitAction = null; return replier.reply(UI.make("변경", "칭호 장착 완료", "🔙 돌아가기")); }
             }
 
-            // 하위 카테고리 로직 (lastMenu 기반)
+            // 하위 카테고리 로직
             if (session.lastMenu === "COLLECTION") {
                 if (msg === "1") {
                     session.waitAction = "칭호_장착진행";
@@ -189,7 +189,7 @@ var UserManager = {
                 }
             }
 
-            // [B] 메인 메뉴 로직 (번호 입력 가로채기 방지)
+            // [B] 메인 메뉴 로직
             if (msg === "1") { 
                 var wr = calculateWinRate(d.win, d.lose);
                 var prof = "👤 닉네임: " + session.tempId + "\n🏅 칭호: [" + d.title + "]\n" + Config.LINE + "\n⭐ 레벨: Lv." + d.level + " (" + d.exp + "exp)\n⚔️ 전적: " + d.win + "승 " + d.lose + "패 (" + wr + "%)\n💰 골드: " + d.gold.toLocaleString() + " G";
@@ -211,9 +211,16 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var session = SessionManager.get(room, hash, isGroupChat);
     msg = msg.trim();
 
-    if (msg === "돌아가기" || msg === "메뉴" || msg === "취소") { 
-        session.waitAction = null; 
-        session.lastMenu = null; 
+    // [개편된 돌아가기 로직]
+    if (msg === "돌아가기" || msg === "취소" || msg === "메뉴") { 
+        // 1. 상세 액션 중이면 카테고리로 복귀
+        if (session.waitAction) {
+            session.waitAction = null;
+            if (session.lastMenu === "COLLECTION") return replier.reply(UI.make("컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "🔙 돌아가기"));
+            if (session.lastMenu === "SHOP") return replier.reply(UI.make("상점", "1. 캐릭터 구매", "🔙 돌아가기"));
+        }
+        // 2. 카테고리 중이면 메인으로 복귀
+        session.lastMenu = null;
         return replier.reply(UI.renderMenu(session)); 
     }
 
