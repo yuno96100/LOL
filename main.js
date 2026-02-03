@@ -8,7 +8,7 @@ var Config = {
     Prefix: ".",
     AdminHash: "2056407147", // 관리자 프로필 해시
     AdminName: "데미갓",       // ⭐️ 직접 지정할 관리자 이름
-    AdminRoom: "관리자 전용방", // 관리자 전용 채팅방 이름
+    AdminRoom: "소환사의협곡관리", // 관리자 전용 채팅방 이름
     BotName: "소환사의 협곡",
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     BACKUP_PATH: "/sdcard/msgbot/Bots/main/database.bak",
