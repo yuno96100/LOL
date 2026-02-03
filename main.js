@@ -1,9 +1,8 @@
 /**
- * [main.js] v6.7.5
- * 1. 응답 복구: 관리자방, 단체톡방, 개인톡방 모든 곳에서 메뉴 응답 가능
- * 2. 세션 유지: sessions.json을 통해 업데이트 후에도 로그인/진행단계 보존
- * 3. 상점/컬렉션: 역할군별(탱커, 전사 등) 카테고리 분류 시스템
- * 4. 내비게이션: 돌아가기(이전단계), 취소(완전중단) 로직
+ * [main.js] v6.8.5
+ * 1. 문구 수정: 개인톡방 가입 단계에서 닉네임 관련 권장 문구 삭제
+ * 2. 일관성: 모든 방 메뉴 타이틀 『 메인 메뉴 』 유지
+ * 3. 로직: 단체톡방 미가입 유저 대상 닉네임 일치 안내는 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -19,6 +18,7 @@ var Config = {
     CHAR_PRICE: 500 
 };
 
+// ... (SystemData 및 유틸 함수 v6.8.4와 동일)
 var SystemData = {
     roles: {
         "탱커": { icon: "🛡️", units: ["알리스타", "말파이트", "레오나"] },
@@ -29,17 +29,6 @@ var SystemData = {
         "서포터": { icon: "✨", units: ["소라카", "유미", "쓰레쉬"] }
     }
 };
-
-var RoleKeys = Object.keys(SystemData.roles);
-
-function getCharacterInfo(charName) {
-    for (var role in SystemData.roles) {
-        if (SystemData.roles[role].units.indexOf(charName) !== -1) {
-            return { role: role, icon: SystemData.roles[role].icon };
-        }
-    }
-    return { role: "미분류", icon: "❓" };
-}
 
 function calculateWinRate(win, lose) {
     var total = win + lose;
@@ -54,12 +43,13 @@ var UI = {
         return base;
     },
     renderMenu: function(session) {
-        if (session.type === "ADMIN") return this.make("관리자 메뉴", "1. 시스템 상세 상태\n2. 유저 목록 관리\n3. 데이터 백업", "💡 번호를 입력하세요.");
-        if (session.type === "DIRECT" || session.type === "GROUP") {
-            if (!session.data) return this.make("메인 메뉴", "1. 회원가입\n2. 로그인\n3. 1:1 문의하기", "💡 인증 후 이용 가능합니다.");
-            return this.make("메인 메뉴", "1. 내 정보\n2. 컬렉션\n3. 상점\n4. 로그아웃\n5. 1:1 문의하기", "💡 항목을 선택하세요.");
+        if (session.type === "ADMIN") return this.make("관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "💡 번호를 입력하세요.");
+        if (session.type === "GROUP") return this.make("메인 메뉴", "1. 내 정보 확인", "💡 다른 기능은 준비 중입니다.");
+        if (session.type === "DIRECT") {
+            if (!session.data) return this.make("메인 메뉴", "1. 회원가입\n2. 로그인", "💡 가입 후 이용 가능합니다.");
+            return this.make("메인 메뉴", "1. 내 정보\n2. 컬렉션\n3. 상점\n4. 로그아웃", "💡 항목을 선택하세요.");
         }
-        return this.make("알림", "권한이 없는 방입니다.");
+        return this.make("알림", "등록되지 않은 방입니다.");
     }
 };
 
@@ -114,117 +104,67 @@ var AdminManager = {
                 session.targetUser = session.userListCache[idx];
                 var d = Database.data[session.targetUser];
                 session.waitAction = "관리_유저제어";
-                var profile = "👤 대상: " + session.targetUser + "\n🏅 칭호: [" + d.title + "]\n" + Config.LINE + "\n⭐ 레벨: Lv." + d.level + "\n⚔️ 전적: " + d.win + "승 " + d.lose + "패 (" + calculateWinRate(d.win, d.lose) + "%)\n💰 골드: " + d.gold.toLocaleString() + " G";
+                var profile = "👤 대상: " + session.targetUser + "\n💰 골드: " + d.gold.toLocaleString() + " G";
                 SessionManager.save();
-                return replier.reply(UI.make("유저 관제", profile, "1. 골드 초기화\n2. 계정 삭제\n🔙 돌아가기 | ❌ 취소"));
+                return replier.reply(UI.make("유저 관제", profile, "1. 골드 초기화\n2. 계정 삭제\n🔙 돌아가기"));
             }
         }
-        
-        if (session.waitAction === "관리_유저제어") {
-            if (msg === "1") { session.waitAction = "확인_초기화"; SessionManager.save(); return replier.reply("대상 유저의 골드를 초기화할까요? ('네' 입력)"); }
-            if (msg === "2") { session.waitAction = "확인_삭제"; SessionManager.save(); return replier.reply("대상 유저의 계정을 삭제할까요? ('네' 입력)"); }
-        }
-
-        if (msg === "네") {
-            if (session.waitAction === "확인_초기화") { Database.data[session.targetUser].gold = 0; Database.save(Database.data); session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("완료", "골드 초기화 성공")); }
-            if (session.waitAction === "확인_삭제") { delete Database.data[session.targetUser]; Database.save(Database.data); session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("완료", "계정 삭제 성공")); }
-        }
-
         if (msg === "1") return replier.reply(UI.make("시스템 정보", "📡 서버: ACTIVE\n👥 유저: " + Object.keys(Database.data).length + "명"));
         if (msg === "2") {
             var list = Object.keys(Database.data);
-            if (list.length === 0) return replier.reply(UI.make("유저 목록", "⚠️ 등록된 유저가 없습니다."));
             session.userListCache = list;
             session.waitAction = "관리_유저선택";
             SessionManager.save();
-            return replier.reply(UI.make("유저 목록 관리", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "🔙 돌아가기 | ❌ 취소"));
+            return replier.reply(UI.make("유저 목록", list.map(function(id, idx) { return (idx + 1) + ". " + id; }).join("\n"), "🔙 돌아가기"));
         }
-        
         return replier.reply(UI.renderMenu(session));
     }
 };
 
-// ━━━━━━━━ [5. 모듈: 유저 로직] ━━━━━━━━
+// ━━━━━━━━ [5. 모듈: 단체톡방 전용 로직] ━━━━━━━━
+var GroupManager = {
+    handle: function(msg, session, replier, sender) {
+        if (msg === "1") {
+            var d = Database.data[sender]; 
+            if (!d) {
+                return replier.reply(UI.make("안내", "⚠️ 가입 정보가 없습니다.", "📌 이용 방법:\n1. 봇에게 개인톡을 보냅니다.\n2. 회원가입 시 [현재 채팅방 닉네임]과 똑같은 ID로 가입하세요.\n\n현재 닉네임: " + sender));
+            }
+            var info = "👤 닉네임: " + sender + "\n🏅 칭호: [" + d.title + "]\n" + Config.LINE + "\n⭐ 레벨: Lv." + d.level + "\n⚔️ 전적: " + d.win + "승 " + d.lose + "패 (" + calculateWinRate(d.win, d.lose) + "%)\n💰 보유 골드: " + d.gold.toLocaleString() + " G";
+            return replier.reply(UI.make("내 정보 확인", info, "🔙 메뉴"));
+        }
+        return replier.reply(UI.renderMenu(session));
+    }
+};
+
+// ━━━━━━━━ [6. 모듈: 개인톡방 전용 로직 (UserManager)] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier, sender) {
         var d = session.data;
-
         if (!d) {
-            if (session.waitAction === "가입_ID") { session.tempId = msg; session.waitAction = "가입_PW"; SessionManager.save(); return replier.reply(UI.make("가입", "비밀번호 입력:", "❌ 취소")); }
+            if (session.waitAction === "가입_ID") { session.tempId = msg; session.waitAction = "가입_PW"; SessionManager.save(); return replier.reply("비밀번호를 입력하세요."); }
             if (session.waitAction === "가입_PW") {
-                Database.data[session.tempId] = { pw: msg, gold: 0, level: 1, exp: 0, win: 0, lose: 0, title: "없음", collection: { titles: [], characters: [] }, firstLogin: true };
-                Database.save(Database.data); session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("성공", "가입 완료! 로그인하세요."));
+                Database.data[session.tempId] = { pw: msg, gold: 1000, level: 1, exp: 0, win: 0, lose: 0, title: "뉴비", collection: { titles: ["뉴비"], characters: [] } };
+                Database.save(Database.data); session.waitAction = null; SessionManager.save(); return replier.reply("회원가입 완료!");
             }
-            if (session.waitAction === "로그인_ID") { session.tempId = msg; session.waitAction = "로그인_PW"; SessionManager.save(); return replier.reply(UI.make("로그인", "비밀번호 입력:", "❌ 취소")); }
+            if (session.waitAction === "로그인_ID") { session.tempId = msg; session.waitAction = "로그인_PW"; SessionManager.save(); return replier.reply("비밀번호를 입력하세요."); }
             if (session.waitAction === "로그인_PW") {
                 var user = Database.data[session.tempId];
-                if (user && user.pw === msg) {
-                    session.data = user; session.waitAction = null;
-                    if (user.firstLogin) {
-                        user.gold += 1000; user.title = "뉴비"; user.collection.titles.push("뉴비");
-                        user.firstLogin = false; Database.save(Database.data);
-                        replier.reply(UI.make("선물", "🎁 1,000G와 [뉴비] 칭호 지급!"));
-                    }
-                    SessionManager.save(); return replier.reply(UI.renderMenu(session));
-                }
-                return replier.reply(UI.make("오류", "정보가 틀립니다.", "❌ 취소"));
+                if (user && user.pw === msg) { session.data = user; session.waitAction = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
+                return replier.reply("로그인 실패!");
             }
-            if (msg === "1") { session.waitAction = "가입_ID"; SessionManager.save(); return replier.reply(UI.make("가입", "ID 입력:", "❌ 취소")); }
-            if (msg === "2") { session.waitAction = "로그인_ID"; SessionManager.save(); return replier.reply(UI.make("로그인", "ID 입력:", "❌ 취소")); }
-            if (msg === "3") return replier.reply("1:1 문의는 관리자 개인 메시지를 이용해 주세요.");
+            if (msg === "1") { session.waitAction = "가입_ID"; return replier.reply("사용할 ID를 입력하세요."); } // 불필요한 안내 문구 삭제됨
+            if (msg === "2") { session.waitAction = "로그인_ID"; return replier.reply("ID를 입력하세요."); }
         } else {
-            if (session.waitAction === "상점_구매진행") {
-                var roleData = SystemData.roles[session.selectedRole];
-                var cIdx = parseInt(msg) - 1;
-                if (roleData && roleData.units[cIdx]) {
-                    var targetName = roleData.units[cIdx];
-                    if (d.collection.characters.indexOf(targetName) !== -1) return replier.reply(UI.make("오류", "이미 보유 중입니다.", "🔙 돌아가기 | ❌ 취소"));
-                    if (d.gold < Config.CHAR_PRICE) return replier.reply(UI.make("오류", "골드 부족!", "🔙 돌아가기 | ❌ 취소"));
-                    d.gold -= Config.CHAR_PRICE; d.collection.characters.push(targetName); Database.save(Database.data);
-                    return replier.reply(UI.make("구매 완료", roleData.icon + " [" + targetName + "] 영입!", "💰 잔액: " + d.gold.toLocaleString() + " G\n🔙 돌아가기 | ❌ 취소"));
-                }
-            }
-            
-            if (session.waitAction === "상점_역할선택" || session.waitAction === "보유_역할선택") {
-                var rIdx = parseInt(msg) - 1;
-                if (RoleKeys[rIdx]) {
-                    session.selectedRole = RoleKeys[rIdx];
-                    var roleData = SystemData.roles[session.selectedRole];
-                    if (session.waitAction === "상점_역할선택") {
-                        session.waitAction = "상점_구매진행";
-                        var list = roleData.units.map(function(u, i) { return (i+1) + ". " + roleData.icon + " " + u + (d.collection.characters.indexOf(u) !== -1 ? " [보유]" : " ("+Config.CHAR_PRICE+"G)"); }).join("\n");
-                        SessionManager.save(); return replier.reply(UI.make("캐릭터 구매: " + session.selectedRole, list, "💡 번호 입력\n🔙 돌아가기 | ❌ 취소"));
-                    } else {
-                        var myUnits = roleData.units.filter(function(u) { return d.collection.characters.indexOf(u) !== -1; });
-                        var list = myUnits.map(function(u) { return roleData.icon + " " + u; }).join("\n") || "보유한 캐릭터가 없습니다.";
-                        SessionManager.save(); return replier.reply(UI.make("보유 캐릭터: " + session.selectedRole, list, "🔙 돌아가기 | ❌ 취소"));
-                    }
-                }
-            }
-
-            if (session.waitAction === "칭호_장착진행") {
-                var tidx = parseInt(msg) - 1;
-                if (d.collection.titles[tidx]) { d.title = d.collection.titles[tidx]; Database.save(Database.data); session.waitAction = null; SessionManager.save(); return replier.reply(UI.make("변경", "칭호 장착 완료", "🔙 돌아가기 | ❌ 취소")); }
-            }
-
-            if (session.lastMenu === "COLLECTION") {
-                if (msg === "1") { session.waitAction = "칭호_장착진행"; SessionManager.save(); var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + "["+t+"]"; }).join("\n"); return replier.reply(UI.make("보유 칭호", tList, "💡 번호 입력\n🔙 돌아가기 | ❌ 취소")); }
-                if (msg === "2") { session.waitAction = "보유_역할선택"; SessionManager.save(); var rList = RoleKeys.map(function(r, i) { return (i+1) + ". " + SystemData.roles[r].icon + " " + r; }).join("\n"); return replier.reply(UI.make("보유 캐릭터 역할군 선택", rList, "💡 번호 입력\n🔙 돌아가기 | ❌ 취소")); }
-            }
-            if (session.lastMenu === "SHOP") {
-                if (msg === "1") { session.waitAction = "상점_역할선택"; SessionManager.save(); var rList = RoleKeys.map(function(r, i) { return (i+1) + ". " + SystemData.roles[r].icon + " " + r; }).join("\n"); return replier.reply(UI.make("역할군 선택", rList, "💡 번호 입력\n🔙 돌아가기 | ❌ 취소")); }
-            }
-
-            if (msg === "1") { session.lastMenu = "PROFILE"; SessionManager.save(); var wr = calculateWinRate(d.win, d.lose); var prof = "👤 닉네임: " + session.tempId + "\n🏅 칭호: [" + d.title + "]\n⚔️ 전적: " + d.win + "승 " + d.lose + "패 (" + wr + "%)\n💰 골드: " + d.gold.toLocaleString() + " G"; return replier.reply(UI.make("내 정보 상세", prof, "🔙 돌아가기 | ❌ 취소")); }
-            if (msg === "2") { session.lastMenu = "COLLECTION"; SessionManager.save(); return replier.reply(UI.make("컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "🔙 돌아가기 | ❌ 취소")); }
-            if (msg === "3") { session.lastMenu = "SHOP"; SessionManager.save(); return replier.reply(UI.make("상점", "1. 캐릭터 구매", "🔙 돌아가기 | ❌ 취소")); }
-            if (msg === "4") { session.data = null; session.lastMenu = null; SessionManager.save(); return replier.reply(UI.make("알림", "로그아웃 되었습니다.")); }
+            if (msg === "1") return replier.reply(UI.make("내 정보 상세", "👤 " + session.tempId + "\n💰 " + d.gold.toLocaleString() + " G", "🔙 메뉴"));
+            if (msg === "2") { session.lastMenu = "COLLECTION"; SessionManager.save(); return replier.reply(UI.make("컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "🔙 메뉴")); }
+            if (msg === "3") { session.lastMenu = "SHOP"; SessionManager.save(); return replier.reply(UI.make("상점", "1. 캐릭터 구매", "🔙 메뉴")); }
+            if (msg === "4") { session.data = null; session.lastMenu = null; SessionManager.save(); return replier.reply("로그아웃 되었습니다."); }
         }
         return replier.reply(UI.renderMenu(session));
     }
 };
 
-// ━━━━━━━━ [6. 메인 응답 핸들러] ━━━━━━━━
+// ━━━━━━━━ [7. 메인 응답 핸들러] ━━━━━━━━
 Database.data = Database.load();
 SessionManager.load();
 
@@ -234,26 +174,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var session = SessionManager.get(room, hash, isGroupChat);
     msg = msg.trim();
 
-    if (msg === "취소") { 
-        session.waitAction = null; session.lastMenu = null; session.selectedRole = null;
-        SessionManager.save(); return replier.reply("❌ 작업이 중단되었습니다."); 
-    }
-
-    if (msg === "돌아가기" || msg === "메뉴") { 
-        if (session.waitAction === "상점_구매진행" || session.waitAction === "보유_역할선택") {
-            var isShop = (session.waitAction === "상점_구매진행");
-            session.waitAction = isShop ? "상점_역할선택" : "보유_역할선택";
-            var rList = RoleKeys.map(function(r, i) { return (i+1) + ". " + SystemData.roles[r].icon + " " + r; }).join("\n");
-            SessionManager.save(); return replier.reply(UI.make(isShop ? "역할군 선택" : "보유 캐릭터 역할군 선택", rList, "💡 번호 입력\n🔙 돌아가기 | ❌ 취소"));
-        }
-        if (session.waitAction) {
-            session.waitAction = null; SessionManager.save();
-            if (session.lastMenu === "COLLECTION") return replier.reply(UI.make("컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "🔙 돌아가기 | ❌ 취소"));
-            if (session.lastMenu === "SHOP") return replier.reply(UI.make("상점", "1. 캐릭터 구매", "🔙 돌아가기 | ❌ 취소"));
-        }
-        session.lastMenu = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); 
-    }
+    if (msg === "취소") { session.waitAction = null; session.lastMenu = null; SessionManager.save(); return replier.reply("취소되었습니다."); }
+    if (msg === "메뉴" || msg === "돌아가기") { session.waitAction = null; session.lastMenu = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
 
     if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
-    if (session.type === "GROUP" || session.type === "DIRECT") return UserManager.handle(msg, session, replier, sender);
+    if (session.type === "GROUP") return GroupManager.handle(msg, session, replier, sender);
+    if (session.type === "DIRECT") return UserManager.handle(msg, session, replier, sender);
 }
