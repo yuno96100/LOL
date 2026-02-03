@@ -1,9 +1,9 @@
 /**
- * [main.js] v5.4.3
- * 1. 최상위 카테고리: 메인 메뉴 (또는 관리자 메뉴)
- * 2. 전 단계 하위 카테고리: 돌아가기(메인), 취소(이전) 가이드 적용
- * 3. 단체톡방: 비로그인 유저 채팅 시 로그인 유도 UI 무한 출력
- * 4. 보안 상태: 상세 리포트 기능 포함
+ * [main.js] v5.5.2
+ * - 모든 하위 카테고리 UI 적용 및 가이드라인(돌아가기/취소) 포함
+ * - 단체톡방 비로그인 유저 대상 "시스템 1:1 채팅 신청" 유도
+ * - 유저 상세 프로필 (레벨, 경험치, 전적/승률, 칭호) 반영
+ * - 관리자 전용 보안 상세 상태 조회 기능
  */
 
 // ㅡㅡㅡㅡㅡㅡㅡ [1. 설정 및 상수] ㅡㅡㅡㅡㅡㅡㅡ
@@ -32,7 +32,7 @@ var UI = {
             return this.make("관리자 메뉴", "1. 시스템 상세 상태\n2. 유저 목록 관리\n3. 데이터 백업", "💡 번호를 입력하여 시스템을 제어하세요.");
         }
         if (session.type === "GROUP") {
-            if (!session.data) return this.make(Config.BotName, "개인톡에서 로그인을 먼저 해주세요.", "💡 명령어: .메뉴 (개인톡 인증 필수)");
+            if (!session.data) return this.make(Config.BotName, "인증되지 않은 모험가입니다.\n채팅을 위해 로그인을 완료해주세요.", "💡 시스템 1:1 채팅 신청\n🔑 가입/로그인 후 이용 가능");
             return this.make("메인 메뉴", "1. 내 정보\n2. 상점 이용\n3. 모험 떠나기\n4. 랭킹 확인", "💡 함께 즐기는 광장입니다.");
         }
         if (session.type === "DIRECT") {
@@ -40,6 +40,29 @@ var UI = {
             return this.make("메인 메뉴", "1. 내 정보\n2. 비밀번호 변경\n3. 로그아웃\n4. 1:1 문의하기", "💡 개인 설정 및 문의를 관리합니다.");
         }
         return "사용 불가 영역입니다.";
+    },
+    renderProfile: function(id, data) {
+        var lv = data.level || 1;
+        var exp = data.exp || 0;
+        var nextExp = lv * 100;
+        var title = data.title || "평범한 여행자";
+        var gold = (data.gold || 0).toLocaleString();
+        
+        var win = data.win || 0;
+        var lose = data.lose || 0;
+        var total = win + lose;
+        var rate = total === 0 ? 0 : ((win / total) * 100).toFixed(1);
+
+        var content = 
+            "👤 닉네임: " + id + "\n" +
+            "🏅 칭호: [" + title + "]\n" +
+            Config.LINE + "\n" +
+            "⭐ 레벨: Lv." + lv + "\n" +
+            "📈 경험치: [" + exp + " / " + nextExp + "]\n" +
+            "⚔️ 전적: " + win + "승 " + lose + "패 (" + rate + "%)\n" +
+            "💰 보유 골드: " + gold + " G";
+        
+        return this.make("내 정보 상세", content, "💡 돌아가기: 메인 메뉴 / ❌ 취소: 이전");
     }
 };
 
@@ -156,7 +179,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var session = SessionManager.get(room, hash, isGroupChat);
 
     try {
-        // [공통 제어] 돌아가기 & 취소
+        // [공통] 돌아가기 & 취소
         if (msg === "돌아가기" || msg === Config.Prefix + "메뉴") {
             session.waitAction = null;
             return replier.reply(UI.renderMenu(session));
@@ -173,18 +196,15 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.make("알림", "이전 단계로 돌아갑니다.", "💡 돌아가기: 메인 / ❌ 취소: 한번 더"));
         }
 
-        // [분기 1] 관리자 권한
+        // [분기 1] 관리자
         if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
 
-        // [분기 2] 단체톡방 (비로그인 차단 강화)
+        // [분기 2] 단체톡방 (문구 수정 반영)
         if (session.type === "GROUP") {
             if (!session.data) {
-                var loginGuide = "아직 인증되지 않은 모험가입니다.\n채팅을 하시려면 개인톡에서 로그인을 완료해주세요.";
-                return replier.reply(UI.make("인증 필요", loginGuide, "💡 개인톡 검색: " + Config.BotName + "\n🔑 가입/로그인 후 이용 가능"));
+                return replier.reply(UI.make("인증 필요", "아직 인증되지 않은 모험가입니다.\n채팅을 하시려면 개인톡에서 로그인을 완료해주세요.", "💡 시스템 1:1 채팅 신청\n🔑 가입/로그인 후 이용 가능"));
             }
-            if (msg === "1") return replier.reply(UI.make("내 정보", "👤 ID: " + session.tempId + "\n💰 골드: " + (session.data.gold || 0).toLocaleString() + "G", "💡 돌아가기: 메인 메뉴"));
-            
-            // ㅡㅡㅡㅡㅡㅡㅡ [NEW LOGIC: 단체톡 기능] ㅡㅡㅡㅡㅡㅡㅡ
+            if (msg === "1") return replier.reply(UI.renderProfile(session.tempId, session.data));
             return;
         }
 
@@ -192,20 +212,22 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "DIRECT") {
             if (session.waitAction === "문의_내용작성") {
                 SessionManager.idToHash[session.data ? session.tempId : sender] = hash;
-                sendToRoom(Config.AdminRoom, UI.make("📩 신규 문의 접수", "발신: " + sender + "\n내용: " + msg, "💡 관리자 메뉴 2번에서 답변 가능"));
+                sendToRoom(Config.AdminRoom, UI.make("📩 신규 문의 접수", "발신: " + sender + "\n내용: " + msg, "💡 관리자 메뉴에서 답변 가능"));
                 session.waitAction = null;
                 return replier.reply(UI.make("접수 완료", "관리자에게 문의가 전달되었습니다.", "💡 돌아가기: 메인 메뉴"));
             }
 
-            if (!session.data) { // 비로그인 상태
+            if (!session.data) { // 비로그인
                 if (session.waitAction === "가입_ID") {
-                    if (Database.data[msg]) return replier.reply(UI.make("가입 실패", "이미 존재하는 ID입니다.", "❌ 취소: ID 재입력"));
+                    if (Database.data[msg]) return replier.reply(UI.make("가입 실패", "이미 존재하는 ID입니다."));
                     session.tempId = msg; session.waitAction = "가입_PW"; 
-                    return replier.reply(UI.make("회원가입", "ID: " + msg + "\n사용하실 비밀번호를 입력하세요.", "🔙 돌아가기: 메인 / ❌ 취소: ID 재설정"));
+                    return replier.reply(UI.make("회원가입", "ID: " + msg + "\n사용할 비밀번호를 입력하세요.", "🔙 돌아가기: 메인 / ❌ 취소: ID 재설정"));
                 }
                 if (session.waitAction === "가입_PW") {
-                    Database.data[session.tempId] = {pw:msg, gold:1000, level:1}; Database.save(Database.data);
-                    session.waitAction = null; return replier.reply(UI.make("회원가입 완료", session.tempId + "님 환영합니다!", "💡 이제 로그인을 진행해주세요."));
+                    Database.data[session.tempId] = { pw: msg, gold: 1000, level: 1, exp: 0, win: 0, lose: 0, title: "평범한 여행자" }; 
+                    Database.save(Database.data);
+                    session.waitAction = null; 
+                    return replier.reply(UI.make("회원가입 완료", session.tempId + "님 환영합니다!", "💡 이제 로그인을 진행해주세요."));
                 }
                 if (session.waitAction === "로그인_ID") {
                     if (!Database.data[msg]) return replier.reply(UI.make("로그인 실패", "존재하지 않는 ID입니다."));
@@ -217,18 +239,17 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                         session.data = Database.data[session.tempId]; session.waitAction = null;
                         SessionManager.idToHash[session.tempId] = hash; return replier.reply(UI.renderMenu(session));
                     }
-                    return replier.reply(UI.make("로그인 실패", "비밀번호가 틀렸습니다.", "❌ 취소: ID 재입력"));
+                    return replier.reply(UI.make("로그인 실패", "비밀번호가 틀렸습니다."));
                 }
-                if (msg === "1") { session.waitAction = "가입_ID"; return replier.reply(UI.make("회원가입", "사용할 ID를 입력하세요.", "🔙 돌아가기: 메인 메뉴")); }
-                if (msg === "2") { session.waitAction = "로그인_ID"; return replier.reply(UI.make("로그인", "ID를 입력하세요.", "🔙 돌아가기: 메인 메뉴")); }
-                if (msg === "3") { session.waitAction = "문의_내용작성"; return replier.reply(UI.make("1:1 문의", "내용을 입력하세요.", "🔙 돌아가기: 메인 메뉴")); }
+                if (msg === "1") { session.waitAction = "가입_ID"; return replier.reply(UI.make("회원가입", "ID 입력:")); }
+                if (msg === "2") { session.waitAction = "로그인_ID"; return replier.reply(UI.make("로그인", "ID 입력:")); }
+                if (msg === "3") { session.waitAction = "문의_내용작성"; return replier.reply(UI.make("문의", "내용 입력:")); }
             } else { // 로그인 상태
-                if (msg === "3") { session.data = null; return replier.reply(UI.make("로그아웃", "정상적으로 로그아웃되었습니다.", "💡 다시 이용하려면 로그인하세요.")); }
-                if (msg === "4") { session.waitAction = "문의_내용작성"; return replier.reply(UI.make("1:1 문의", "내용을 입력하세요.", "🔙 돌아가기: 메인 메뉴")); }
-                
-                // ㅡㅡㅡㅡㅡㅡㅡ [NEW LOGIC: 개인톡 로그인 기능] ㅡㅡㅡㅡㅡㅡㅡ
+                if (msg === "1") return replier.reply(UI.renderProfile(session.tempId, session.data));
+                if (msg === "3") { session.data = null; return replier.reply(UI.make("로그아웃", "정상적으로 로그아웃되었습니다.")); }
+                if (msg === "4") { session.waitAction = "문의_내용작성"; return replier.reply(UI.make("문의", "내용 입력:")); }
             }
             return replier.reply(UI.renderMenu(session));
         }
-    } catch (e) { replier.reply("시스템 에러: " + e.message); }
+    } catch (e) { replier.reply("에러: " + e.message); }
 }
