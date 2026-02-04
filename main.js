@@ -1,11 +1,3 @@
-/**
- * [main.js] v7.3.4
- * 1. 정밀 너비 엔진: 내용물 중 가장 긴 문장(DB경로 등)을 감지하여 구분선 길이를 1:1 대응.
- * 2. 가변 네비게이션: '이전|취소|메뉴' 사이의 간격을 라인 폭에 비례하여 자동 배분.
- * 3. 완전 복구: Admin, Group, User 매니저의 모든 세부 조건문을 생략 없이 포함.
- * 4. 에러 제어: 실시간 오류 상황을 관리자 전용방으로 전송.
- */
-
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
     Prefix: ".",
@@ -18,35 +10,50 @@ var Config = {
     LINE_CHAR: "━",
     NAV_ITEMS: ["🔙 이전", "❌ 취소", "🏠 메뉴"],
     
-    // 텍스트의 실제 시각적 폭 계산 (한글/이모지 가중치)
+    // 기기별 최대치 설정 (PC는 보통 모바일의 1.5배~2배 정도의 너비를 가집니다)
+    LIMITS: {
+        MOBILE: 23,
+        PC: 45
+    },
+
     getVisualWidth: function(str) {
         if (!str) return 0;
         var w = 0;
         for (var i = 0; i < str.length; i++) {
             var c = str.charCodeAt(i);
-            // 한글 및 전각 문자 범위 체크
             if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || c > 255) w += 2;
-            else w += 1.1; // 영문/숫자/기호
+            else w += 1.0; 
         }
         return w;
     },
 
-    // UI 라인 데이터 산출
-    getLineData: function(content) {
+    // UI 라인 데이터 산출 (기기 판별 로직 통합)
+    getLineData: function(content, isPc) {
         var lines = content.split("\n");
-        var maxW = 22; // 최소 너비 (네비게이션 가독성 확보용)
+        var maxW = 18;
         for (var i = 0; i < lines.length; i++) {
             var w = this.getVisualWidth(lines[i]);
             if (w > maxW) maxW = w;
         }
-        // 채팅창 가독성 한계치(약 32~36자) 내에서 조절
-        var finalLen = Math.min(Math.floor(maxW / 1.6), 30);
+        
+        // PC 여부에 따라 상한선을 다르게 선택
+        var limit = isPc ? this.LIMITS.PC : this.LIMITS.MOBILE;
+        var calculatedLen = Math.floor(maxW / 1.7);
+        var finalLen = Math.min(calculatedLen, limit); 
+        
         return {
             line: Array(finalLen + 1).join(this.LINE_CHAR),
             width: finalLen
         };
     },
     
+    getDynamicNav: function(lineWidth) {
+        var spaceCount = Math.max(1, Math.floor((lineWidth - 12) / 3));
+        var spaces = Array(spaceCount + 1).join(" ");
+        return this.NAV_ITEMS.join(spaces + "|" + spaces);
+    }
+};
+
     // 네비게이션 간격 자동 분배
     getDynamicNav: function(lineWidth) {
         // 라인 길이에 비례하여 아이템 사이 공백 삽입
@@ -92,9 +99,10 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
-    make: function(title, content, help) {
+    // isPc 인자를 추가로 받아 기기별 대응
+    make: function(title, content, help, isPc) {
         var rawText = title + "\n" + content + (help ? "\n" + help : "");
-        var lineData = Config.getLineData(rawText);
+        var lineData = Config.getLineData(rawText, isPc);
         var navBar = Config.getDynamicNav(lineData.width);
         
         var ui = "『 " + title + " 』\n" + 
@@ -106,7 +114,8 @@ var UI = {
         
         ui += "⚙️ " + navBar;
         return ui;
-    },
+    }
+};
     renderMenu: function(session) {
         if (session.type === "ADMIN") return this.make("관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "시스템 관제 중");
         if (session.type === "GROUP") return this.make("메인 메뉴", "1. 내 정보 확인", "소환사의 협곡");
