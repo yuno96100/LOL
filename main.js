@@ -1,9 +1,9 @@
 /**
- * [main.js] v7.9.0
- * 1. 구문 수정: Unterminated string literal 오류 방지를 위해 줄바꿈 문자(\n)를 한 줄 내에 포함.
- * 2. 상세 메뉴: 1. 정보 수정  2. 전체 초기화  3. 계정 삭제 (세로 바 제거).
- * 3. 계정 삭제: 관리자 확인 절차 거쳐 DB에서 유저 영구 삭제.
- * 4. 무생략: 모든 관리자/유저/단체방 기능 및 고정 UI 로직 전체 포함.
+ * [main.js] v7.9.1
+ * 1. UI 수정: 상세 메뉴를 [수정], [초기화], [삭제] 3개로 분리 및 간격(공백 3칸) 조정.
+ * 2. 삭제 기능: 관리자 전용 '계정 삭제' 로직 (DB 영구 제거) 유지.
+ * 3. 고정 UI: 네비게이션 간격 1칸 및 고정 구분선 유지.
+ * 4. 무생략: 모든 관리자/유저/시스템 매니저 코드 포함.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -97,7 +97,6 @@ var UI = {
             var userData = Database.data[sender];
             if (!userData) {
                 session.screen = "IDLE";
-                // 문자열 리터럴 오류 방지를 위해 한 줄로 작성 (내부 \n 사용)
                 return UI.make("알림", "'시스템'에게 1대1 채팅을 걸어\n개인톡에서 가입 및 로그인을 진행해 주세요.", "가입 정보가 없습니다.");
             }
             return this.go(session, "GROUP_MAIN", "메인 메뉴", "1. 내 정보 확인", "소환사의 협곡");
@@ -161,7 +160,9 @@ var AdminManager = {
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
                     var ud = Database.data[session.targetUser];
-                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), "1. 정보 수정  2. 전체 초기화  3. 계정 삭제"));
+                    // 간격 3칸 적용된 메뉴
+                    var adminMenu = "1. 정보 수정   2. 전체 초기화   3. 계정 삭제";
+                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), adminMenu));
                 }
                 break;
             case "ADMIN_USER_DETAIL":
@@ -182,7 +183,7 @@ var AdminManager = {
                     Database.data[session.targetUser][session.editType] = val; Database.save(Database.data);
                     replier.reply(UI.make("수정 완료", session.targetUser + "님의 데이터가 변경되었습니다.", ""));
                     session.screen = "ADMIN_USER_DETAIL";
-                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "1. 정보 수정  2. 전체 초기화  3. 계정 삭제"));
+                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "1. 정보 수정   2. 전체 초기화   3. 계정 삭제"));
                 }
                 break;
             case "ADMIN_RESET_CONFIRM":
@@ -191,7 +192,7 @@ var AdminManager = {
                     Database.data[session.targetUser] = Database.getInitData(oldPw); Database.save(Database.data);
                     replier.reply(UI.make("초기화 완료", session.targetUser + "님의 데이터가 리셋되었습니다.", ""));
                     session.screen = "ADMIN_USER_DETAIL";
-                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "1. 정보 수정  2. 전체 초기화  3. 계정 삭제"));
+                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "1. 정보 수정   2. 전체 초기화   3. 계정 삭제"));
                 }
                 break;
             case "ADMIN_DELETE_CONFIRM":
@@ -333,6 +334,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.0 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
