@@ -1,9 +1,9 @@
 /**
- * [main.js] v7.8.1
- * 1. 모바일 UI 최적화: 구분선 최대 길이를 관리자 지정 규격(18칸)으로 고정.
- * 2. 취소 로직: "작업이 중지되었습니다." 출력 후 IDLE 상태 유지.
- * 3. 명칭 통일: '돌아가기' 배제, '이전' 명칭 사용.
- * 4. PC 최적화: PC 버전 구분선 길이 44칸 유지.
+ * [main.js] v7.8.3
+ * 1. 가변 UI: 타이틀, 본문, 도움말, 그리고 '네비게이션'까지 포함하여 가장 긴 줄에 맞춰 구분선 생성.
+ * 2. 네비게이션: 아이콘 없이 '이전 | 취소 | 메뉴'로 구성.
+ * 3. 취소 로직: "작업이 중지되었습니다." 출력 후 IDLE 상태 유지.
+ * 4. 세션 관리: 취소/메뉴 시 히스토리 및 상태 완전 초기화.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,34 +16,43 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"],
-    // 모바일 최대치를 18칸으로 하향 조정
-    LIMITS: { MOBILE: 18, PC: 43 },
-    MIN_LINE_LEN: 18 
+    NAV_ITEMS: ["이전", "취소", "메뉴"],
+    LIMITS: { MOBILE: 25, PC: 50 }, 
+    MIN_LINE_LEN: 10 
 };
 
 var Utils = {
+    // 텍스트의 시각적 너비 계산 (한글 2, 영문/숫자 1)
     getVisualWidth: function(str) {
         if (!str) return 0;
-        var w = 0;
+        var maxWidth = 0;
         var lines = str.split("\n");
         for (var j = 0; j < lines.length; j++) {
             var lineW = 0;
-            for (var i = 0; i < lines[j].length; i++) {
-                var c = lines[j].charCodeAt(i);
+            var currentLine = lines[j];
+            for (var i = 0; i < currentLine.length; i++) {
+                var c = currentLine.charCodeAt(i);
                 if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || c > 255) lineW += 2;
-                else lineW += 1.0;
+                else lineW += 1;
             }
-            if (lineW > w) w = lineW;
+            if (lineW > maxWidth) maxWidth = lineW;
         }
-        return w;
+        return maxWidth;
     },
-    getLineData: function(content, isPc) {
-        var maxW = this.getVisualWidth(content);
+    // 네비게이션을 포함한 모든 요소 중 가장 긴 길이에 맞춰 선 생성
+    getDynamicLine: function(title, content, help, isPc) {
+        var navBar = this.getFixedNav();
+        // 모든 요소를 합친 텍스트 덩어리 생성 (길이 측정용)
+        var totalText = "『 " + title + " 』\n" + content + (help ? "\n" + help : "") + "\n" + navBar;
+        var maxW = this.getVisualWidth(totalText);
+        
+        // ━ 문자는 시각적으로 한글 1자(너비 2) 정도를 차지하므로 2로 나눔
+        var lineCount = Math.ceil(maxW / 2);
+        
         var limit = isPc ? Config.LIMITS.PC : Config.LIMITS.MOBILE;
-        // 내용에 관계없이 limit(모바일 18, PC 44)을 넘지 않도록 설정
-        var finalLen = Math.max(Config.MIN_LINE_LEN, Math.min(Math.floor(maxW / 1.75), limit)); 
-        return { line: Array(finalLen + 1).join(Config.LINE_CHAR), width: finalLen };
+        var finalLen = Math.max(Config.MIN_LINE_LEN, Math.min(lineCount, limit));
+        
+        return Array(finalLen + 1).join(Config.LINE_CHAR);
     },
     getFixedNav: function() {
         var space = " "; 
@@ -88,10 +97,13 @@ function getTierInfo(lp) {
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     make: function(title, content, help, isPc) {
-        var lineData = Utils.getLineData(content + "\n" + title, isPc);
+        var dynamicLine = Utils.getDynamicLine(title, content, help, isPc);
         var navBar = Utils.getFixedNav();
-        var res = "『 " + title + " 』\n" + lineData.line + "\n" + content + "\n" + lineData.line + "\n";
-        if (help) res += "💡 " + help + "\n" + lineData.line + "\n";
+        
+        var res = "『 " + title + " 』\n" + dynamicLine + "\n" + content + "\n" + dynamicLine + "\n";
+        if (help) {
+            res += "💡 " + help + "\n" + dynamicLine + "\n";
+        }
         res += navBar;
         return res;
     },
@@ -102,7 +114,7 @@ var UI = {
                  "💰 골드: " + data.gold.toLocaleString() + " G\n" +
                  "⭐ 레벨: Lv." + data.level + "\n" +
                  "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패";
-        return p1 + "\n━━━━━━━━━━━━━━━━━━\n" + p2; // 프로필 내부선도 18칸 고정
+        return p1 + "\n" + p2;
     },
     go: function(session, screen, title, content, help, isPc) {
         if (session.screen && session.screen !== screen && session.screen !== "IDLE") {
@@ -164,7 +176,7 @@ var AdminManager = {
                 if (msg === "1") {
                     var rt = java.lang.Runtime.getRuntime();
                     var used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
-                    var sysInfo = "⚡ 속도: " + (new Date().getTime() - startTime) + "ms\n📟 RAM: " + used + " MB\n👥 총원: " + Object.keys(Database.data).length + "명\n🛰️ 상태: 정상 작동 중";
+                    var sysInfo = "⚡ 속도: " + (new Date().getTime() - startTime) + "ms\n📟 RAM: " + used + " MB\n👥 총원: " + Object.keys(Database.data).length + "명";
                     replier.reply(UI.make("시스템 정보", sysInfo, "서버 리소스 관제", isPc));
                 } else if (msg === "2") {
                     session.userListCache = Object.keys(Database.data);
@@ -181,7 +193,7 @@ var AdminManager = {
                 break;
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") replier.reply(UI.go(session, "ADMIN_EDIT_SELECT", "수정 항목 선택", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "변경할 속성 선택", isPc));
-                else if (msg === "2") replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화 확인", "정말로 " + session.targetUser + "님의 데이터를 초기화하시겠습니까?\n(입력: 확인)", "취소는 하단 '취소'", isPc));
+                else if (msg === "2") replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화 확인", "정말로 " + session.targetUser + "님의 데이터를 초기화하시겠습니까?\n(입력: 확인)", "취소는 하단 취소", isPc));
                 break;
             case "ADMIN_EDIT_SELECT":
                 var types = ["gold", "lp", "level"], names = ["골드", "LP", "레벨"], tIdx = parseInt(msg) - 1;
@@ -307,7 +319,6 @@ Database.data = Database.load();
 SessionManager.load();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
-    var startTime = new Date().getTime();
     try {
         if (!msg) return;
         var hash = String(imageDB.getProfileHash());
@@ -315,7 +326,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         msg = msg.trim();
         var isPc = (hash === Config.AdminHash && room === Config.AdminRoom);
 
-        if (msg === "이전" || msg === "⬅️ 이전") {
+        if (msg === "이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
                 session.screen = prev.screen; session.lastTitle = prev.title;
@@ -323,25 +334,25 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             } else return replier.reply(UI.renderMenu(session, isPc));
         }
         
-        if (msg === "취소" || msg === "🚫 취소") { 
+        if (msg === "취소") { 
             SessionManager.reset(session); 
             SessionManager.save();
             return replier.reply("작업이 중지되었습니다.");
         }
 
-        if (msg === "메뉴" || msg === "🏠 메뉴") { 
+        if (msg === "메뉴") { 
             SessionManager.reset(session); 
             return replier.reply(UI.renderMenu(session, isPc)); 
         }
 
         if (session.screen === "IDLE") return; 
 
-        if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, isPc, startTime);
+        if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, isPc, new Date().getTime());
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender, isPc);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender, isPc);
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.8.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.8.3 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
