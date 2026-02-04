@@ -1,9 +1,9 @@
 /**
- * [main.js] v7.5.6
- * 1. 구분선 롤백: 네비게이션 길이에 맞추는 기능을 제거하고 다시 콘텐츠 길이에 비례하게 변경.
- * 2. 내비게이션 정립: '이전(직전 단계)', '취소(데이터 초기화)', '메뉴(홈 이동)' 기능 유지.
- * 3. 칭호/상점: 장착 및 구매 확정 기능 포함.
- * 4. 보안: 지정된 AdminHash 및 AdminRoom 기반 관리자 권한 체크.
+ * [main.js] v7.5.8
+ * 1. UI 롤백: UI 엔진(구분선 및 레이아웃)을 v7.5.2 버전으로 100% 복구.
+ * 2. 네비게이션 유지: '이전(History)', '취소(Reset)', '메뉴(Home)' 기능 통합.
+ * 3. 칭호/상점: 실시간 장착(✅) 및 캐릭터 영입 로직 유지.
+ * 4. 세션 관리: 화면 전환 및 데이터 초기화 로직 최적화.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,7 +15,7 @@ var Config = {
     BotName: "소환사의 협곡",
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
-    LINE_CHAR: "━", 
+    LINE_CHAR: "━",
     NAV_ITEMS: ["이전", "취소", "메뉴"],
     LIMITS: { MOBILE: 23, PC: 45 }
 };
@@ -31,7 +31,7 @@ var Utils = {
         }
         return w;
     },
-    // 롤백: 콘텐츠 기반 가변 길이 계산
+    // [v7.5.2 롤백] 콘텐츠 비례형 라인 데이터 계산
     getLineData: function(content, isPc) {
         var lines = content.split("\n");
         var maxW = 18;
@@ -43,6 +43,7 @@ var Utils = {
         var finalLen = Math.min(Math.floor(maxW / 1.7), limit); 
         return { line: Array(finalLen + 1).join(Config.LINE_CHAR), width: finalLen };
     },
+    // [v7.5.2 롤백] 가변 네비게이션 간격
     getDynamicNav: function(lineWidth) {
         var spaceCount = Math.max(1, Math.floor((lineWidth - 12) / 3));
         var spaces = Array(spaceCount + 1).join(" ");
@@ -84,16 +85,16 @@ function getTierInfo(lp) {
     return "⚫ 아이언";
 }
 
-// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: UI 엔진 (v7.5.2 롤백 버전)] ━━━━━━━━
 var UI = {
     make: function(title, content, help, isPc) {
         var lineData = Utils.getLineData(title + "\n" + content + (help || ""), isPc);
         var navBar = Utils.getDynamicNav(lineData.width);
-        
-        var ui = "『 " + title + " 』\n" + lineData.line + "\n" + content + "\n" + lineData.line + "\n";
-        if (help) ui += "💡 " + help + "\n" + lineData.line + "\n";
-        ui += navBar;
-        return ui;
+        // v7.5.2 특유의 정갈한 출력 구조
+        var res = "『 " + title + " 』\n" + lineData.line + "\n" + content + "\n" + lineData.line + "\n";
+        if (help) res += "💡 " + help + "\n" + lineData.line + "\n";
+        res += navBar;
+        return res;
     },
     go: function(session, screen, title, content, help, isPc) {
         if (session.screen && session.screen !== screen) {
@@ -154,7 +155,7 @@ var AdminManager = {
                     var rt = java.lang.Runtime.getRuntime();
                     var used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
                     var res = "⚡ 속도: " + (new Date().getTime() - startTime) + "ms\n💾 DB: " + (new java.io.File(Config.DB_PATH).length() / 1024).toFixed(2) + " KB\n📟 RAM: " + used + " MB\n👥 총원: " + Object.keys(Database.data).length + "명";
-                    replier.reply(UI.make("시스템 정보", res, "실시간 관제", isPc));
+                    replier.reply(UI.make("시스템 정보", res, "실시간 관제 데이터", isPc));
                 } else if (msg === "2") {
                     session.userListCache = Object.keys(Database.data);
                     replier.reply(UI.go(session, "ADMIN_USER_LIST", "소환사 명부", session.userListCache.map(function(id, i){ return (i+1)+". "+id; }).join("\n"), "번호 입력", isPc));
@@ -202,7 +203,7 @@ var UserManager = {
                         var p = "👤 " + (session.tempId || "소환사") + "\n🏅 [" + d.title + "]\n🏆 " + getTierInfo(d.lp) + "\n⭐ Lv." + d.level + "\n💰 " + d.gold.toLocaleString() + " G";
                         replier.reply(UI.make("프로필", p, "정보 조회 완료", isPc));
                     } else if (msg === "2") {
-                        replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "번호 선택", isPc));
+                        replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "항목 선택", isPc));
                     } else if (msg === "3") {
                         replier.reply(UI.go(session, "SHOP_ROLES", "상점", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "역할 선택", isPc));
                     } else if (msg === "4") { session.data = null; replier.reply(UI.renderMenu(session, isPc)); }
@@ -215,7 +216,7 @@ var UserManager = {
                         }).join("\n");
                         replier.reply(UI.go(session, "COL_TITLE", "보유 칭호", tList, "장착할 번호 입력", isPc));
                     } else if (msg === "2") {
-                        var cList = d.collection.characters.length > 0 ? d.collection.characters.join("\n") : "없음";
+                        var cList = d.collection.characters.length > 0 ? d.collection.characters.join("\n") : "보유 캐릭터 없음";
                         replier.reply(UI.go(session, "COL_CHAR", "보유 캐릭터", cList, "내 유닛 목록", isPc));
                     }
                     break;
@@ -224,7 +225,7 @@ var UserManager = {
                     var tIdx = parseInt(msg) - 1;
                     if (d.collection.titles[tIdx]) {
                         d.title = d.collection.titles[tIdx]; Database.save(Database.data);
-                        replier.reply(UI.make("장착 완료", "[" + d.title + "] 칭호 장착!", "프로필을 확인하세요.", isPc));
+                        replier.reply(UI.make("장착 완료", "[" + d.title + "] 칭호 장착!", "", isPc));
                     }
                     break;
 
@@ -251,7 +252,7 @@ var UserManager = {
                             replier.reply(UI.make("알림", "골드가 부족합니다.", "잔액: " + d.gold + "G", isPc));
                         } else {
                             d.gold -= 500; d.collection.characters.push(target); Database.save(Database.data);
-                            replier.reply(UI.make("구매 완료", target + " 영입 성공!", "잔액: " + d.gold + "G", isPc));
+                            replier.reply(UI.make("구매 완료", target + " 영입 완료!", "잔액: " + d.gold + "G", isPc));
                         }
                     }
                     break;
@@ -265,7 +266,7 @@ var GroupManager = {
     handle: function(msg, session, replier, sender, isPc) {
         if (session.screen === "GROUP_MAIN" && msg === "1") {
             var d = Database.data[sender];
-            if (!d) return replier.reply(UI.make("알림", "가입 정보가 없습니다.", "개인톡에서 가입해 주세요.", isPc));
+            if (!d) return replier.reply(UI.make("알림", "가입 정보가 없습니다.", "개인톡 가입 필요", isPc));
             var info = "👤 " + sender + "\n🏆 " + getTierInfo(d.lp) + "\n⭐ Lv." + d.level + "\n💰 " + d.gold.toLocaleString() + " G";
             replier.reply(UI.make("내 정보 확인", info, "전투 데이터", isPc));
         }
@@ -285,7 +286,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         msg = msg.trim();
         var isPc = (hash === Config.AdminHash && room === Config.AdminRoom);
 
-        // 네비게이션 처리
+        // 네비게이션 트리거
         if (msg === "이전") {
             if (session.history && session.history.length > 0) {
                 session.screen = session.history.pop();
@@ -298,13 +299,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         }
         if (msg === "메뉴") return replier.reply(UI.renderMenu(session, isPc));
 
-        // 모듈 호출
+        // 각 매니저 실행
         if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, isPc, startTime);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender, isPc);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender, isPc);
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.5.6 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.5.8 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
