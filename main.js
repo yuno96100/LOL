@@ -1,7 +1,7 @@
 /**
- * [main.js] v7.8.8
- * 1. UI 수정: 관리자 상세 정보 하단의 불필요한 중간 구분선 제거.
- * 2. UI 고정: 고정된 구분선 및 네비게이션 적용 (간격 1칸).
+ * [main.js] v7.8.7
+ * 1. UI 고정: 가변 계산 로직 삭제, 고정된 구분선 및 네비게이션 적용.
+ * 2. 간격 조정: 네비게이션 아이템 간 간격을 1칸으로 축소 (⬅️ 이전 | 🚫 취소 | 🏠 메뉴).
  * 3. 접근 제어: 단체방 미가입 유저 가입 안내 로직 유지.
  * 4. 무생략: 모든 관리자/유저/시스템 매니저 코드 포함.
  */
@@ -20,10 +20,12 @@ var Config = {
 };
 
 var Utils = {
+    // 네비게이션 바 (간격 1칸으로 축소)
     getFixedNav: function() {
         var sp = " "; 
         return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
     },
+    // 네비게이션 길이에 맞춘 고정 구분선 (약 14~15자)
     getFixedLine: function() {
         return Array(15).join(Config.LINE_CHAR);
     }
@@ -68,12 +70,9 @@ var UI = {
     make: function(title, content, help) {
         var line = Utils.getFixedLine();
         var navBar = Utils.getFixedNav();
-        // 본문과 도움말(help) 사이의 line은 유지하되, 그 외 불필요한 중첩 삭제
-        var res = "『 " + title + " 』\n" + line + "\n" + content + "\n";
-        if (help) {
-            res += "💡 " + help + "\n";
-        }
-        res += line + "\n" + navBar;
+        var res = "『 " + title + " 』\n" + line + "\n" + content + "\n" + line + "\n";
+        if (help) res += "💡 " + help + "\n" + line + "\n";
+        res += navBar;
         return res;
     },
     renderProfile: function(id, data) {
@@ -326,6 +325,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.8.8 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.8.7 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
