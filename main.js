@@ -1,8 +1,8 @@
 /**
- * [main.js] v7.9.7
- * 1. 로그아웃 강화: 세션 DB 전체를 순회하여 해당 유저 ID를 가진 모든 세션(개인/단체)을 Null 처리.
- * 2. 세션 동기화: 단체방 입장 시 개인톡 로그인 여부를 실시간으로 체크하여 자동 연결/해제.
- * 3. UI: 구분선 13칸 및 관리자 수직 메뉴 유지.
+ * [main.js] v8.1.0
+ * 1. 베이스: 관리자님이 검토하신 v7.9.7 로직 100% 동일 적용.
+ * 2. UI 수정: 구분선 Config.LINE_COUNT = 12로 변경.
+ * 3. 줄바꿈: 강제 줄바꿈 로직 없이 7.9.7 원본 텍스트 출력 유지.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,7 +15,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 13,
+    LINE_COUNT: 12, // 12칸으로 고정
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
@@ -136,7 +136,6 @@ var SessionManager = {
         session.history = []; session.userListCache = [];
         session.targetUser = null; session.editType = null;
     },
-    // 전역 로그아웃 강화: 특정 아이디와 연결된 모든 세션(Key 상관없이) 초기화
     forceLogout: function(userId) {
         if (!userId) return;
         for (var key in this.sessions) {
@@ -255,7 +254,7 @@ var UserManager = {
                     else if (msg === "4") { 
                         var userId = session.tempId;
                         SessionManager.forceLogout(userId); 
-                        replier.reply("로그아웃이 완료되었습니다. (모든 방에서 접속 종료)"); 
+                        replier.reply(UI.make("알림", "로그아웃이 완료되었습니다. (모든 방에서 접속 종료)", "")); 
                     }
                     break;
                 case "COL_MAIN":
@@ -324,11 +323,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
-        // [v7.9.7] 실시간 세션 동기화 로직 보강
         if (isGroupChat) {
             var found = false;
             for (var k in SessionManager.sessions) {
-                // 개인톡 세션에서 해당 닉네임(sender)으로 로그인된 세션이 있는지 확인
                 if (SessionManager.sessions[k].type === "DIRECT" && 
                     SessionManager.sessions[k].tempId === sender && 
                     SessionManager.sessions[k].data) {
@@ -339,7 +336,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                     break;
                 }
             }
-            // 개인톡에서 로그아웃된 상태라면 단체톡 세션도 강제 해제
             if (!found) {
                 session.data = null;
                 session.tempId = null;
@@ -357,7 +353,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (msg === "취소" || msg === "🚫 취소") { 
             SessionManager.reset(session); 
             SessionManager.save();
-            return replier.reply("작업이 중지되었습니다.");
+            return replier.reply(UI.make("알림", "작업이 중지되었습니다.", ""));
         }
         if (msg === "메뉴" || msg === "🏠 메뉴") { 
             SessionManager.reset(session); 
@@ -375,6 +371,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.7 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.0 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
