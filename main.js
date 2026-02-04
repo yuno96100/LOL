@@ -1,9 +1,8 @@
 /**
  * [main.js] v7.9.5
- * 1. UI 수정: 모든 구분선을 Config.LINE_CHAR 기준 13칸으로 조정.
- * 2. 로그아웃: "로그아웃이 완료되었습니다." 출력 후 세션 IDLE(종료) 처리.
- * 3. 관리자 상세: [1. 수정 / 2. 초기화 / 3. 삭제] 수직 배열 및 설명 추가.
- * 4. 무생략: 모든 기능 로직 전체 포함.
+ * 1. 로그아웃 강화: 특정 유저가 로그아웃 시, 모든 방(개인/단톡)에 생성된 해당 유저의 세션을 전수 조사하여 파기.
+ * 2. 구분선: 13칸 유지.
+ * 3. 무생략: 관리자/유저/시스템 전체 로직 포함.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,7 +15,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 12, // 구분선 13칸으로 조정
+    LINE_COUNT: 13,
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
@@ -26,7 +25,6 @@ var Utils = {
         return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
     },
     getFixedLine: function() {
-        // 구분선 길이를 13칸으로 생성
         return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
     }
 };
@@ -139,6 +137,16 @@ var SessionManager = {
         session.history = []; session.userListCache = [];
         session.targetUser = null; session.editType = null;
         if (!session.data) session.tempId = null;
+    },
+    // 전역 로그아웃: 특정 ID를 사용하는 모든 세션을 찾아 초기화
+    logoutAll: function(userId) {
+        for (var h in this.sessions) {
+            if (this.sessions[h].tempId === userId) {
+                this.sessions[h].data = null;
+                this.sessions[h].tempId = null;
+                this.reset(this.sessions[h]);
+            }
+        }
     }
 };
 
@@ -198,8 +206,10 @@ var AdminManager = {
                 break;
             case "ADMIN_DELETE_CONFIRM":
                 if (msg === "삭제확인") {
-                    delete Database.data[session.targetUser]; Database.save(Database.data);
-                    replier.reply(UI.make("삭제 완료", session.targetUser + "님의 계정이 삭제되었습니다.", ""));
+                    var target = session.targetUser;
+                    delete Database.data[target]; Database.save(Database.data);
+                    SessionManager.logoutAll(target); // 삭제된 유저의 모든 세션 강제 종료
+                    replier.reply(UI.make("삭제 완료", target + "님의 계정 및 세션이 삭제되었습니다.", ""));
                     session.userListCache = Object.keys(Database.data);
                     replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 관리", session.userListCache.map(function(id, i){ return (i+1)+". "+id; }).join("\n"), "조회할 유저 선택"));
                 }
@@ -242,9 +252,9 @@ var UserManager = {
                     else if (msg === "2") replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호 관리\n2. 보유 캐릭터 목록", "항목 선택"));
                     else if (msg === "3") replier.reply(UI.go(session, "SHOP_ROLES", "상점", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "역할군 선택"));
                     else if (msg === "4") { 
-                        session.data = null; session.tempId = null; 
-                        SessionManager.reset(session);
-                        replier.reply("로그아웃이 완료되었습니다."); 
+                        var targetId = session.tempId;
+                        SessionManager.logoutAll(targetId); // 이 유저의 모든 세션(단톡방 포함)을 파기
+                        replier.reply("로그아웃이 완료되었습니다. (모든 방에서 접속 종료)"); 
                     }
                     break;
                 case "COL_MAIN":
@@ -295,9 +305,9 @@ var UserManager = {
 var GroupManager = {
     handle: function(msg, session, replier, sender) {
         if (session.screen === "GROUP_MAIN" && msg === "1") {
-            var d = Database.data[sender];
+            var d = session.data; // 세션 데이터 참조
             if (!d) return; 
-            replier.reply(UI.make("내 정보 확인", UI.renderProfile(sender, d), "전투 데이터"));
+            replier.reply(UI.make("내 정보 확인", UI.renderProfile(session.tempId, d), "전투 데이터"));
         }
     }
 };
@@ -313,6 +323,18 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var hash = String(imageDB.getProfileHash());
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
+
+        // [자동 로그인 보정] 단톡방에서 세션이 비어있을 때, 다른 세션(개인톡)에서 해당 유저 정보를 찾아 연결 시도
+        if (isGroupChat && !session.data) {
+             for (var h in SessionManager.sessions) {
+                 if (SessionManager.sessions[h].tempId === sender && SessionManager.sessions[h].data) {
+                     session.data = SessionManager.sessions[h].data;
+                     session.tempId = SessionManager.sessions[h].tempId;
+                     session.screen = "GROUP_MAIN";
+                     break;
+                 }
+             }
+        }
 
         if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
@@ -342,6 +364,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.5 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.6 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
