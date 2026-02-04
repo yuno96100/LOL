@@ -1,8 +1,9 @@
 /**
- * [main.js] v7.9.3
- * 1. UI 수정: 관리자 유저 상세 하단 메뉴를 수직(한 줄씩)으로 배열.
- * 2. 가독성: 1. 수정 (정보 변경) / 2. 초기화 (데이터 리셋) / 3. 삭제 (계정 제거) 형식 적용.
- * 3. 무생략: 모든 관리자/유저/시스템 매니저 코드 포함.
+ * [main.js] v7.9.5
+ * 1. UI 수정: 모든 구분선을 Config.LINE_CHAR 기준 13칸으로 조정.
+ * 2. 로그아웃: "로그아웃이 완료되었습니다." 출력 후 세션 IDLE(종료) 처리.
+ * 3. 관리자 상세: [1. 수정 / 2. 초기화 / 3. 삭제] 수직 배열 및 설명 추가.
+ * 4. 무생략: 모든 기능 로직 전체 포함.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,6 +16,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
+    LINE_COUNT: 13, // 구분선 13칸으로 조정
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
@@ -24,7 +26,8 @@ var Utils = {
         return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
     },
     getFixedLine: function() {
-        return Array(15).join(Config.LINE_CHAR);
+        // 구분선 길이를 13칸으로 생성
+        return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
     }
 };
 
@@ -159,7 +162,6 @@ var AdminManager = {
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
                     var ud = Database.data[session.targetUser];
-                    // 요청사항: 각 한 줄씩 배열하고 설명 추가
                     var adminMenu = "1. 수정 (정보 변경)\n2. 초기화 (데이터 리셋)\n3. 삭제 (계정 제거)";
                     replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), adminMenu));
                 }
@@ -239,7 +241,11 @@ var UserManager = {
                     if (msg === "1") replier.reply(UI.go(session, "PROFILE_VIEW", "프로필", UI.renderProfile(session.tempId, d), "전투 정보 요약"));
                     else if (msg === "2") replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호 관리\n2. 보유 캐릭터 목록", "항목 선택"));
                     else if (msg === "3") replier.reply(UI.go(session, "SHOP_ROLES", "상점", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "역할군 선택"));
-                    else if (msg === "4") { session.data = null; session.tempId = null; replier.reply(UI.renderMenu(session, sender)); }
+                    else if (msg === "4") { 
+                        session.data = null; session.tempId = null; 
+                        SessionManager.reset(session);
+                        replier.reply("로그아웃이 완료되었습니다."); 
+                    }
                     break;
                 case "COL_MAIN":
                     if (msg === "1") {
@@ -325,7 +331,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session, sender)); 
         }
 
-        if (session.screen === "IDLE") return; 
+        if (session.screen === "IDLE") {
+             if(msg === "메뉴") replier.reply(UI.renderMenu(session, sender));
+             return;
+        }
 
         if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, startTime);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
@@ -333,6 +342,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.3 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.5 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
