@@ -16,7 +16,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 13, // 구분선 13칸으로 조정
+    LINE_COUNT: 12, // 구분선 13칸으로 조정
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
