@@ -1,9 +1,9 @@
 /**
- * [main.js] v7.6.9
- * 1. UI 일체화: 칭호-티어 사이 구분선을 시스템 공통 구분선 로직으로 통합.
- * 2. 최소 길이 보장: 모든 구분선의 최소 길이를 네비게이션 바 너비 이상으로 설정.
- * 3. 네비게이션 최적화: 버튼 사이 간격을 2칸으로 조정하여 가독성 향상.
- * 4. 세션 강화: 프로필 계정명 null 방지 로직 유지.
+ * [main.js] v7.7.0
+ * 1. UI 완전 동기화: 프로필 중간 구분선을 상하단 구분선과 100% 동일한 길이로 설정.
+ * 2. 최소 너비 유지: 콘텐츠가 짧아도 네비게이션 바 너비(16칸) 이하로 줄어들지 않음.
+ * 3. 네비게이션 최적화: 버튼 간격 2칸으로 고정하여 콤팩트한 디자인 구현.
+ * 4. 버그 픽스: 계정명 null 출력 방지 및 시스템 정보 복구 로직 포함.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -18,7 +18,7 @@ var Config = {
     LINE_CHAR: "━",
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"],
     LIMITS: { MOBILE: 23, PC: 45 },
-    MIN_LINE_LEN: 16 // 네비게이션 바 길이를 고려한 최소 구분선 길이
+    MIN_LINE_LEN: 16 
 };
 
 var Utils = {
@@ -40,11 +40,9 @@ var Utils = {
             if (w > maxW) maxW = w;
         }
         var limit = isPc ? Config.LIMITS.PC : Config.LIMITS.MOBILE;
-        // 최소 길이를 네비게이션 바 너비(약 16칸)에 맞춤
         var finalLen = Math.max(Config.MIN_LINE_LEN, Math.min(Math.floor(maxW / 1.7), limit)); 
         return { line: Array(finalLen + 1).join(Config.LINE_CHAR), width: finalLen };
     },
-    // 네비게이션 바: 간격을 2칸으로 소폭 축소
     getFixedNav: function() {
         var space = "  "; 
         return Config.NAV_ITEMS[0] + space + "|" + space + Config.NAV_ITEMS[1] + space + "|" + space + Config.NAV_ITEMS[2];
@@ -97,20 +95,23 @@ var UI = {
         res += navBar;
         return res;
     },
-    // 프로필 렌더링 시 내부 구분선도 시스템 공통 길이 적용
+    // 프로필의 모든 구분선을 동일하게 렌더링하도록 구조 개선
     renderProfile: function(id, data, isPc) {
         var tier = getTierInfo(data.lp);
         var accountId = id || "알 수 없음";
         
-        var body = "👤 계정: " + accountId + "\n🏅 칭호: [" + data.title + "]";
-        var lineData = Utils.getLineData(body, isPc); // 기준선 계산
+        var contentPart1 = "👤 계정: " + accountId + "\n🏅 칭호: [" + data.title + "]";
+        var contentPart2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n" +
+                           "💰 골드: " + data.gold.toLocaleString() + " G\n" +
+                           "⭐ 레벨: Lv." + data.level + "\n" +
+                           "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패";
         
-        // 칭호와 티어 사이 구분선을 시스템 공통 기호로 교체
-        return body + "\n" + lineData.line + "\n" +
-               "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n" +
-               "💰 골드: " + data.gold.toLocaleString() + " G\n" +
-               "⭐ 레벨: Lv." + data.level + "\n" +
-               "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패";
+        // 전체 내용에 대한 구분선 데이터를 먼저 산출 (상하단과 동일한 길이 보증)
+        var fullContent = contentPart1 + "\n" + contentPart2;
+        var lineData = Utils.getLineData(fullContent, isPc);
+        
+        // 중간선도 lineData.line을 그대로 사용하여 상하단과 길이를 1:1 일치시킴
+        return contentPart1 + "\n" + lineData.line + "\n" + contentPart2;
     },
     go: function(session, screen, title, content, help, isPc) {
         if (session.screen && session.screen !== screen) {
@@ -333,6 +334,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.6.9 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.7.0 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
