@@ -1,9 +1,9 @@
 /**
- * [main.js] v7.7.4
- * 1. 닉네임 일치화: 가입 아이디를 닉네임으로 사용하도록 안내 및 프로필 바인딩.
- * 2. 무생략 통합: 관리자 기능, 단체방 정보 조회, 유저 상점/컬렉션 시스템 전체 포함.
- * 3. UI 정밀화: 프로필 내 모든 구분선을 상하단 메인 선과 동일 규격(18~21칸)으로 일치.
- * 4. 타이틀 계승: 선택한 메뉴 항목명을 다음 화면의 타이틀로 자동 적용.
+ * [main.js] v7.7.5
+ * 1. 문법 오류 수정: Unterminated string literal 이슈 해결.
+ * 2. 닉네임 정책: 가입 시 아이디를 닉네임으로 사용하도록 안내 및 바인딩.
+ * 3. 타이틀 계승: 메뉴 선택 시 해당 항목명을 다음 화면 타이틀로 자동 적용.
+ * 4. UI 최적화: 구분선 최소 18칸~최대 21칸 (줄바꿈 방지 및 네비게이션 커버).
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -88,9 +88,10 @@ var UI = {
     make: function(title, content, help, isPc) {
         var lineData = Utils.getLineData(content + "\n" + title, isPc);
         var navBar = Utils.getFixedNav();
-        
         var res = "『 " + title + " 』\n" + lineData.line + "\n" + content + "\n" + lineData.line + "\n";
-        if (help) res += "💡 " + help + "\n" + lineData.line + "\n";
+        if (help) {
+            res += "💡 " + help + "\n" + lineData.line + "\n";
+        }
         res += navBar;
         return res;
     },
@@ -101,7 +102,6 @@ var UI = {
                  "💰 골드: " + data.gold.toLocaleString() + " G\n" +
                  "⭐ 레벨: Lv." + data.level + "\n" +
                  "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패";
-        
         var lineData = Utils.getLineData(p1 + "\n" + p2, isPc);
         return p1 + "\n" + lineData.line + "\n" + p2;
     },
@@ -266,7 +266,7 @@ var UserManager = {
                 case "SHOP_ROLES":
                     var rIdx = parseInt(msg) - 1;
                     if (RoleKeys[rIdx]) {
-                        session.selectedRole = RoleKeys[rIdx]; // 상점 카테고리명 타이틀 계승
+                        session.selectedRole = RoleKeys[rIdx];
                         var uList = SystemData.roles[session.selectedRole].units.map(function(u, i) {
                             var owned = d.collection.characters.indexOf(u) !== -1;
                             return (i+1) + ". " + u + (owned ? " [보유]" : " (500G)");
@@ -315,7 +315,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         msg = msg.trim();
         var isPc = (hash === Config.AdminHash && room === Config.AdminRoom);
 
-        // 네비게이션 트리거
         if (msg === "이전" || msg === "⬅️ 돌아가기" || msg === "돌아가기") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
@@ -328,13 +327,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session, isPc)); 
         }
 
-        // 권한별 핸들링
         if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, isPc, startTime);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender, isPc);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender, isPc);
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.7.4 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.7.5 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
