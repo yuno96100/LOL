@@ -18,7 +18,7 @@ var Config = {
     LINE_CHAR: "━",
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"],
     // 모바일 최대치를 18칸으로 하향 조정
-    LIMITS: { MOBILE: 18, PC: 44 },
+    LIMITS: { MOBILE: 18, PC: 43 },
     MIN_LINE_LEN: 18 
 };
 
