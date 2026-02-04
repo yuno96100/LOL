@@ -1,8 +1,6 @@
 /**
- * [main.js] v8.1.1
- * 1. 베이스: 관리자님이 검토하신 v7.9.7 로직 100% 동일 적용.
- * 2. 수정: 관리자 메뉴 진입 시 screen 상태 강제 할당 로직 보강.
- * 3. 규격: 구분선 12칸 및 하단 네비게이션 UI 적용.
+ * [main.js] v8.1.2
+ * 수정사항: renderMenu 실행 시 세션 상태(screen)를 강제로 주입하여 카테고리 먹통 해결.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -92,16 +90,25 @@ var UI = {
     },
     renderMenu: function(session, sender) {
         session.history = [];
-        if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "보안 등급: 최고 권한");
+        // [핵심 수정] 각 메뉴 진입 시 screen 상태를 명시적으로 할당
+        if (session.type === "ADMIN") {
+            session.screen = "ADMIN_MAIN";
+            return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "보안 등급: 최고 권한");
+        }
         if (session.type === "GROUP") {
             if (!session.data) {
                 session.screen = "IDLE";
                 return UI.make("알림", "'시스템'에게 1대1 채팅을 걸어\n개인톡에서 가입 및 로그인을 진행해 주세요.", "가입 정보가 없습니다.");
             }
+            session.screen = "GROUP_MAIN";
             return this.go(session, "GROUP_MAIN", "메인 메뉴", "1. 내 정보 확인", "소환사의 협곡");
         }
         if (session.type === "DIRECT") {
-            if (!session.data) return this.go(session, "GUEST_MAIN", "메인 메뉴", "1. 회원가입\n2. 로그인", "계정 접속 필요");
+            if (!session.data) {
+                session.screen = "GUEST_MAIN";
+                return this.go(session, "GUEST_MAIN", "메인 메뉴", "1. 회원가입\n2. 로그인", "계정 접속 필요");
+            }
+            session.screen = "USER_MAIN";
             return this.go(session, "USER_MAIN", "메인 메뉴", "1. 프로필\n2. 컬렉션\n3. 상점\n4. 로그아웃", "환영합니다!");
         }
     }
@@ -323,7 +330,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
-        // 관리자 권한 상시 체크 및 타입 보정
+        // 관리자 권한 상시 체크
         if (room === Config.AdminRoom && hash === Config.AdminHash) {
             session.type = "ADMIN";
         }
@@ -336,7 +343,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                     SessionManager.sessions[k].data) {
                     session.data = SessionManager.sessions[k].data;
                     session.tempId = SessionManager.sessions[k].tempId;
-                    if (session.screen === "IDLE") session.screen = "GROUP_MAIN";
                     found = true;
                     break;
                 }
@@ -348,6 +354,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             }
         }
 
+        // 공통 명령어 처리
         if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
@@ -367,12 +374,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session, sender)); 
         }
 
+        // [핵심] IDLE 상태에서는 오직 '메뉴'에만 반응하도록 하여 꼬임 방지
         if (session.screen === "IDLE") {
              if(msg === "메뉴") replier.reply(UI.renderMenu(session, sender));
              return;
         }
 
-        // 핸들러 실행 (타입과 해시가 모두 맞아야 AdminManager가 작동함)
+        // 핸들러 실행
         if (session.type === "ADMIN" && hash === Config.AdminHash) {
             AdminManager.handle(msg, session, replier, startTime);
         } else if (session.type === "GROUP") {
@@ -383,6 +391,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.2 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
