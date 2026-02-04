@@ -1,6 +1,8 @@
 /**
- * [main.js] v8.1.3
- * 해결책: 관리자 방(Config.AdminRoom)일 경우 세션 타입과 핸들러를 강제로 ADMIN에 할당.
+ * [main.js] v8.2.1
+ * 1. UI 수정: 프로필 레이아웃을 관리자님이 제시한 이미지 형태로 변경.
+ * 2. 기능: 전적(승/패) 옆에 승률(%) 자동 계산 로직 적용.
+ * 3. 규격: 모든 출력 문구 12자 줄바꿈 및 하단 UI 적용 유지.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -24,6 +26,15 @@ var Utils = {
     },
     getFixedLine: function() {
         return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
+    },
+    // 12글자마다 줄바꿈 적용 함수
+    wrapText: function(str) {
+        if (!str) return "";
+        var res = "";
+        for (var i = 0; i < str.length; i += 12) {
+            res += str.substring(i, i + 12) + (i + 12 < str.length ? "\n" : "");
+        }
+        return res;
     }
 };
 
@@ -66,18 +77,27 @@ var UI = {
     make: function(title, content, help) {
         var line = Utils.getFixedLine();
         var navBar = Utils.getFixedNav();
-        var res = "『 " + title + " 』\n" + line + "\n" + content + "\n" + line + "\n";
-        if (help) res += help + "\n" + line + "\n";
+        // 제목과 내용에 12자 줄바꿈 적용
+        var res = "『 " + Utils.wrapText(title) + " 』\n" + line + "\n" + content + "\n" + line + "\n";
+        if (help) res += Utils.wrapText(help) + "\n" + line + "\n";
         res += navBar;
         return res;
     },
     renderProfile: function(id, data) {
         var tier = getTierInfo(data.lp);
-        return "👤 닉네임: " + id + "\n🏅 칭호: [" + data.title + "]\n" +
+        var win = data.win || 0;
+        var lose = data.lose || 0;
+        var total = win + lose;
+        var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
+
+        // [요청사항] 이미지 구성대로 레이아웃 변경
+        return "👤 계정: " + id + "\n" +
+               "🏅 칭호: [" + data.title + "]\n" +
+               Utils.getFixedLine() + "\n" +
                "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n" +
                "💰 골드: " + data.gold.toLocaleString() + " G\n" +
                "⭐ 레벨: Lv." + data.level + "\n" +
-               "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패";
+               "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
     },
     go: function(session, screen, title, content, help) {
         if (session.screen && session.screen !== screen && session.screen !== "IDLE") {
@@ -91,7 +111,7 @@ var UI = {
     renderMenu: function(session, sender) {
         session.history = [];
         if (session.type === "ADMIN") {
-            session.screen = "ADMIN_MAIN"; // 상태 강제 주입
+            session.screen = "ADMIN_MAIN";
             return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "보안 등급: 최고 권한");
         }
         if (session.type === "GROUP") {
@@ -132,7 +152,6 @@ var SessionManager = {
             this.sessions[h] = { data: null, screen: "IDLE", history: [], lastTitle: "메뉴", tempId: null, userListCache: [], targetUser: null, editType: null };
         }
         var s = this.sessions[h];
-        // [중요] 방 이름이 같고 관리자라면 타입을 확실히 ADMIN으로 고정
         if (r === Config.AdminRoom) s.type = "ADMIN";
         else if (g && r === Config.GroupRoom) s.type = "GROUP";
         else if (!g) s.type = "DIRECT";
@@ -160,9 +179,6 @@ var SessionManager = {
 // ━━━━━━━━ [4. 매니저: 관리자 시스템] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier, startTime) {
-        // [디버그] 관리자 핸들러 진입 확인용 (필요시 주석 해제)
-        // replier.reply("현재 화면: " + session.screen + " / 입력: " + msg);
-
         switch(session.screen) {
             case "ADMIN_MAIN":
                 if (msg === "1") {
@@ -267,6 +283,9 @@ var UserManager = {
                         replier.reply(UI.make("알림", "로그아웃이 완료되었습니다. (모든 방에서 접속 종료)", "")); 
                     }
                     break;
+                case "PROFILE_VIEW":
+                    // 프로필 조회 화면에서는 딱히 액션이 없으므로 추가 핸들링 없음
+                    break;
                 case "COL_MAIN":
                     if (msg === "1") {
                         var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
@@ -333,11 +352,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
-        // [중요 수정] 관리자방 필터링 강화
         var isAdmin = (room === Config.AdminRoom && hash === Config.AdminHash);
         if (isAdmin) session.type = "ADMIN";
 
-        // 공통 명령어 (메뉴/취소/이전)
         if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
@@ -358,7 +375,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session, sender)); 
         }
 
-        // [핵심] 관리자라면 무조건 AdminManager로 보내기
         if (isAdmin) {
             if (session.screen === "IDLE") {
                 if (msg === "메뉴") return replier.reply(UI.renderMenu(session, sender));
@@ -367,7 +383,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return AdminManager.handle(msg, session, replier, startTime);
         }
 
-        // --- 이하 일반 유저 로직 ---
         if (isGroupChat) {
             var found = false;
             for (var k in SessionManager.sessions) {
@@ -387,6 +402,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.3 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.2.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
