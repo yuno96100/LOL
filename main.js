@@ -1,9 +1,8 @@
 /**
- * [main.js] v8.0.3
- * 1. UI 규격: 구분선 12칸 및 본문 12자 자동 줄바꿈 처리.
- * 2. 네비게이션: "이전 | 취소 | 메뉴" 형태의 세로 막대 UI 적용.
- * 3. 보안: 지정된 관리자(AdminHash)만 관리 권한 접근 가능.
- * 4. 세션: 단체방-개인톡 간 실시간 데이터 동기화 로직 포함.
+ * [main.js] v7.9.8
+ * 1. UI 최적화: 구분선 12칸(━━━━━━━━━━━━)으로 조정.
+ * 2. 텍스트 제어: 모든 본문 문구 12글자마다 자동 줄바꿈 처리.
+ * 3. 전면 UI: 모든 시스템 응답에 UI 레이아웃 강제 적용.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,7 +15,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 12, 
+    LINE_COUNT: 12, // 구분선 12칸
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
@@ -28,7 +27,7 @@ var Utils = {
     getFixedLine: function() {
         return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
     },
-    // 12글자마다 줄바꿈 처리 (공백/특수문자 포함)
+    // [v7.9.8 추가] 12글자마다 줄바꿈 처리 로직
     wordWrap: function(str) {
         if (!str) return "";
         var res = "";
@@ -89,6 +88,7 @@ var UI = {
     make: function(title, content, help) {
         var line = Utils.getFixedLine();
         var navBar = Utils.getFixedNav();
+        // 모든 본문과 도움말에 12자 줄바꿈 적용
         var wrappedContent = Utils.wordWrap(content);
         var wrappedHelp = Utils.wordWrap(help);
         
@@ -194,7 +194,8 @@ var AdminManager = {
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
                     var ud = Database.data[session.targetUser];
-                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), "1. 수정\n2. 초기화\n3. 삭제"));
+                    var adminMenu = "1. 수정\n2. 초기화\n3. 삭제";
+                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), adminMenu));
                 }
                 break;
             case "ADMIN_USER_DETAIL":
@@ -346,6 +347,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
+        // 실시간 세션 동기화
         if (isGroupChat) {
             var found = false;
             for (var k in SessionManager.sessions) {
@@ -366,7 +368,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             }
         }
 
-        // 네비게이션 공통 처리
         if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
@@ -389,7 +390,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
              return;
         }
 
-        // 권한별 핸들러 호출
         if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, startTime);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
