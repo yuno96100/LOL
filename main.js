@@ -1,8 +1,8 @@
 /**
- * [main.js] v7.9.9
- * 1. UI 최적화: 구분선 16칸(━━━━━━━━━━━━━━━━)으로 확장.
- * 2. 텍스트 제어: 모든 본문 문구 16글자마다 자동 줄바꿈 처리.
- * 3. 네비게이션: 간격을 넓혀 16칸 규격에 맞게 밸런스 조정.
+ * [main.js] v8.0.0
+ * 1. UI 디자인: 네비게이션 바 세로 막대기(|) 제거 및 여백 확장.
+ * 2. 가로 규격: 구분선 16칸 및 16자 자동 줄바꿈 유지.
+ * 3. 범용성: 모든 출력 문구에 16자 가독성 로직 적용.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,20 +15,19 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 16, // 16칸으로 확장
+    LINE_COUNT: 16,
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
 var Utils = {
     getFixedNav: function() {
-        // 네비게이션 바 간격을 더 넓게 조정 (공백 추가)
-        var sp = "  "; 
-        return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
+        // [v8.0.0] 세로 막대 제거 및 2칸씩 추가 여백 (총 4칸 여백)
+        var sp = "    "; 
+        return Config.NAV_ITEMS[0] + sp + Config.NAV_ITEMS[1] + sp + Config.NAV_ITEMS[2];
     },
     getFixedLine: function() {
         return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
     },
-    // [v7.9.9] 16글자마다 줄바꿈 처리 로직
     wordWrap: function(str) {
         if (!str) return "";
         var res = "";
@@ -40,7 +39,7 @@ var Utils = {
                 count = 0;
             } else {
                 count++;
-                if (count === 16) { // 16자 기준
+                if (count === 16) {
                     res += "\n";
                     count = 0;
                 }
@@ -89,7 +88,6 @@ var UI = {
     make: function(title, content, help) {
         var line = Utils.getFixedLine();
         var navBar = Utils.getFixedNav();
-        // 모든 본문과 도움말에 16자 줄바꿈 적용
         var wrappedContent = Utils.wordWrap(content);
         var wrappedHelp = Utils.wordWrap(help);
         
@@ -348,7 +346,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
-        // 실시간 세션 동기화
         if (isGroupChat) {
             var found = false;
             for (var k in SessionManager.sessions) {
