@@ -1,6 +1,6 @@
 /**
- * [main.js] v8.1.2
- * 수정사항: renderMenu 실행 시 세션 상태(screen)를 강제로 주입하여 카테고리 먹통 해결.
+ * [main.js] v8.1.3
+ * 해결책: 관리자 방(Config.AdminRoom)일 경우 세션 타입과 핸들러를 강제로 ADMIN에 할당.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -90,9 +90,8 @@ var UI = {
     },
     renderMenu: function(session, sender) {
         session.history = [];
-        // [핵심 수정] 각 메뉴 진입 시 screen 상태를 명시적으로 할당
         if (session.type === "ADMIN") {
-            session.screen = "ADMIN_MAIN";
+            session.screen = "ADMIN_MAIN"; // 상태 강제 주입
             return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "보안 등급: 최고 권한");
         }
         if (session.type === "GROUP") {
@@ -133,6 +132,7 @@ var SessionManager = {
             this.sessions[h] = { data: null, screen: "IDLE", history: [], lastTitle: "메뉴", tempId: null, userListCache: [], targetUser: null, editType: null };
         }
         var s = this.sessions[h];
+        // [중요] 방 이름이 같고 관리자라면 타입을 확실히 ADMIN으로 고정
         if (r === Config.AdminRoom) s.type = "ADMIN";
         else if (g && r === Config.GroupRoom) s.type = "GROUP";
         else if (!g) s.type = "DIRECT";
@@ -160,6 +160,9 @@ var SessionManager = {
 // ━━━━━━━━ [4. 매니저: 관리자 시스템] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier, startTime) {
+        // [디버그] 관리자 핸들러 진입 확인용 (필요시 주석 해제)
+        // replier.reply("현재 화면: " + session.screen + " / 입력: " + msg);
+
         switch(session.screen) {
             case "ADMIN_MAIN":
                 if (msg === "1") {
@@ -330,37 +333,18 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
-        // 관리자 권한 상시 체크
-        if (room === Config.AdminRoom && hash === Config.AdminHash) {
-            session.type = "ADMIN";
-        }
+        // [중요 수정] 관리자방 필터링 강화
+        var isAdmin = (room === Config.AdminRoom && hash === Config.AdminHash);
+        if (isAdmin) session.type = "ADMIN";
 
-        if (isGroupChat) {
-            var found = false;
-            for (var k in SessionManager.sessions) {
-                if (SessionManager.sessions[k].type === "DIRECT" && 
-                    SessionManager.sessions[k].tempId === sender && 
-                    SessionManager.sessions[k].data) {
-                    session.data = SessionManager.sessions[k].data;
-                    session.tempId = SessionManager.sessions[k].tempId;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                session.data = null;
-                session.tempId = null;
-                session.screen = "IDLE";
-            }
-        }
-
-        // 공통 명령어 처리
+        // 공통 명령어 (메뉴/취소/이전)
         if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
                 session.screen = prev.screen; session.lastTitle = prev.title;
                 return replier.reply(UI.renderMenu(session, sender));
-            } else return replier.reply(UI.renderMenu(session, sender));
+            }
+            return replier.reply(UI.renderMenu(session, sender));
         }
         
         if (msg === "취소" || msg === "🚫 취소") { 
@@ -374,23 +358,35 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session, sender)); 
         }
 
-        // [핵심] IDLE 상태에서는 오직 '메뉴'에만 반응하도록 하여 꼬임 방지
-        if (session.screen === "IDLE") {
-             if(msg === "메뉴") replier.reply(UI.renderMenu(session, sender));
-             return;
+        // [핵심] 관리자라면 무조건 AdminManager로 보내기
+        if (isAdmin) {
+            if (session.screen === "IDLE") {
+                if (msg === "메뉴") return replier.reply(UI.renderMenu(session, sender));
+                return;
+            }
+            return AdminManager.handle(msg, session, replier, startTime);
         }
 
-        // 핸들러 실행
-        if (session.type === "ADMIN" && hash === Config.AdminHash) {
-            AdminManager.handle(msg, session, replier, startTime);
-        } else if (session.type === "GROUP") {
-            GroupManager.handle(msg, session, replier, sender);
-        } else if (session.type === "DIRECT") {
-            UserManager.handle(msg, session, replier, sender);
+        // --- 이하 일반 유저 로직 ---
+        if (isGroupChat) {
+            var found = false;
+            for (var k in SessionManager.sessions) {
+                if (SessionManager.sessions[k].type === "DIRECT" && SessionManager.sessions[k].tempId === sender) {
+                    session.data = SessionManager.sessions[k].data;
+                    session.tempId = SessionManager.sessions[k].tempId;
+                    found = true; break;
+                }
+            }
+            if (!found) { session.data = null; session.screen = "IDLE"; }
         }
+
+        if (session.screen === "IDLE") return;
+
+        if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
+        else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.2 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.3 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
