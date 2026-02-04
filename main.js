@@ -478,21 +478,32 @@ var UserManager = {
     }
 };
 
-// ━━━━━━━━ [7. 메인 응답 핸들러] ━━━━━━━━
-Database.data = Database.load();
-SessionManager.load();
-
+// 7. 메인 응답 핸들러 (이 부분이 가장 중요합니다)
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
-    if (!msg) return;
-    var hash = String(imageDB.getProfileHash());
-    var session = SessionManager.get(room, hash, isGroupChat);
-    msg = msg.trim();
+    try {
+        if (!msg) return;
+        var hash = String(imageDB.getProfileHash());
+        var session = SessionManager.get(room, hash, isGroupChat);
+        msg = msg.trim();
 
-    if (msg === "취소") { session.waitAction = null; session.editTargetField = null; SessionManager.save(); return replier.reply(UI.make("알림", "취소되었습니다.", "")); }
-    if (msg === "메뉴" || msg === "되돌아가기") { session.waitAction = null; session.lastMenu = null; SessionManager.save(); return replier.reply(UI.renderMenu(session)); }
+        // 관리자 권한 확인 (관리자만 관리자 방에서 제어 가능)
+        if (session.type === "ADMIN" && hash !== Config.AdminHash) return;
 
-    var isProcessed = false;
-    if (session.type === "ADMIN") isProcessed = AdminManager.handle(msg, session, replier);
-    else if (session.type === "GROUP") isProcessed = GroupManager.handle(msg, session, replier, sender);
-    else if (session.type === "DIRECT") isProcessed = UserManager.handle(msg, session, replier, sender);
+        if (msg === "취소") { 
+            session.waitAction = null; session.editTargetField = null; SessionManager.save(); 
+            return replier.reply(UI.make("알림", "작업이 취소되었습니다.")); 
+        }
+        if (msg === "메뉴" || msg === "이전" || msg === "돌아가기") { 
+            session.waitAction = null; session.lastMenu = null; SessionManager.save(); 
+            return replier.reply(UI.renderMenu(session)); 
+        }
+
+        if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
+        else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
+        else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
+
+    } catch (e) {
+        // 봇이 죽지 않도록 에러 발생 시 로그를 남깁니다.
+        Log.error("에러 발생: " + e.message);
+    }
 }
