@@ -1,8 +1,8 @@
 /**
- * [main.js] v7.9.8
- * 1. UI 최적화: 구분선 12칸(━━━━━━━━━━━━)으로 조정.
- * 2. 텍스트 제어: 모든 본문 문구 12글자마다 자동 줄바꿈 처리.
- * 3. 전면 UI: 모든 시스템 응답에 UI 레이아웃 강제 적용.
+ * [main.js] v7.9.9
+ * 1. UI 최적화: 구분선 16칸(━━━━━━━━━━━━━━━━)으로 확장.
+ * 2. 텍스트 제어: 모든 본문 문구 16글자마다 자동 줄바꿈 처리.
+ * 3. 네비게이션: 간격을 넓혀 16칸 규격에 맞게 밸런스 조정.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,19 +15,20 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 12, // 구분선 12칸
+    LINE_COUNT: 16, // 16칸으로 확장
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
 var Utils = {
     getFixedNav: function() {
-        var sp = " "; 
+        // 네비게이션 바 간격을 더 넓게 조정 (공백 추가)
+        var sp = "  "; 
         return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
     },
     getFixedLine: function() {
         return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
     },
-    // [v7.9.8 추가] 12글자마다 줄바꿈 처리 로직
+    // [v7.9.9] 16글자마다 줄바꿈 처리 로직
     wordWrap: function(str) {
         if (!str) return "";
         var res = "";
@@ -39,7 +40,7 @@ var Utils = {
                 count = 0;
             } else {
                 count++;
-                if (count === 12) {
+                if (count === 16) { // 16자 기준
                     res += "\n";
                     count = 0;
                 }
@@ -88,7 +89,7 @@ var UI = {
     make: function(title, content, help) {
         var line = Utils.getFixedLine();
         var navBar = Utils.getFixedNav();
-        // 모든 본문과 도움말에 12자 줄바꿈 적용
+        // 모든 본문과 도움말에 16자 줄바꿈 적용
         var wrappedContent = Utils.wordWrap(content);
         var wrappedHelp = Utils.wordWrap(help);
         
