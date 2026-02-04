@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.2.1
- * 1. UI 수정: 프로필 레이아웃을 관리자님이 제시한 이미지 형태로 변경.
- * 2. 기능: 전적(승/패) 옆에 승률(%) 자동 계산 로직 적용.
- * 3. 규격: 모든 출력 문구 12자 줄바꿈 및 하단 UI 적용 유지.
+ * [main.js] v8.2.2
+ * 1. 수정: 자동 줄바꿈 로직(12자 제한)을 완전히 삭제.
+ * 2. 유지: 프로필 UI 레이아웃 및 전적 승률 표기 기능.
+ * 3. 규격: 구분선 12칸 및 하단 내비게이션 UI 적용 유지.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -26,15 +26,6 @@ var Utils = {
     },
     getFixedLine: function() {
         return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
-    },
-    // 12글자마다 줄바꿈 적용 함수
-    wrapText: function(str) {
-        if (!str) return "";
-        var res = "";
-        for (var i = 0; i < str.length; i += 12) {
-            res += str.substring(i, i + 12) + (i + 12 < str.length ? "\n" : "");
-        }
-        return res;
     }
 };
 
@@ -77,9 +68,8 @@ var UI = {
     make: function(title, content, help) {
         var line = Utils.getFixedLine();
         var navBar = Utils.getFixedNav();
-        // 제목과 내용에 12자 줄바꿈 적용
-        var res = "『 " + Utils.wrapText(title) + " 』\n" + line + "\n" + content + "\n" + line + "\n";
-        if (help) res += Utils.wrapText(help) + "\n" + line + "\n";
+        var res = "『 " + title + " 』\n" + line + "\n" + content + "\n" + line + "\n";
+        if (help) res += help + "\n" + line + "\n";
         res += navBar;
         return res;
     },
@@ -90,7 +80,6 @@ var UI = {
         var total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
 
-        // [요청사항] 이미지 구성대로 레이아웃 변경
         return "👤 계정: " + id + "\n" +
                "🏅 칭호: [" + data.title + "]\n" +
                Utils.getFixedLine() + "\n" +
@@ -283,9 +272,6 @@ var UserManager = {
                         replier.reply(UI.make("알림", "로그아웃이 완료되었습니다. (모든 방에서 접속 종료)", "")); 
                     }
                     break;
-                case "PROFILE_VIEW":
-                    // 프로필 조회 화면에서는 딱히 액션이 없으므로 추가 핸들링 없음
-                    break;
                 case "COL_MAIN":
                     if (msg === "1") {
                         var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
@@ -402,6 +388,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.2.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.2.2 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
