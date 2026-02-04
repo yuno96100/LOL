@@ -27,7 +27,7 @@ var Utils = {
     },
     // 네비게이션 길이에 맞춘 고정 구분선 (약 14~15자)
     getFixedLine: function() {
-        return Array(15).join(Config.LINE_CHAR);
+        return Array(14).join(Config.LINE_CHAR);
     }
 };
 
