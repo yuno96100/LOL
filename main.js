@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.1.0
+ * [main.js] v8.1.1
  * 1. 베이스: 관리자님이 검토하신 v7.9.7 로직 100% 동일 적용.
- * 2. UI 수정: 구분선 Config.LINE_COUNT = 12로 변경.
- * 3. 줄바꿈: 강제 줄바꿈 로직 없이 7.9.7 원본 텍스트 출력 유지.
+ * 2. 수정: 관리자 메뉴 진입 시 screen 상태 강제 할당 로직 보강.
+ * 3. 규격: 구분선 12칸 및 하단 네비게이션 UI 적용.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,7 +15,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 12, // 12칸으로 고정
+    LINE_COUNT: 12, 
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
@@ -323,6 +323,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
+        // 관리자 권한 상시 체크 및 타입 보정
+        if (room === Config.AdminRoom && hash === Config.AdminHash) {
+            session.type = "ADMIN";
+        }
+
         if (isGroupChat) {
             var found = false;
             for (var k in SessionManager.sessions) {
@@ -350,11 +355,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                 return replier.reply(UI.renderMenu(session, sender));
             } else return replier.reply(UI.renderMenu(session, sender));
         }
+        
         if (msg === "취소" || msg === "🚫 취소") { 
             SessionManager.reset(session); 
             SessionManager.save();
             return replier.reply(UI.make("알림", "작업이 중지되었습니다.", ""));
         }
+        
         if (msg === "메뉴" || msg === "🏠 메뉴") { 
             SessionManager.reset(session); 
             return replier.reply(UI.renderMenu(session, sender)); 
@@ -365,12 +372,17 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
              return;
         }
 
-        if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, startTime);
-        else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
-        else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
+        // 핸들러 실행 (타입과 해시가 모두 맞아야 AdminManager가 작동함)
+        if (session.type === "ADMIN" && hash === Config.AdminHash) {
+            AdminManager.handle(msg, session, replier, startTime);
+        } else if (session.type === "GROUP") {
+            GroupManager.handle(msg, session, replier, sender);
+        } else if (session.type === "DIRECT") {
+            UserManager.handle(msg, session, replier, sender);
+        }
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.0 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.1.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
