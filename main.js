@@ -1,7 +1,7 @@
 /**
- * [main.js] v7.9.1
- * 1. UI 수정: 상세 메뉴를 [수정], [초기화], [삭제] 3개로 분리 및 간격(공백 3칸) 조정.
- * 2. 삭제 기능: 관리자 전용 '계정 삭제' 로직 (DB 영구 제거) 유지.
+ * [main.js] v7.9.2
+ * 1. UI 수정: 관리자 상세 메뉴 명칭 변경 ([수정]   [초기화]   [삭제]) 및 번호 제거.
+ * 2. 삭제 기능: 관리자 전용 '계정 삭제' 로직 유지.
  * 3. 고정 UI: 네비게이션 간격 1칸 및 고정 구분선 유지.
  * 4. 무생략: 모든 관리자/유저/시스템 매니저 코드 포함.
  */
@@ -39,7 +39,7 @@ var TierData = [
     { name: "골드", icon: "🟡", minLp: 800 },
     { name: "실버", icon: "⚪", minLp: 500 },
     { name: "브론즈", icon: "🟤", minLp: 200 },
-    { name: "아이언", icon: "⚫", minLp: 0 }
+    { name: "아이언", icon: "⚫" }
 ];
 
 var SystemData = {
@@ -160,15 +160,15 @@ var AdminManager = {
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
                     var ud = Database.data[session.targetUser];
-                    // 간격 3칸 적용된 메뉴
-                    var adminMenu = "1. 정보 수정   2. 전체 초기화   3. 계정 삭제";
+                    // 명칭 변경: [수정]   [초기화]   [삭제] (공백 3칸)
+                    var adminMenu = "[수정]   [초기화]   [삭제]";
                     replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), adminMenu));
                 }
                 break;
             case "ADMIN_USER_DETAIL":
-                if (msg === "1") replier.reply(UI.go(session, "ADMIN_EDIT_SELECT", "수정 항목 선택", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "변경할 속성 선택"));
-                else if (msg === "2") replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화 확인", "정말로 " + session.targetUser + "님의 데이터를 초기화하시겠습니까?\n(입력: 확인)", "취소는 하단 취소"));
-                else if (msg === "3") replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제 확인", session.targetUser + "님의 계정을 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.\n(입력: 삭제확인)", "취소는 하단 취소"));
+                if (msg === "수정") replier.reply(UI.go(session, "ADMIN_EDIT_SELECT", "수정 항목 선택", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "변경할 속성 선택"));
+                else if (msg === "초기화") replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화 확인", "정말로 " + session.targetUser + "님의 데이터를 초기화하시겠습니까?\n(입력: 확인)", "취소는 하단 취소"));
+                else if (msg === "삭제") replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제 확인", session.targetUser + "님의 계정을 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.\n(입력: 삭제확인)", "취소는 하단 취소"));
                 break;
             case "ADMIN_EDIT_SELECT":
                 var types = ["gold", "lp", "level"], names = ["골드", "LP", "레벨"], tIdx = parseInt(msg) - 1;
@@ -183,7 +183,7 @@ var AdminManager = {
                     Database.data[session.targetUser][session.editType] = val; Database.save(Database.data);
                     replier.reply(UI.make("수정 완료", session.targetUser + "님의 데이터가 변경되었습니다.", ""));
                     session.screen = "ADMIN_USER_DETAIL";
-                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "1. 정보 수정   2. 전체 초기화   3. 계정 삭제"));
+                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "[수정]   [초기화]   [삭제]"));
                 }
                 break;
             case "ADMIN_RESET_CONFIRM":
@@ -192,7 +192,7 @@ var AdminManager = {
                     Database.data[session.targetUser] = Database.getInitData(oldPw); Database.save(Database.data);
                     replier.reply(UI.make("초기화 완료", session.targetUser + "님의 데이터가 리셋되었습니다.", ""));
                     session.screen = "ADMIN_USER_DETAIL";
-                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "1. 정보 수정   2. 전체 초기화   3. 계정 삭제"));
+                    replier.reply(UI.make(session.targetUser, UI.renderProfile(session.targetUser, Database.data[session.targetUser]), "[수정]   [초기화]   [삭제]"));
                 }
                 break;
             case "ADMIN_DELETE_CONFIRM":
@@ -334,6 +334,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.9.2 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
