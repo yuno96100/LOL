@@ -1,9 +1,9 @@
 /**
- * [main.js] v7.5.8
- * 1. UI 롤백: UI 엔진(구분선 및 레이아웃)을 v7.5.2 버전으로 100% 복구.
- * 2. 네비게이션 유지: '이전(History)', '취소(Reset)', '메뉴(Home)' 기능 통합.
- * 3. 칭호/상점: 실시간 장착(✅) 및 캐릭터 영입 로직 유지.
- * 4. 세션 관리: 화면 전환 및 데이터 초기화 로직 최적화.
+ * [main.js] v7.6.1
+ * 1. 유동 간격 보정: 네비게이션 아이콘 너비를 포함하여 모든 화면에서 간격이 유동적으로 계산되도록 수정.
+ * 2. UI 엔진: UI.make 내에서 lineWidth를 기반으로 도움말(💡) 구분선까지 동기화.
+ * 3. 롤백 유지: v7.5.8 기반의 LIMITS(길이 제한) 내에서 가변 너비 적용.
+ * 4. 기능: 이전(History), 취소(Reset), 메뉴(Home) 아이콘 포함 로직 완비.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,7 +16,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    NAV_ITEMS: ["이전", "취소", "메뉴"],
+    NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"],
     LIMITS: { MOBILE: 23, PC: 45 }
 };
 
@@ -31,10 +31,10 @@ var Utils = {
         }
         return w;
     },
-    // [v7.5.2 롤백] 콘텐츠 비례형 라인 데이터 계산
+    // 콘텐츠 길이에 따른 유동 너비 계산 (LIMITS 준수)
     getLineData: function(content, isPc) {
         var lines = content.split("\n");
-        var maxW = 18;
+        var maxW = 18; // 최소 기준 너비
         for (var i = 0; i < lines.length; i++) {
             var w = this.getVisualWidth(lines[i]);
             if (w > maxW) maxW = w;
@@ -43,10 +43,13 @@ var Utils = {
         var finalLen = Math.min(Math.floor(maxW / 1.7), limit); 
         return { line: Array(finalLen + 1).join(Config.LINE_CHAR), width: finalLen };
     },
-    // [v7.5.2 롤백] 가변 네비게이션 간격
+    // [보정] 네비게이션 간격 유동화 로직
     getDynamicNav: function(lineWidth) {
-        var spaceCount = Math.max(1, Math.floor((lineWidth - 12) / 3));
-        var spaces = Array(spaceCount + 1).join(" ");
+        // 아이콘과 텍스트의 실제 점유 공간을 계산하여 공백 분배
+        var navTextWidth = 14; // "⬅️ 이전 | 🚫 취소 | 🏠 메뉴"의 대략적 시각 너비
+        var totalSpace = Math.max(1, lineWidth - navTextWidth);
+        var sideSpace = Math.floor(totalSpace / 3); 
+        var spaces = Array(sideSpace + 1).join(" ");
         return Config.NAV_ITEMS.join(spaces + "|" + spaces);
     }
 };
@@ -85,14 +88,19 @@ function getTierInfo(lp) {
     return "⚫ 아이언";
 }
 
-// ━━━━━━━━ [2. 모듈: UI 엔진 (v7.5.2 롤백 버전)] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     make: function(title, content, help, isPc) {
-        var lineData = Utils.getLineData(title + "\n" + content + (help || ""), isPc);
+        // 전체 텍스트를 분석하여 lineWidth 결정
+        var fullText = title + "\n" + content + (help ? "\n" + help : "");
+        var lineData = Utils.getLineData(fullText, isPc);
         var navBar = Utils.getDynamicNav(lineData.width);
-        // v7.5.2 특유의 정갈한 출력 구조
+        
         var res = "『 " + title + " 』\n" + lineData.line + "\n" + content + "\n" + lineData.line + "\n";
-        if (help) res += "💡 " + help + "\n" + lineData.line + "\n";
+        // 도움말 영역도 동일한 유동 구분선 사용
+        if (help) {
+            res += "💡 " + help + "\n" + lineData.line + "\n";
+        }
         res += navBar;
         return res;
     },
@@ -287,25 +295,24 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var isPc = (hash === Config.AdminHash && room === Config.AdminRoom);
 
         // 네비게이션 트리거
-        if (msg === "이전") {
+        if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
                 session.screen = session.history.pop();
                 return replier.reply(UI.renderMenu(session, isPc));
             } else return replier.reply(UI.renderMenu(session, isPc));
         }
-        if (msg === "취소") {
+        if (msg === "취소" || msg === "🚫 취소") {
             SessionManager.reset(session);
             return replier.reply(UI.renderMenu(session, isPc));
         }
-        if (msg === "메뉴") return replier.reply(UI.renderMenu(session, isPc));
+        if (msg === "메뉴" || msg === "🏠 메뉴") return replier.reply(UI.renderMenu(session, isPc));
 
-        // 각 매니저 실행
         if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, isPc, startTime);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender, isPc);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender, isPc);
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.5.8 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.6.1 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
