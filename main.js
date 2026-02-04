@@ -1,9 +1,9 @@
 /**
- * [main.js] v7.8.6
- * 1. UI 고정: 구분선 길이를 네비게이션 바(⬅️ 이전 | 🚫 취소 | 🏠 메뉴) 길이에 고정.
- * 2. 간격 통일: PC/모바일 구분 없이 동일한 네비게이션 간격 적용.
- * 3. 접근 제어: 단체방 미가입 유저에게 1:1 채팅 가입 안내 출력.
- * 4. 무생략: 모든 매니저 및 데이터 로직 전체 포함.
+ * [main.js] v7.8.7
+ * 1. UI 고정: 가변 계산 로직 삭제, 고정된 구분선 및 네비게이션 적용.
+ * 2. 간격 조정: 네비게이션 아이템 간 간격을 1칸으로 축소 (⬅️ 이전 | 🚫 취소 | 🏠 메뉴).
+ * 3. 접근 제어: 단체방 미가입 유저 가입 안내 로직 유지.
+ * 4. 무생략: 모든 관리자/유저/시스템 매니저 코드 포함.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -20,16 +20,14 @@ var Config = {
 };
 
 var Utils = {
-    // 네비게이션 바 생성 (아이콘과 텍스트 사이 간격 고정)
+    // 네비게이션 바 (간격 1칸으로 축소)
     getFixedNav: function() {
-        var space = "  "; // 네비게이션 아이템 간 간격
-        return Config.NAV_ITEMS[0] + space + "|" + space + Config.NAV_ITEMS[1] + space + "|" + space + Config.NAV_ITEMS[2];
+        var sp = " "; 
+        return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
     },
-    // 구분선 길이를 네비게이션 바 길이에 맞춰 고정 (유동적 계산 제거)
+    // 네비게이션 길이에 맞춘 고정 구분선 (약 14~15자)
     getFixedLine: function() {
-        // "⬅️ 이전  |  🚫 취소  |  🏠 메뉴" 의 시각적 너비에 맞춘 고정 길이
-        // 한글/이모지 너비 기준으로 약 15~16개의 ━ 문자가 적당함
-        return Array(17).join(Config.LINE_CHAR);
+        return Array(15).join(Config.LINE_CHAR);
     }
 };
 
@@ -302,7 +300,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
 
-        // 공통 네비게이션 트리거
         if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
@@ -328,6 +325,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.8.6 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v7.8.7 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
