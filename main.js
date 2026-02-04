@@ -1,8 +1,9 @@
 /**
- * [main.js] v8.0.0
- * 1. UI 디자인: 네비게이션 바 세로 막대기(|) 제거 및 여백 확장.
- * 2. 가로 규격: 구분선 16칸 및 16자 자동 줄바꿈 유지.
- * 3. 범용성: 모든 출력 문구에 16자 가독성 로직 적용.
+ * [main.js] v8.0.3
+ * 1. UI 규격: 구분선 12칸 및 본문 12자 자동 줄바꿈 처리.
+ * 2. 네비게이션: "이전 | 취소 | 메뉴" 형태의 세로 막대 UI 적용.
+ * 3. 보안: 지정된 관리자(AdminHash)만 관리 권한 접근 가능.
+ * 4. 세션: 단체방-개인톡 간 실시간 데이터 동기화 로직 포함.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,19 +16,19 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 16,
+    LINE_COUNT: 12, 
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
 var Utils = {
     getFixedNav: function() {
-        // [v8.0.0] 세로 막대 제거 및 2칸씩 추가 여백 (총 4칸 여백)
-        var sp = "    "; 
-        return Config.NAV_ITEMS[0] + sp + Config.NAV_ITEMS[1] + sp + Config.NAV_ITEMS[2];
+        var sp = " "; 
+        return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
     },
     getFixedLine: function() {
         return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
     },
+    // 12글자마다 줄바꿈 처리 (공백/특수문자 포함)
     wordWrap: function(str) {
         if (!str) return "";
         var res = "";
@@ -39,7 +40,7 @@ var Utils = {
                 count = 0;
             } else {
                 count++;
-                if (count === 16) {
+                if (count === 12) {
                     res += "\n";
                     count = 0;
                 }
@@ -193,8 +194,7 @@ var AdminManager = {
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
                     var ud = Database.data[session.targetUser];
-                    var adminMenu = "1. 수정\n2. 초기화\n3. 삭제";
-                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), adminMenu));
+                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, UI.renderProfile(session.targetUser, ud), "1. 수정\n2. 초기화\n3. 삭제"));
                 }
                 break;
             case "ADMIN_USER_DETAIL":
@@ -366,6 +366,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             }
         }
 
+        // 네비게이션 공통 처리
         if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
@@ -388,6 +389,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
              return;
         }
 
+        // 권한별 핸들러 호출
         if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier, startTime);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
