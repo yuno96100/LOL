@@ -1,6 +1,6 @@
 /**
- * [main.js] v8.6.5
- * 1. UI 표준: 12자 고정 구분선(━) 및 하단 '돌아가기 | 취소 | 메뉴' 자동 결합.
+ * [main.js] v8.6.7
+ * 1. UI 표준: 텍스트 길이에 따른 유동적 구분선 (Min 12자 ~ Max 20자).
  * 2. 프로필 표준: [계정/칭호] -구분선- [티어/골드/전적] -구분선- [도움말] 3단 레이아웃.
  * 3. 기능 보존: v8.5.8의 관리자, 단체방, 상점, 히스토리 기반 이전 로직 완벽 포함.
  * 4. 수정: 모든 강제 자동 줄바꿈 로직 제거 (텍스트 자연 출력).
@@ -16,13 +16,29 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    LINE_LEN: 12, // 12자 고정
+    MIN_LINE: 12,
+    MAX_LINE: 20,
     NAV_ITEMS: ["돌아가기", "취소", "메뉴"]
 };
 
 var Utils = {
-    applyUI: function(text) { return text || ""; }, // 줄바꿈 제거됨
-    getDivider: function() { return Array(Config.LINE_LEN + 1).join(Config.LINE_CHAR); },
+    applyUI: function(text) { return text || ""; },
+    // 텍스트 길이에 맞춰 구분선 길이 계산 (유동적)
+    getDivider: function(text) {
+        var len = Config.MIN_LINE;
+        if (text) {
+            var lines = text.split("\n");
+            var maxContent = 0;
+            for(var i=0; i<lines.length; i++) {
+                // 한글은 2자, 나머지는 1자로 계산하여 시각적 길이 측정
+                var visualLen = lines[i].replace(/[가-힣]/g, "AA").length;
+                if (visualLen > maxContent) maxContent = visualLen;
+            }
+            // 적절한 비율로 구분선 개수 산출 (최소 12 ~ 최대 20)
+            len = Math.max(Config.MIN_LINE, Math.min(Config.MAX_LINE, Math.floor(maxContent / 1.6)));
+        }
+        return Array(len + 1).join(Config.LINE_CHAR);
+    },
     getNav: function() { return Config.NAV_ITEMS.join(" | "); }
 };
 
@@ -61,17 +77,15 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
-    // 모든 일반 카테고리용 공용 빌더
     make: function(title, content, help) {
-        var div = Utils.getDivider();
+        var div = Utils.getDivider(content);
         var res = "『 " + title + " 』\n" + div + "\n" + content + "\n" + div + "\n";
         if (help) res += "💡 " + help + "\n" + div + "\n";
         res += Utils.getNav();
         return res;
     },
-    // 프로필 3단 분리 표준 레이아웃
+    // 프로필 유동 구분선 3단 레이아웃
     renderProfile: function(id, data) {
-        var div = Utils.getDivider();
         var tier = getTierInfo(data.lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
@@ -79,6 +93,8 @@ var UI = {
         var section1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var section2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n💰 골드: " + data.gold.toLocaleString() + " G\n⭐ 레벨: Lv." + data.level + "\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
         
+        var div = Utils.getDivider(section2); // 가장 긴 섹션 기준
+
         return "『 " + id + " 』\n" + div + "\n" + section1 + "\n" + div + "\n" + section2 + "\n" + div + "\n";
     },
     go: function(session, screen, title, content, help) {
@@ -88,12 +104,11 @@ var UI = {
         }
         session.screen = screen; session.lastTitle = title;
 
-        // 프로필 화면일 경우 표준 3단 레이아웃 적용
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var targetId = session.targetUser || session.tempId;
             var targetData = (session.targetUser) ? Database.data[session.targetUser] : session.data;
             var base = UI.renderProfile(targetId, targetData);
-            return base + "💡 " + help + "\n" + Utils.getDivider() + "\n" + Utils.getNav();
+            return base + "💡 " + help + "\n" + Utils.getDivider(help) + "\n" + Utils.getNav();
         }
         return this.make(title, content, help);
     },
@@ -228,7 +243,6 @@ var UserManager = {
                     break;
             }
         } else {
-            // [v8.5.8 복구] 이전/돌아가기 핸들링
             if (msg === "돌아가기" || msg === "이전") {
                 if (session.screen === "SHOP_ROLES") return UserManager.handle("3", {data:d, screen:"USER_MAIN", history:[]}, replier, sender);
                 if (session.screen === "SHOP_BUY_ACTION") return UserManager.handle("1", {data:d, screen:"SHOP_MAIN", history:[]}, replier, sender);
@@ -333,5 +347,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.6.5 에러]: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.6.7 에러]: " + e.message); }
 }
