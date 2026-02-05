@@ -1,8 +1,7 @@
 /**
- * [main.js] v8.2.3~v8.2.5
- * 1. 수정: 하단 문구를 다음 단계 진행을 위한 안내 가이드로 변경.
- * 2. 유지: 상점 -> 캐릭터 구매 -> 역할군 -> 구매 확정 흐름.
- * 3. 규격: 자동 줄바꿈 없음, 12칸 구분선, 하단 고정 UI 적용.
+ * [main.js] v8.2.6
+ * 1. 수정: 내용 중 가장 긴 문구에 맞춰 구분선 길이를 동적으로 생성 (MAX 18).
+ * 2. 유지: 도움말 가이드, 상점 -> 캐릭터 구매 흐름, 자동 줄바꿈 제거.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,7 +14,8 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    LINE_COUNT: 12, 
+    MIN_LINE: 12,
+    MAX_LINE: 18, 
     NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
 };
 
@@ -24,8 +24,17 @@ var Utils = {
         var sp = " "; 
         return Config.NAV_ITEMS[0] + sp + "|" + sp + Config.NAV_ITEMS[1] + sp + "|" + sp + Config.NAV_ITEMS[2];
     },
-    getFixedLine: function() {
-        return Array(Config.LINE_COUNT + 1).join(Config.LINE_CHAR);
+    // 가장 긴 문구에 맞춰 구분선을 생성하는 함수
+    getDynamicLine: function(content, title) {
+        var lines = (content + "\n" + (title || "")).split("\n");
+        var maxLen = Config.MIN_LINE;
+        for (var i = 0; i < lines.length; i++) {
+            var len = lines[i].replace(/[가-힣]/g, "AA").length; // 한글 보정 계산
+            len = Math.ceil(len / 2); // 대략적인 글자수 환산
+            if (len > maxLen) maxLen = len;
+        }
+        if (maxLen > Config.MAX_LINE) maxLen = Config.MAX_LINE;
+        return Array(maxLen + 1).join(Config.LINE_CHAR);
     }
 };
 
@@ -66,7 +75,7 @@ function getTierInfo(lp) {
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     make: function(title, content, help) {
-        var line = Utils.getFixedLine();
+        var line = Utils.getDynamicLine(content, title);
         var navBar = Utils.getFixedNav();
         var res = "『 " + title + " 』\n" + line + "\n" + content + "\n" + line + "\n";
         if (help) res += "💡 " + help + "\n" + line + "\n";
@@ -82,7 +91,6 @@ var UI = {
 
         return "👤 계정: " + id + "\n" +
                "🏅 칭호: [" + data.title + "]\n" +
-               Utils.getFixedLine() + "\n" +
                "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n" +
                "💰 골드: " + data.gold.toLocaleString() + " G\n" +
                "⭐ 레벨: Lv." + data.level + "\n" +
@@ -106,7 +114,7 @@ var UI = {
         if (session.type === "GROUP") {
             if (!session.data) {
                 session.screen = "IDLE";
-                return UI.make("알림", "'시스템'에게 1대1 채팅을 걸어\n가입 및 로그인을 먼저 해주세요.", "개인톡에서 로그인이 필요합니다.");
+                return UI.make("알림", "'시스템'에게 1대1 채팅을 걸어\n개인톡에서 가입 및 로그인을 먼저 해주세요.", "개인톡에서 로그인이 필요합니다.");
             }
             session.screen = "GROUP_MAIN";
             return this.go(session, "GROUP_MAIN", "메인 메뉴", "1. 내 정보 확인", "번호를 입력하여 내 정보를 확인하세요.");
@@ -385,6 +393,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.2.5 에러]: " + e.message);
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.2.6 에러]: " + e.message);
     }
 }
