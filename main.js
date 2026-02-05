@@ -15,36 +15,37 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    MIN_LINE: 12,
-    MAX_LINE: 18, 
-    NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
+    MIN_DIV: 12,
+    MAX_DIV: 18,
+    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
 var Utils = {
-    getCompactNav: function() {
-        return Config.NAV_ITEMS.join(" | ");
-    },
     getVisualWidth: function(str) {
         var width = 0;
         for (var i = 0; i < str.length; i++) {
             var c = str.charCodeAt(i);
-            if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || (c >= 0x3130 && c <= 0x318F) || (c > 255)) width += 2;
+            if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || (c > 255)) width += 2;
             else width += 1;
         }
         return width;
     },
-    getDynamicLine: function(content, title, help) {
-        var allText = (content || "") + "\n" + (title || "") + "\n" + (help || "");
-        var lines = allText.split("\n");
-        var maxVisualWidth = 0;
+    getAdaptiveDivider: function(title, content, help) {
+        var nav = this.getNav();
+        var fullText = "『 " + title + " 』\n" + content + "\n" + (help || "") + "\n" + nav;
+        var lines = fullText.split("\n");
+        var maxW = 0;
         for (var i = 0; i < lines.length; i++) {
             var w = this.getVisualWidth(lines[i]);
-            if (w > maxVisualWidth) maxVisualWidth = w;
+            if (w > maxW) maxW = w;
         }
-        var targetCount = Math.ceil(maxVisualWidth / 2);
-        if (targetCount < Config.MIN_LINE) targetCount = Config.MIN_LINE;
-        if (targetCount > Config.MAX_LINE) targetCount = Config.MAX_LINE;
-        return Array(targetCount + 1).join(Config.LINE_CHAR);
+        var count = Math.ceil(maxW / 2);
+        if (count < Config.MIN_DIV) count = Config.MIN_DIV;
+        if (count > Config.MAX_DIV) count = Config.MAX_DIV;
+        return Array(count + 1).join(Config.LINE_CHAR);
+    },
+    getNav: function() {
+        return Config.NAV_ITEMS.join(" | ");
     }
 };
 
