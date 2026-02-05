@@ -20,7 +20,6 @@ var Config = {
 };
 
 var Utils = {
-    // 시각적 너비 계산 (한글/이모지 2, 영문/숫자 1)
     getVisualWidth: function(str) {
         var width = 0;
         for (var i = 0; i < str.length; i++) {
@@ -30,25 +29,22 @@ var Utils = {
         }
         return width;
     },
-    // 문구 길이에 맞춰 최대 18자까지 유동적으로 구분선 반환
     getAdaptiveDivider: function(title, content, help) {
-        var nav = Config.NAV_ITEMS.join(" | ");
-        var allText = title + "\n" + content + "\n" + (help || "") + "\n" + nav;
-        var lines = allText.split("\n");
+        var nav = this.getNav();
+        var fullText = "『 " + title + " 』\n" + content + "\n" + (help || "") + "\n" + nav;
+        var lines = fullText.split("\n");
         var maxW = 0;
-        
         for (var i = 0; i < lines.length; i++) {
-            var w = this.getVisualWidth(lines[i].trim());
-            // 한 줄이 18자 너비(36)를 넘으면 18자 너비로 계산
-            if (w > Config.MAX_DIV * 2) w = Config.MAX_DIV * 2;
+            var w = this.getVisualWidth(lines[i]);
             if (w > maxW) maxW = w;
         }
-        
-        // 너비를 2로 나누어 ━ 개수 산출 (최소 1개)
         var count = Math.ceil(maxW / 2);
-        if (count < 1) count = 1;
-        
+        if (count < Config.MIN_DIV) count = Config.MIN_DIV;
+        if (count > Config.MAX_DIV) count = Config.MAX_DIV;
         return Array(count + 1).join(Config.LINE_CHAR);
+    },
+    getNav: function() {
+        return Config.NAV_ITEMS.join(" | ");
     }
 };
 
