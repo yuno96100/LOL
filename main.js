@@ -15,8 +15,8 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    MIN_DIV: 12,
-    MAX_DIV: 18,
+    MIN_DIV: 4,     // 최소치를 확 낮춰서 문장이 짧으면 선도 짧게!
+    MAX_DIV: 18,    // 최대치는 모바일/PC 가독성을 위해 유지
     NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
@@ -31,19 +31,25 @@ var Utils = {
         return width;
     },
     getAdaptiveDivider: function(title, content, help) {
-        var nav = this.getNav();
-        var fullText = "『 " + title + " 』\n" + content + "\n" + (help || "") + "\n" + nav;
-        var lines = fullText.split("\n");
+        // 현재 화면에 표시될 모든 텍스트를 검사
+        var nav = Config.NAV_ITEMS.join(" | ");
+        var lines = (title + "\n" + content + "\n" + (help || "") + "\n" + nav).split("\n");
         var maxW = 0;
+        
         for (var i = 0; i < lines.length; i++) {
-            var w = this.getVisualWidth(lines[i]);
+            var w = this.getVisualWidth(lines[i].trim());
             if (w > maxW) maxW = w;
         }
+        
+        // 텍스트 너비에 딱 맞게 선 개수 계산 (2로 나눔)
         var count = Math.ceil(maxW / 2);
+        
+        // 유동 범위: 이제 4개짜리 짧은 선도 가능합니다.
         if (count < Config.MIN_DIV) count = Config.MIN_DIV;
         if (count > Config.MAX_DIV) count = Config.MAX_DIV;
+        
         return Array(count + 1).join(Config.LINE_CHAR);
-    },
+    }
     getNav: function() {
         return Config.NAV_ITEMS.join(" | ");
     }
