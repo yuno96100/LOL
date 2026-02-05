@@ -1,50 +1,57 @@
 /**
- * [main.js] v8.7.8
- * 1. UI 복구: 네비게이션 바에 시각적 아이콘 다시 추가.
- * 2. 폭 최적화: 아이콘(이모지)의 폭을 고려하여 모든 구분선 길이를 완벽히 통일.
- * 3. 무생략: 관리자/유저/그룹 전체 시스템 코드 제공.
+ * [main.js] v8.7.9
+ * 1. 정밀 계산: 문장별 시각적 너비를 계산하여 최장 길이에 맞춤.
+ * 2. 길이 제한: 구분선 개수를 최소 12개 ~ 최대 18개로 고정.
+ * 3. UI 동기화: 한 화면 내 모든 구분선(상·중·하)의 길이를 일치시킴.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
     Prefix: ".",
-    AdminHash: "2056407147",      
-    AdminRoom: "소환사의협곡관리",   
-    GroupRoom: "소환사의협곡",     
+    AdminHash: "2056407147",
+    AdminRoom: "소환사의협곡관리",
+    GroupRoom: "소환사의협곡",
     BotName: "소환사의 협곡",
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    MIN_LINE: 12,
-    MAX_LINE: 20,
-    // 아이콘 포함 네비게이션 구성
+    MIN_DIV_COUNT: 12, // 최소 12개
+    MAX_DIV_COUNT: 18, // 최대 18개
     NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
 var Utils = {
+    // 채팅창에서의 실제 시각적 너비를 계산 (한글/이모지는 영문의 약 2배 폭)
     getVisualWidth: function(str) {
         var width = 0;
         for (var i = 0; i < str.length; i++) {
             var c = str.charCodeAt(i);
-            // 한글 및 이모지(대략적) 폭 계산
+            // 한글, 특수문자, 이모지 등 (2칸 처리)
             if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || (c > 255)) width += 2;
             else width += 1;
         }
         return width;
     },
-    // 모든 섹션과 네비게이션 바를 포함한 최장 폭 계산
+    // 화면 전체 내용 중 가장 긴 문장을 기준으로 동일한 구분선 생성
     getUnifiedDivider: function(title, content, help) {
         var nav = this.getNav();
-        var fullText = "『 " + title + " 』\n" + content + "\n" + (help || "") + "\n" + nav;
-        var lines = fullText.split("\n");
-        var maxW = 0;
+        // 전체 구성 요소를 합쳐서 가장 긴 라인 찾기
+        var fullCombined = "『 " + title + " 』\n" + content + "\n" + (help || "") + "\n" + nav;
+        var lines = fullCombined.split("\n");
+        var maxVisualW = 0;
+
         for (var i = 0; i < lines.length; i++) {
-            var w = this.getVisualWidth(lines[i]);
-            if (w > maxW) maxW = w;
+            var currentW = this.getVisualWidth(lines[i]);
+            if (currentW > maxVisualW) maxVisualW = currentW;
         }
-        var count = Math.ceil(maxW / 2);
-        if (count < Config.MIN_LINE) count = Config.MIN_LINE;
-        if (count > Config.MAX_LINE) count = Config.MAX_LINE;
+
+        // 구분선 1개(━)의 시각적 너비는 보통 2이므로 2로 나눔
+        var count = Math.ceil(maxVisualW / 2);
+        
+        // 요청하신 최소 12, 최대 18 제한 적용
+        if (count < Config.MIN_DIV_COUNT) count = Config.MIN_DIV_COUNT;
+        if (count > Config.MAX_DIV_COUNT) count = Config.MAX_DIV_COUNT;
+        
         return Array(count + 1).join(Config.LINE_CHAR);
     },
     getNav: function() {
@@ -52,38 +59,11 @@ var Utils = {
     }
 };
 
-var TierData = [
-    { name: "챌린저", icon: "✨", minLp: 3000 },
-    { name: "그랜드마스터", icon: "🔴", minLp: 2500 },
-    { name: "마스터", icon: "🟣", minLp: 2000 },
-    { name: "다이아몬드", icon: "💎", minLp: 1700 },
-    { name: "에메랄드", icon: "💚", minLp: 1400 },
-    { name: "플래티넘", icon: "💿", minLp: 1100 },
-    { name: "골드", icon: "🟡", minLp: 800 },
-    { name: "실버", icon: "⚪", minLp: 500 },
-    { name: "브론즈", icon: "🟤", minLp: 200 },
-    { name: "아이언", icon: "⚫", minLp: 0 }
-];
-
-var SystemData = {
-    roles: {
-        "탱커": { icon: "🛡️", units: ["알리스타", "말파이트", "레오나"] },
-        "전사": { icon: "⚔️", units: ["가렌", "다리우스", "잭스"] },
-        "암살자": { icon: "🗡️", units: ["제드", "카타리나", "탈론"] },
-        "마법사": { icon: "🔮", units: ["럭스", "아리", "빅토르"] },
-        "원거리딜러": { icon: "🏹", units: ["애쉬", "베인", "카이사"] },
-        "서포터": { icon: "✨", units: ["소라카", "유미", "쓰레쉬"] }
-    }
-};
+// ... (TierData, SystemData 등 데이터 로직 동일 유지) ...
+var TierData = [{name:"챌린저",icon:"✨",minLp:3000},{name:"그랜드마스터",icon:"🔴",minLp:2500},{name:"마스터",icon:"🟣",minLp:2000},{name:"다이아몬드",icon:"💎",minLp:1700},{name:"에메랄드",icon:"💚",minLp:1400},{name:"플래티넘",icon:"💿",minLp:1100},{name:"골드",icon:"🟡",minLp:800},{name:"실버",icon:"⚪",minLp:500},{name:"브론즈",icon:"🟤",minLp:200},{name:"아이언",icon:"⚫",minLp:0}];
+var SystemData = {roles:{"탱커":{icon:"🛡️",units:["알리스타","말파이트","레오나"]},"전사":{icon:"⚔️",units:["가렌","다리우스","잭스"]},"암살자":{icon:"🗡️",units:["제드","카타리나","탈론"]},"마법사":{icon:"🔮",units:["럭스","아리","빅토르"]},"원거리딜러":{icon:"🏹",units:["애쉬","베인","카이사"]},"서포터":{icon:"✨",units:["소라카","유미","쓰레쉬"]}}};
 var RoleKeys = Object.keys(SystemData.roles);
-
-function getTierInfo(lp) {
-    lp = lp || 0;
-    for (var i = 0; i < TierData.length; i++) {
-        if (lp >= TierData[i].minLp) return { name: TierData[i].name, icon: TierData[i].icon };
-    }
-    return { name: "아이언", icon: "⚫" };
-}
+function getTierInfo(lp){lp=lp||0;for(var i=0;i<TierData.length;i++){if(lp>=TierData[i].minLp)return{name:TierData[i].name,icon:TierData[i].icon};}return{name:"아이언",icon:"⚫"};}
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
@@ -115,7 +95,6 @@ var UI = {
             session.history.push({ screen: session.screen, title: session.lastTitle });
         }
         session.screen = screen; session.lastTitle = title;
-        
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var targetId = session.targetUser || session.tempId;
             var targetData = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -143,6 +122,7 @@ var UI = {
     }
 };
 
+// ... (DB, SessionManager, AdminManager, UserManager, GroupManager 로직은 v8.7.8과 동일하여 유지) ...
 // ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
 var Database = {
     data: {},
@@ -311,7 +291,6 @@ var UserManager = {
     }
 };
 
-// ━━━━━━━━ [6. 매니저: 단체방 시스템] ━━━━━━━━
 var GroupManager = {
     handle: function(msg, session, replier, sender) {
         if (session.screen === "GROUP_MAIN" && msg === "1") {
@@ -323,7 +302,6 @@ var GroupManager = {
 
 // ━━━━━━━━ [7. 메인 응답 핸들러] ━━━━━━━━
 Database.data = Database.load(); SessionManager.load();
-
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var startTime = new Date().getTime();
     try {
@@ -332,16 +310,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat);
         msg = msg.trim();
         var isAdmin = (room === Config.AdminRoom && hash === Config.AdminHash);
-
         if (msg === "취소" || msg === "❌ 취소" || msg === "메뉴" || msg === "🏠 메뉴") { 
             SessionManager.reset(session); return replier.reply(UI.renderMenu(session, sender)); 
         }
-
         if (isAdmin) {
             if (session.screen === "IDLE") { if (msg === "메뉴" || msg === "🏠 메뉴") return replier.reply(UI.renderMenu(session, sender)); return; }
             return AdminManager.handle(msg, session, replier, startTime);
         }
-
         if (isGroupChat) {
             var found = false;
             for (var k in SessionManager.sessions) {
@@ -351,10 +326,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             }
             if (!found) { session.data = null; session.screen = "IDLE"; }
         }
-
         if (session.screen === "IDLE") return;
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.7.8 에러]: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.7.9 에러]: " + e.message); }
 }
