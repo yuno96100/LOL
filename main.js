@@ -1,9 +1,9 @@
 /**
- * [main.js] v8.6.7
- * 1. UI 표준: 텍스트 길이에 따른 유동적 구분선 (Min 12자 ~ Max 20자).
+ * [main.js] v8.6.9
+ * 1. UI 표준: 유동적 구분선 범위 최적화 (Min 12자 ~ Max 18자).
  * 2. 프로필 표준: [계정/칭호] -구분선- [티어/골드/전적] -구분선- [도움말] 3단 레이아웃.
- * 3. 기능 보존: v8.5.8의 관리자, 단체방, 상점, 히스토리 기반 이전 로직 완벽 포함.
- * 4. 수정: 모든 강제 자동 줄바꿈 로직 제거 (텍스트 자연 출력).
+ * 3. 기능 보존: 이전 버전의 관리자, 단체방, 상점 시스템 전체 포함.
+ * 4. 특징: 최대 길이를 18자로 제한하여 모바일 가독성 향상.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,26 +16,28 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    MIN_LINE: 12,
-    MAX_LINE: 20,
+    MIN_LINE: 12, 
+    MAX_LINE: 18, // 최대 18자로 수정
     NAV_ITEMS: ["돌아가기", "취소", "메뉴"]
 };
 
 var Utils = {
-    applyUI: function(text) { return text || ""; },
-    // 텍스트 길이에 맞춰 구분선 길이 계산 (유동적)
+    // 유동적 구분선 로직 (Max 18자)
     getDivider: function(text) {
         var len = Config.MIN_LINE;
         if (text) {
             var lines = text.split("\n");
-            var maxContent = 0;
+            var maxVisualLen = 0;
             for(var i=0; i<lines.length; i++) {
-                // 한글은 2자, 나머지는 1자로 계산하여 시각적 길이 측정
-                var visualLen = lines[i].replace(/[가-힣]/g, "AA").length;
-                if (visualLen > maxContent) maxContent = visualLen;
+                var currentLen = 0;
+                for(var j=0; j<lines[i].length; j++) {
+                    var code = lines[i].charCodeAt(j);
+                    currentLen += (code >= 0xAC00 && code <= 0xD7A3) ? 2 : 1;
+                }
+                if (currentLen > maxVisualLen) maxVisualLen = currentLen;
             }
-            // 적절한 비율로 구분선 개수 산출 (최소 12 ~ 최대 20)
-            len = Math.max(Config.MIN_LINE, Math.min(Config.MAX_LINE, Math.floor(maxContent / 1.6)));
+            // 1.5 가중치로 계산하여 최대 18자 내외로 안착
+            len = Math.max(Config.MIN_LINE, Math.min(Config.MAX_LINE, Math.ceil(maxVisualLen / 1.5)));
         }
         return Array(len + 1).join(Config.LINE_CHAR);
     },
@@ -80,11 +82,10 @@ var UI = {
     make: function(title, content, help) {
         var div = Utils.getDivider(content);
         var res = "『 " + title + " 』\n" + div + "\n" + content + "\n" + div + "\n";
-        if (help) res += "💡 " + help + "\n" + div + "\n";
+        if (help) res += "💡 " + help + "\n" + Utils.getDivider(help) + "\n";
         res += Utils.getNav();
         return res;
     },
-    // 프로필 유동 구분선 3단 레이아웃
     renderProfile: function(id, data) {
         var tier = getTierInfo(data.lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
@@ -93,7 +94,7 @@ var UI = {
         var section1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var section2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n💰 골드: " + data.gold.toLocaleString() + " G\n⭐ 레벨: Lv." + data.level + "\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
         
-        var div = Utils.getDivider(section2); // 가장 긴 섹션 기준
+        var div = Utils.getDivider(section2); 
 
         return "『 " + id + " 』\n" + div + "\n" + section1 + "\n" + div + "\n" + section2 + "\n" + div + "\n";
     },
@@ -132,6 +133,8 @@ var UI = {
     }
 };
 
+// ... (이후 Database, SessionManager, AdminManager, UserManager, GroupManager, response 핸들러는 v8.6.8과 동일하여 생략 없이 전체 보존됨을 전제로 합니다) ...
+
 // ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
 var Database = {
     data: {},
@@ -168,13 +171,12 @@ var AdminManager = {
             if (session.screen === "ADMIN_USER_DETAIL") { session.screen = "ADMIN_MAIN"; return AdminManager.handle("2", session, replier, startTime); }
             if (session.history.length > 0) { var prev = session.history.pop(); session.screen = prev.screen; return replier.reply(UI.renderMenu(session)); }
         }
-        
         switch(session.screen) {
             case "ADMIN_MAIN":
                 if (msg === "1") {
                     var rt = java.lang.Runtime.getRuntime();
                     var used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
-                    replier.reply(UI.make("시스템 정보", "⚡ 속도: " + (new Date().getTime() - startTime) + "ms\n📟 RAM: " + used + " MB\n👥 총원: " + Object.keys(Database.data).length + "명", "현재 봇의 실시간 리소스 상태입니다."));
+                    replier.reply(UI.make("시스템 정보", "⚡ 속도: " + (new Date().getTime() - startTime) + "ms\n📟 RAM: " + used + " MB\n👥 총원: " + Object.keys(Database.data).length + "명", "실시간 리소스 상태입니다."));
                 } else if (msg === "2") {
                     session.userListCache = Object.keys(Database.data);
                     replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 관리", session.userListCache.map(function(id, i){ return (i+1)+". "+id; }).join("\n"), "수정할 유저의 번호를 입력하세요."));
@@ -196,14 +198,14 @@ var AdminManager = {
                 if (msg === "확인") {
                     var pw = Database.data[session.targetUser].pw;
                     Database.data[session.targetUser] = Database.getInitData(pw); Database.save(Database.data);
-                    replier.reply(UI.make("완료", "초기화되었습니다.", "성공적으로 반영되었습니다."));
+                    replier.reply(UI.make("완료", "초기화되었습니다.", ""));
                 }
                 break;
             case "ADMIN_DELETE_CONFIRM":
                 if (msg === "삭제확인") {
                     delete Database.data[session.targetUser]; Database.save(Database.data);
                     SessionManager.forceLogout(session.targetUser);
-                    replier.reply(UI.make("완료", "삭제되었습니다.", "DB에서 데이터가 제거되었습니다."));
+                    replier.reply(UI.make("완료", "삭제되었습니다.", ""));
                 }
                 break;
             case "ADMIN_EDIT_SELECT":
@@ -225,21 +227,21 @@ var UserManager = {
         if (!d) {
             switch(session.screen) {
                 case "GUEST_MAIN":
-                    if (msg === "1") replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디를 입력해주세요.", "아이디를 입력하세요."));
-                    else if (msg === "2") replier.reply(UI.go(session, "LOGIN_ID", "로그인", "아이디를 입력해주세요.", "아이디를 입력하세요."));
+                    if (msg === "1") replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디를 입력해주세요.", ""));
+                    else if (msg === "2") replier.reply(UI.go(session, "LOGIN_ID", "로그인", "아이디를 입력해주세요.", ""));
                     break;
                 case "JOIN_ID":
-                    if (Database.data[msg]) return replier.reply(UI.make("오류", "중복된 아이디입니다.", "다른 아이디를 사용하세요."));
-                    session.tempId = msg; replier.reply(UI.go(session, "JOIN_PW", "비밀번호 설정", "비밀번호를 입력해주세요.", "비밀번호를 설정하세요."));
+                    if (Database.data[msg]) return replier.reply(UI.make("오류", "중복된 아이디입니다.", ""));
+                    session.tempId = msg; replier.reply(UI.go(session, "JOIN_PW", "비밀번호 설정", "비밀번호를 입력해주세요.", ""));
                     break;
                 case "JOIN_PW":
                     Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
                     session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session, sender));
                     break;
-                case "LOGIN_ID": session.tempId = msg; replier.reply(UI.go(session, "LOGIN_PW", "본인 인증", "비밀번호를 입력해주세요.", "비밀번호를 입력하세요.")); break;
+                case "LOGIN_ID": session.tempId = msg; replier.reply(UI.go(session, "LOGIN_PW", "본인 인증", "비밀번호를 입력해주세요.", "")); break;
                 case "LOGIN_PW":
                     if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) { session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session, sender)); }
-                    else replier.reply(UI.make("오류", "정보가 일치하지 않습니다.", "다시 시도해주세요."));
+                    else replier.reply(UI.make("오류", "정보가 일치하지 않습니다.", ""));
                     break;
             }
         } else {
@@ -250,13 +252,12 @@ var UserManager = {
                 if (session.history.length > 0) { var prev = session.history.pop(); session.screen = prev.screen; return replier.reply(UI.renderMenu(session, sender)); }
                 return replier.reply(UI.renderMenu(session, sender));
             }
-
             switch(session.screen) {
                 case "USER_MAIN":
-                    if (msg === "1") replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "게임 전적과 티어를 확인합니다."));
-                    else if (msg === "2") replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "수집 아이템을 관리합니다."));
-                    else if (msg === "3") replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 구매", "신규 캐릭터를 영입합니다."));
-                    else if (msg === "4") { SessionManager.forceLogout(session.tempId); replier.reply(UI.make("알림", "로그아웃 되었습니다.", "이용해 주셔서 감사합니다.")); }
+                    if (msg === "1") replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "전적을 확인합니다."));
+                    else if (msg === "2") replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "수집 아이템 관리"));
+                    else if (msg === "3") replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 구매", "캐릭터 영입"));
+                    else if (msg === "4") { SessionManager.forceLogout(session.tempId); replier.reply(UI.make("알림", "로그아웃 되었습니다.", "")); }
                     break;
                 case "SHOP_MAIN":
                     if (msg === "1") replier.reply(UI.go(session, "SHOP_ROLES", "역할군 선택", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "포지션을 선택하세요."));
@@ -269,28 +270,28 @@ var UserManager = {
                             var owned = d.collection.characters.indexOf(u) !== -1;
                             return (i+1) + ". " + u + (owned ? " [보유]" : " (500G)");
                         }).join("\n");
-                        replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uList, "구매할 캐릭터 번호를 입력하세요."));
+                        replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uList, "구매할 번호를 입력하세요."));
                     }
                     break;
                 case "SHOP_BUY_ACTION":
                     var units = SystemData.roles[session.selectedRole].units, uIdx = parseInt(msg) - 1;
                     if (units[uIdx]) {
                         var target = units[uIdx];
-                        if (d.collection.characters.indexOf(target) !== -1) replier.reply(UI.make("알림", "보유 중입니다.", ""));
+                        if (d.collection.characters.indexOf(target) !== -1) replier.reply(UI.make("알림", "이미 보유 중입니다.", ""));
                         else if (d.gold < 500) replier.reply(UI.make("알림", "골드가 부족합니다.", ""));
                         else { 
                             d.gold -= 500; d.collection.characters.push(target); Database.save(Database.data); 
-                            replier.reply(UI.make("구매 완료", target + "을(를) 영입했습니다!", "남은 골드: " + d.gold + "G")); 
+                            replier.reply(UI.make("구매 완료", target + " 영입 완료!", "남은 골드: " + d.gold + "G")); 
                         }
                     }
                     break;
                 case "COL_MAIN":
                     if (msg === "1") {
                         var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
-                        replier.reply(UI.go(session, "COL_TITLE_ACTION", "보유 칭호", tList, "장착할 칭호 번호를 입력하세요."));
+                        replier.reply(UI.go(session, "COL_TITLE_ACTION", "보유 칭호", tList, "장착할 번호를 입력하세요."));
                     } else if (msg === "2") {
-                        var cList = d.collection.characters.length > 0 ? d.collection.characters.join("\n") : "보유 캐릭터가 없습니다.";
-                        replier.reply(UI.go(session, "COL_CHAR_VIEW", "보유 캐릭터", cList, "수집한 캐릭터 목록입니다."));
+                        var cList = d.collection.characters.length > 0 ? d.collection.characters.join("\n") : "보유 캐릭터 없음";
+                        replier.reply(UI.go(session, "COL_CHAR_VIEW", "보유 캐릭터", cList, ""));
                     }
                     break;
                 case "COL_TITLE_ACTION":
@@ -307,7 +308,7 @@ var GroupManager = {
     handle: function(msg, session, replier, sender) {
         if (session.screen === "GROUP_MAIN" && msg === "1") {
             if (!session.data) return; 
-            replier.reply(UI.go(session, "GROUP_PROFILE", session.tempId, "", "내 실시간 전적 정보입니다."));
+            replier.reply(UI.go(session, "GROUP_PROFILE", session.tempId, "", ""));
         }
     }
 };
@@ -347,5 +348,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.6.7 에러]: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.6.9 에러]: " + e.message); }
 }
