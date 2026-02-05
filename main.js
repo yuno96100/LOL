@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.7.2
- * 1. UI: v8.5.2 유동 구분선(12~18자) 및 이모지 네비게이션 바 적용.
- * 2. 무생략: 모든 매니저 로직 및 데이터 핸들러 전체 포함.
- * 3. 보안: 관리자 해시 및 방 이름 검증 포함.
+ * [main.js] v8.7.6
+ * 1. UI 완전 정렬: 네비게이션 바의 폭까지 미리 계산에 포함하여 모든 구분선 길이 통일.
+ * 2. 무생략: 전체 로직 유지 및 UI 불균형 수정.
+ * 3. 탐색: 하단 네비게이션 바 정렬 로직 강화.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,14 +16,11 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
     MIN_LINE: 12,
-    MAX_LINE: 18, 
-    NAV_ITEMS: ["⬅️ 이전", "🚫 취소", "🏠 메뉴"]
+    MAX_LINE: 18,
+    NAV_ITEMS: ["돌아가기", "취소", "메뉴"]
 };
 
 var Utils = {
-    getCompactNav: function() {
-        return Config.NAV_ITEMS.join(" | ");
-    },
     getVisualWidth: function(str) {
         var width = 0;
         for (var i = 0; i < str.length; i++) {
@@ -33,18 +30,23 @@ var Utils = {
         }
         return width;
     },
-    getDivider: function(content) {
-        if (!content) return Array(Config.MIN_LINE + 1).join(Config.LINE_CHAR);
-        var lines = content.split("\n");
-        var maxVisualWidth = 0;
+    // 네비게이션 바를 포함한 전체 텍스트 중 최장 길이를 찾아 구분선 생성
+    getUnifiedDivider: function(title, content, help) {
+        var nav = this.getNav();
+        var fullText = title + "\n" + content + "\n" + (help || "") + "\n" + nav;
+        var lines = fullText.split("\n");
+        var maxW = 0;
         for (var i = 0; i < lines.length; i++) {
             var w = this.getVisualWidth(lines[i]);
-            if (w > maxVisualWidth) maxVisualWidth = w;
+            if (w > maxW) maxW = w;
         }
-        var targetCount = Math.ceil(maxVisualWidth / 2);
-        if (targetCount < Config.MIN_LINE) targetCount = Config.MIN_LINE;
-        if (targetCount > Config.MAX_LINE) targetCount = Config.MAX_LINE;
-        return Array(targetCount + 1).join(Config.LINE_CHAR);
+        var count = Math.ceil(maxW / 2);
+        if (count < Config.MIN_LINE) count = Config.MIN_LINE;
+        if (count > Config.MAX_LINE) count = Config.MAX_LINE;
+        return Array(count + 1).join(Config.LINE_CHAR);
+    },
+    getNav: function() {
+        return Config.NAV_ITEMS.join(" | ");
     }
 };
 
@@ -84,20 +86,26 @@ function getTierInfo(lp) {
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     make: function(title, content, help) {
-        var div = Utils.getDivider(content);
+        var div = Utils.getUnifiedDivider(title, content, help);
         var res = "『 " + title + " 』\n" + div + "\n" + content + "\n" + div + "\n";
         if (help) res += "💡 " + help + "\n" + div + "\n";
-        res += Utils.getCompactNav();
+        res += Utils.getNav();
         return res;
     },
-    renderProfile: function(id, data) {
+    renderProfile: function(id, data, help) {
         var tier = getTierInfo(data.lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
+        
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n💰 골드: " + data.gold.toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
-        var div = Utils.getDivider(s2);
-        return "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
+        
+        var div = Utils.getUnifiedDivider(id, s1 + "\n" + s2, help);
+        
+        var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
+        if (help) res += "💡 " + help + "\n" + div + "\n";
+        res += Utils.getNav();
+        return res;
     },
     go: function(session, screen, title, content, help) {
         if (session.screen && session.screen !== screen && session.screen !== "IDLE") {
@@ -105,10 +113,11 @@ var UI = {
             session.history.push({ screen: session.screen, title: session.lastTitle });
         }
         session.screen = screen; session.lastTitle = title;
+        
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var targetId = session.targetUser || session.tempId;
             var targetData = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-            return UI.renderProfile(targetId, targetData) + "💡 " + help + "\n" + Utils.getDivider(help) + "\n" + Utils.getCompactNav();
+            return UI.renderProfile(targetId, targetData, help);
         }
         return this.make(title, content, help);
     },
@@ -163,7 +172,7 @@ var SessionManager = {
 // ━━━━━━━━ [4. 매니저: 관리자 시스템] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier, startTime) {
-        if (msg === "⬅️ 이전" || msg === "이전" || msg === "돌아가기") {
+        if (msg === "돌아가기" || msg === "이전") {
             if (session.screen === "ADMIN_USER_LIST") return replier.reply(UI.renderMenu(session));
             if (session.screen === "ADMIN_USER_DETAIL") { session.screen = "ADMIN_MAIN"; return AdminManager.handle("2", session, replier, startTime); }
             if (session.history && session.history.length > 0) { var prev = session.history.pop(); session.screen = prev.screen; return replier.reply(UI.renderMenu(session)); }
@@ -242,7 +251,7 @@ var UserManager = {
                     break;
             }
         } else {
-            if (msg === "⬅️ 이전" || msg === "이전" || msg === "돌아가기") {
+            if (msg === "돌아가기" || msg === "이전") {
                 if (session.screen === "SHOP_ROLES") return UserManager.handle("3", {data:d, screen:"USER_MAIN", history:[]}, replier, sender);
                 if (session.screen === "SHOP_BUY_ACTION") return UserManager.handle("1", {data:d, screen:"SHOP_MAIN", history:[]}, replier, sender);
                 if (session.screen === "COL_TITLE_ACTION" || session.screen === "COL_CHAR_VIEW") return UserManager.handle("2", {data:d, screen:"USER_MAIN", history:[]}, replier, sender);
@@ -305,7 +314,7 @@ var GroupManager = {
     handle: function(msg, session, replier, sender) {
         if (session.screen === "GROUP_MAIN" && msg === "1") {
             if (!session.data) return; 
-            replier.reply(UI.go(session, "GROUP_PROFILE", session.tempId, "", "내 정보 정보"));
+            replier.reply(UI.go(session, "GROUP_PROFILE", session.tempId, "", "내 정보 확인"));
         }
     }
 };
@@ -322,12 +331,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         msg = msg.trim();
         var isAdmin = (room === Config.AdminRoom && hash === Config.AdminHash);
 
-        if (msg === "🚫 취소" || msg === "취소" || msg === "🏠 메뉴" || msg === "메뉴") { 
+        if (msg === "취소" || msg === "메뉴") { 
             SessionManager.reset(session); return replier.reply(UI.renderMenu(session, sender)); 
         }
 
         if (isAdmin) {
-            if (session.screen === "IDLE") { if (msg === "🏠 메뉴") return replier.reply(UI.renderMenu(session, sender)); return; }
+            if (session.screen === "IDLE") { if (msg === "메뉴") return replier.reply(UI.renderMenu(session, sender)); return; }
             return AdminManager.handle(msg, session, replier, startTime);
         }
 
@@ -345,5 +354,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.7.2 에러]: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.7.6 에러]: " + e.message); }
 }
