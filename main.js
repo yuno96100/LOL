@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.2.2
- * 1. 수정: 자동 줄바꿈 로직(12자 제한)을 완전히 삭제.
- * 2. 유지: 프로필 UI 레이아웃 및 전적 승률 표기 기능.
- * 3. 규격: 구분선 12칸 및 하단 내비게이션 UI 적용 유지.
+ * [main.js] v8.2.4
+ * 1. 문구 수정: '캐릭터 영입' -> '캐릭터 구매', '영입 성공' -> '구매 성공'으로 변경.
+ * 2. 구조 유지: 상점 -> 캐릭터 구매 -> 역할군 선택 -> 구매 확정.
+ * 3. 규격: 자동 줄바꿈 없음, 12칸 구분선, 하단 고정 UI 적용.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -240,7 +240,7 @@ var UserManager = {
         if (!d) {
             switch(session.screen) {
                 case "GUEST_MAIN":
-                    if (msg === "1") replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디를 입력하세요.\n(아이디는 닉네임으로 사용됩니다.)", "공백 없이 입력"));
+                    if (msg === "1") replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디를 입력하세요.", "공백 없이 입력"));
                     else if (msg === "2") replier.reply(UI.go(session, "LOGIN_ID", "로그인", "아이디를 입력하세요.", ""));
                     break;
                 case "JOIN_ID":
@@ -265,28 +265,15 @@ var UserManager = {
                 case "USER_MAIN":
                     if (msg === "1") replier.reply(UI.go(session, "PROFILE_VIEW", "프로필", UI.renderProfile(session.tempId, d), "전투 정보 요약"));
                     else if (msg === "2") replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호 관리\n2. 보유 캐릭터 목록", "항목 선택"));
-                    else if (msg === "3") replier.reply(UI.go(session, "SHOP_ROLES", "상점", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "역할군 선택"));
+                    else if (msg === "3") replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 구매", "항목을 선택하세요."));
                     else if (msg === "4") { 
                         var userId = session.tempId;
                         SessionManager.forceLogout(userId); 
-                        replier.reply(UI.make("알림", "로그아웃이 완료되었습니다. (모든 방에서 접속 종료)", "")); 
+                        replier.reply(UI.make("알림", "로그아웃이 완료되었습니다.", "")); 
                     }
                     break;
-                case "COL_MAIN":
-                    if (msg === "1") {
-                        var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
-                        replier.reply(UI.go(session, "COL_TITLE_ACTION", "보유 칭호 관리", tList, "번호 입력 시 즉시 장착"));
-                    } else if (msg === "2") {
-                        var cList = d.collection.characters.length > 0 ? d.collection.characters.join("\n") : "보유한 캐릭터가 없습니다.";
-                        replier.reply(UI.go(session, "COL_CHAR_VIEW", "보유 캐릭터 목록", cList, "조회 전용"));
-                    }
-                    break;
-                case "COL_TITLE_ACTION":
-                    var tIdx = parseInt(msg) - 1;
-                    if (d.collection.titles[tIdx]) {
-                        d.title = d.collection.titles[tIdx]; Database.save(Database.data);
-                        replier.reply(UI.make("장착 완료", "[" + d.title + "] 칭호로 변경되었습니다.", ""));
-                    }
+                case "SHOP_MAIN":
+                    if (msg === "1") replier.reply(UI.go(session, "SHOP_ROLES", "캐릭터 구매", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "역할군 선택"));
                     break;
                 case "SHOP_ROLES":
                     var rIdx = parseInt(msg) - 1;
@@ -307,8 +294,24 @@ var UserManager = {
                         else if (d.gold < 500) replier.reply(UI.make("알림", "골드가 부족합니다.", "잔액: " + d.gold + "G"));
                         else {
                             d.gold -= 500; d.collection.characters.push(target); Database.save(Database.data);
-                            replier.reply(UI.make("영입 성공", target + " 소환 완료!", "잔액: " + d.gold + "G"));
+                            replier.reply(UI.make("구매 성공", target + " 소환 완료!", "잔액: " + d.gold + "G"));
                         }
+                    }
+                    break;
+                case "COL_MAIN":
+                    if (msg === "1") {
+                        var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
+                        replier.reply(UI.go(session, "COL_TITLE_ACTION", "보유 칭호 관리", tList, "번호 입력 시 즉시 장착"));
+                    } else if (msg === "2") {
+                        var cList = d.collection.characters.length > 0 ? d.collection.characters.join("\n") : "보유한 캐릭터가 없습니다.";
+                        replier.reply(UI.go(session, "COL_CHAR_VIEW", "보유 캐릭터 목록", cList, "조회 전용"));
+                    }
+                    break;
+                case "COL_TITLE_ACTION":
+                    var tIdx = parseInt(msg) - 1;
+                    if (d.collection.titles[tIdx]) {
+                        d.title = d.collection.titles[tIdx]; Database.save(Database.data);
+                        replier.reply(UI.make("장착 완료", "[" + d.title + "] 칭호로 변경되었습니다.", ""));
                     }
                     break;
             }
@@ -345,7 +348,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
                 session.screen = prev.screen; session.lastTitle = prev.title;
-                return replier.reply(UI.renderMenu(session, sender));
+                // 이전 화면 복구 시 유동적 문구 대응
+                var content = "항목을 선택하세요.";
+                if(session.screen === "USER_MAIN") content = "1. 프로필\n2. 컬렉션\n3. 상점\n4. 로그아웃";
+                else if(session.screen === "SHOP_MAIN") content = "1. 캐릭터 구매";
+                return replier.reply(UI.make(session.lastTitle, content, ""));
             }
             return replier.reply(UI.renderMenu(session, sender));
         }
@@ -388,6 +395,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.2.2 에러]: " + e.message + " (L:" + e.lineNumber + ")");
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.2.4 에러]: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
