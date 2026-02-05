@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.7.6
- * 1. UI 완전 정렬: 네비게이션 바의 폭까지 미리 계산에 포함하여 모든 구분선 길이 통일.
- * 2. 무생략: 전체 로직 유지 및 UI 불균형 수정.
- * 3. 탐색: 하단 네비게이션 바 정렬 로직 강화.
+ * [main.js] v8.7.8
+ * 1. UI 복구: 네비게이션 바에 시각적 아이콘 다시 추가.
+ * 2. 폭 최적화: 아이콘(이모지)의 폭을 고려하여 모든 구분선 길이를 완벽히 통일.
+ * 3. 무생략: 관리자/유저/그룹 전체 시스템 코드 제공.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,8 +16,9 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
     MIN_LINE: 12,
-    MAX_LINE: 18,
-    NAV_ITEMS: ["돌아가기", "취소", "메뉴"]
+    MAX_LINE: 20,
+    // 아이콘 포함 네비게이션 구성
+    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
 var Utils = {
@@ -25,15 +26,16 @@ var Utils = {
         var width = 0;
         for (var i = 0; i < str.length; i++) {
             var c = str.charCodeAt(i);
-            if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || (c >= 0x3130 && c <= 0x318F) || (c > 255)) width += 2;
+            // 한글 및 이모지(대략적) 폭 계산
+            if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || (c > 255)) width += 2;
             else width += 1;
         }
         return width;
     },
-    // 네비게이션 바를 포함한 전체 텍스트 중 최장 길이를 찾아 구분선 생성
+    // 모든 섹션과 네비게이션 바를 포함한 최장 폭 계산
     getUnifiedDivider: function(title, content, help) {
         var nav = this.getNav();
-        var fullText = title + "\n" + content + "\n" + (help || "") + "\n" + nav;
+        var fullText = "『 " + title + " 』\n" + content + "\n" + (help || "") + "\n" + nav;
         var lines = fullText.split("\n");
         var maxW = 0;
         for (var i = 0; i < lines.length; i++) {
@@ -172,7 +174,7 @@ var SessionManager = {
 // ━━━━━━━━ [4. 매니저: 관리자 시스템] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier, startTime) {
-        if (msg === "돌아가기" || msg === "이전") {
+        if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.screen === "ADMIN_USER_LIST") return replier.reply(UI.renderMenu(session));
             if (session.screen === "ADMIN_USER_DETAIL") { session.screen = "ADMIN_MAIN"; return AdminManager.handle("2", session, replier, startTime); }
             if (session.history && session.history.length > 0) { var prev = session.history.pop(); session.screen = prev.screen; return replier.reply(UI.renderMenu(session)); }
@@ -251,7 +253,7 @@ var UserManager = {
                     break;
             }
         } else {
-            if (msg === "돌아가기" || msg === "이전") {
+            if (msg === "이전" || msg === "⬅️ 이전") {
                 if (session.screen === "SHOP_ROLES") return UserManager.handle("3", {data:d, screen:"USER_MAIN", history:[]}, replier, sender);
                 if (session.screen === "SHOP_BUY_ACTION") return UserManager.handle("1", {data:d, screen:"SHOP_MAIN", history:[]}, replier, sender);
                 if (session.screen === "COL_TITLE_ACTION" || session.screen === "COL_CHAR_VIEW") return UserManager.handle("2", {data:d, screen:"USER_MAIN", history:[]}, replier, sender);
@@ -331,12 +333,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         msg = msg.trim();
         var isAdmin = (room === Config.AdminRoom && hash === Config.AdminHash);
 
-        if (msg === "취소" || msg === "메뉴") { 
+        if (msg === "취소" || msg === "❌ 취소" || msg === "메뉴" || msg === "🏠 메뉴") { 
             SessionManager.reset(session); return replier.reply(UI.renderMenu(session, sender)); 
         }
 
         if (isAdmin) {
-            if (session.screen === "IDLE") { if (msg === "메뉴") return replier.reply(UI.renderMenu(session, sender)); return; }
+            if (session.screen === "IDLE") { if (msg === "메뉴" || msg === "🏠 메뉴") return replier.reply(UI.renderMenu(session, sender)); return; }
             return AdminManager.handle(msg, session, replier, startTime);
         }
 
@@ -354,5 +356,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.7.6 에러]: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.7.8 에러]: " + e.message); }
 }
