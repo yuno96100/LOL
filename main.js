@@ -15,12 +15,12 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    MIN_DIV: 4,     // 최소치를 확 낮춰서 문장이 짧으면 선도 짧게!
-    MAX_DIV: 18,    // 최대치는 모바일/PC 가독성을 위해 유지
+    MAX_DIV: 18, // 최대 18자 제한
     NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
 var Utils = {
+    // 시각적 너비 계산 (한글/이모지 2, 영문/숫자 1)
     getVisualWidth: function(str) {
         var width = 0;
         for (var i = 0; i < str.length; i++) {
@@ -30,28 +30,25 @@ var Utils = {
         }
         return width;
     },
+    // 문구 길이에 맞춰 최대 18자까지 유동적으로 구분선 반환
     getAdaptiveDivider: function(title, content, help) {
-        // 현재 화면에 표시될 모든 텍스트를 검사
         var nav = Config.NAV_ITEMS.join(" | ");
-        var lines = (title + "\n" + content + "\n" + (help || "") + "\n" + nav).split("\n");
+        var allText = title + "\n" + content + "\n" + (help || "") + "\n" + nav;
+        var lines = allText.split("\n");
         var maxW = 0;
         
         for (var i = 0; i < lines.length; i++) {
             var w = this.getVisualWidth(lines[i].trim());
+            // 한 줄이 18자 너비(36)를 넘으면 18자 너비로 계산
+            if (w > Config.MAX_DIV * 2) w = Config.MAX_DIV * 2;
             if (w > maxW) maxW = w;
         }
         
-        // 텍스트 너비에 딱 맞게 선 개수 계산 (2로 나눔)
+        // 너비를 2로 나누어 ━ 개수 산출 (최소 1개)
         var count = Math.ceil(maxW / 2);
-        
-        // 유동 범위: 이제 4개짜리 짧은 선도 가능합니다.
-        if (count < Config.MIN_DIV) count = Config.MIN_DIV;
-        if (count > Config.MAX_DIV) count = Config.MAX_DIV;
+        if (count < 1) count = 1;
         
         return Array(count + 1).join(Config.LINE_CHAR);
-    }
-    getNav: function() {
-        return Config.NAV_ITEMS.join(" | ");
     }
 };
 
