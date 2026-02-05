@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.3.0
- * 1. 고정: 네비게이션바 스타일(간격 및 형태)은 수정 전 상태로 유지.
- * 2. 수정: 구분선의 최소 길이를 네비게이션바의 시각적 너비로 고정.
- * 3. 유동: 본문 내용이 네비바보다 길 경우 최대 18자까지 구분선 확장.
+ * [main.js] v8.3.1
+ * 1. 수정: 구분선 길이를 네비바에 맞추지 않고 본문 길이에 따라 12~18 사이 유동적 결정.
+ * 2. 유지: 네비게이션바 기존 UI 스타일 고정.
+ * 3. 계산: 전각(한글) 2, 반각(영어/숫자/공백) 1 너비 기준.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,13 +15,12 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    MAX_LINE: 18, 
-    // 네비게이션바 스타일 유지 (공백 포함)
+    MIN_LINE: 12, // 최소 12자
+    MAX_LINE: 18, // 최대 18자
     NAV_BAR: "⬅️ 이전 | 🚫 취소 | 🏠 메뉴"
 };
 
 var Utils = {
-    // 실제 시각적 너비 계산 (한글 2, 영어/기호 1)
     getVisualWidth: function(str) {
         var width = 0;
         for (var i = 0; i < str.length; i++) {
@@ -34,11 +33,8 @@ var Utils = {
         }
         return width;
     },
-    // 구분선 생성 (네비게이션바 너비를 최소값으로 사용)
+    // 네비바 무시, 본문과 제목의 길이에만 반응
     getDynamicLine: function(content, title, help) {
-        var navWidth = this.getVisualWidth(Config.NAV_BAR);
-        var minLineCount = Math.ceil(navWidth / 2); // 네비바 기준 최소 길이
-
         var allText = content + "\n" + (title || "") + "\n" + (help || "");
         var lines = allText.split("\n");
         var maxContentWidth = 0;
@@ -48,11 +44,11 @@ var Utils = {
             if (w > maxContentWidth) maxContentWidth = w;
         }
 
+        // 전각 구분선 개수 계산 (너비 2당 1개)
         var targetCount = Math.ceil(maxContentWidth / 2);
         
-        // 네비게이션바 너비보다 작아지지 않게 고정
-        if (targetCount < minLineCount) targetCount = minLineCount;
-        // 최대 18자 제한
+        // 최소 12, 최대 18 범위 적용
+        if (targetCount < Config.MIN_LINE) targetCount = Config.MIN_LINE;
         if (targetCount > Config.MAX_LINE) targetCount = Config.MAX_LINE;
         
         return Array(targetCount + 1).join(Config.LINE_CHAR);
@@ -212,14 +208,14 @@ var AdminManager = {
                 break;
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") replier.reply(UI.go(session, "ADMIN_EDIT_SELECT", "수정 항목", "1. 골드  2. LP  3. 레벨", "번호를 입력하세요."));
-                else if (msg === "2") replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[확인] 입력 시 리셋", "주의: 복구 불가"));
-                else if (msg === "3") replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "삭제", "[삭제확인] 입력 시 삭제", "주의: 영구 삭제"));
+                else if (msg === "2") replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[확인] 입력 시 리셋", ""));
+                else if (msg === "3") replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "삭제", "[삭제확인] 입력 시 삭제", ""));
                 break;
             case "ADMIN_EDIT_SELECT":
                 var types = ["gold", "lp", "level"], names = ["골드", "LP", "레벨"], tIdx = parseInt(msg) - 1;
                 if (types[tIdx]) {
                     session.editType = types[tIdx];
-                    replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", names[tIdx] + " 수정", "현재: " + Database.data[session.targetUser][session.editType], "숫자만 입력하세요."));
+                    replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", names[tIdx] + " 수정", "현재: " + Database.data[session.targetUser][session.editType], "숫자 입력"));
                 }
                 break;
             case "ADMIN_EDIT_INPUT":
@@ -253,7 +249,7 @@ var UserManager = {
                 case "LOGIN_PW":
                     if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) {
                         session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session, sender));
-                    } else replier.reply(UI.make("오류", "불일치", ""));
+                    } else replier.reply(UI.make("오류", "정보 불일치", ""));
                     break;
             }
         } else {
@@ -303,7 +299,7 @@ var UserManager = {
                     var tIdx = parseInt(msg) - 1;
                     if (d.collection.titles[tIdx]) {
                         d.title = d.collection.titles[tIdx]; Database.save(Database.data);
-                        replier.reply(UI.make("변경 완료", "장착됨", ""));
+                        replier.reply(UI.make("장착 완료", "변경됨", ""));
                     }
                     break;
             }
@@ -378,6 +374,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         SessionManager.save();
     } catch (e) {
-        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.3.0 에러]: " + e.message);
+        Api.replyRoom(Config.AdminRoom, "⚠️ [v8.3.1 에러]: " + e.message);
     }
 }
