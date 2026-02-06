@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.9.15
- * 1. 무생략: 관리자, 유저(상점/컬렉션), 단체방의 모든 세부 로직을 포함합니다.
- * 2. 구조 독립: GroupManager와 UserManager를 물리적으로 분리하여 충돌을 방지했습니다.
- * 3. UI 최적화: 구분선 18자 고정, 네비게이션 바 광폭 디자인, 세로바(|) 제거.
+ * [main.js] v8.9.16
+ * 1. UI 조정: 구분선 17자 고정 및 네비게이션 바 양쪽 공백을 통한 중앙 정렬.
+ * 2. 완전성: 모든 관리자, 유저, 단체방 로직을 생략 없이 포함.
+ * 3. 가독성: 유저 상세 메뉴 등에서 세로 작대기(|) 제거 상태 유지.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,8 +15,11 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    FIXED_LINE: 17, 
-    NAV_ITEMS: ["⬅️ 이전      ", "❌ 취소      ", "🏠 메뉴"]
+    FIXED_LINE: 17, // ★ 17글자 고정
+    // 양쪽에 공백을 주어 중앙 정렬 효과
+    NAV_LEFT: "   ",
+    NAV_RIGHT: "   ",
+    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
 var Utils = {
@@ -24,7 +27,8 @@ var Utils = {
         return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); 
     },
     getNav: function() { 
-        return Config.NAV_ITEMS.join(""); 
+        // 아이콘 사이 간격 유지 + 양쪽 사이드 공백 추가
+        return Config.NAV_LEFT + Config.NAV_ITEMS.join("      ") + Config.NAV_RIGHT; 
     }
 };
 
@@ -200,7 +204,7 @@ var UserManager = {
                 case "JOIN_ID": if (Database.data[msg]) return replier.reply(UI.make("오류", "중복 ID", "")); session.tempId = msg; replier.reply(UI.go(session, "JOIN_PW", "가입", "PW 설정", "")); break;
                 case "JOIN_PW": Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data); session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session)); break;
                 case "LOGIN_ID": session.tempId = msg; replier.reply(UI.go(session, "LOGIN_PW", "인증", "PW 입력", "")); break;
-                case "LOGIN_PW": if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) { session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session)); } else replier.reply(UI.make("오류", "정보 불일치", "")); break;
+                case "LOGIN_PW": if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) { session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session)); } else replier.reply(UI.make("오류", "불일치", "")); break;
             }
         } else {
             if (msg.indexOf("이전") !== -1) {
@@ -299,5 +303,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.15 에러: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.16 에러: " + e.message); }
 }
