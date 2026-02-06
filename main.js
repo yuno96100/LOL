@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.9.18
- * 1. 메뉴 개선: 유저 관리 상세 메뉴를 확실하게 줄바꿈하여 세로로 출력.
- * 2. UI 유지: 구분선 17자 고정 및 네비게이션 바 중앙 정렬 레이아웃 적용.
- * 3. 완전성: 모든 로직을 생략 없이 포함한 통합 코드.
+ * [main.js] v8.9.19
+ * 1. UI 수정: 관리자가 유저 선택 시 프로필 하단에 세로 메뉴(수정/초기화/삭제)가 표시되도록 개선.
+ * 2. 버그 수정: LP가 undefined로 표시되는 현상 방지 (기본값 0 설정).
+ * 3. 구조 유지: 17자 구분선 및 중앙 정렬 네비게이션 적용.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -71,15 +71,23 @@ var UI = {
         if (help) res += "💡 " + help + "\n" + div + "\n";
         return res + Utils.getNav();
     },
-    renderProfile: function(id, data, help) {
-        var tier = getTierInfo(data.lp);
+    // ★ 관리자 전용 세로 메뉴를 포함할 수 있도록 content 매개변수 활용 강화
+    renderProfile: function(id, data, help, content) {
+        var lp = data.lp || 0;
+        var tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
+        
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
-        var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + data.lp + " LP)\n💰 골드: " + data.gold.toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
+        var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
+        
         var div = Utils.getFixedDivider();
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
+        
+        // 여기에 세로 메뉴(content) 삽입
+        if (content) res += content + "\n" + div + "\n";
         if (help) res += "💡 " + help + "\n" + div + "\n";
+        
         return res + Utils.getNav();
     },
     go: function(session, screen, title, content, help) {
@@ -88,10 +96,12 @@ var UI = {
             session.history.push({ screen: session.screen, title: session.lastTitle });
         }
         session.screen = screen; session.lastTitle = title;
+        
+        // 프로필 레이아웃을 사용하는 화면들
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var tid = session.targetUser || session.tempId;
             var td = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-            return UI.renderProfile(tid, td, help);
+            return UI.renderProfile(tid, td, help, content); // ★ content(세로메뉴) 전달
         }
         return this.make(title, content, help);
     },
@@ -158,7 +168,7 @@ var AdminManager = {
                 var idx = parseInt(msg) - 1;
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
-                    // ★ 세로 배열 명시적 적용
+                    // ★ 프로필과 함께 보일 세로 메뉴를 content 인자로 명확히 전달
                     replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제", "기능 번호 입력"));
                 }
                 break;
@@ -302,5 +312,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.18 에러: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.19 에러: " + e.message); }
 }
