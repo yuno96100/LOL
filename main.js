@@ -1,8 +1,9 @@
 /**
- * [main.js] v8.7.7
- * 1. 복구: 네비게이션 바에서 아이콘 제거 및 '이전' 단어로 변경.
- * 2. UI: 화면 내 모든 구분선(상·중·하) 길이를 최장 줄에 맞춰 동일하게 정렬.
- * 3. 무생략: 전체 로직 포함.
+ * [main.js] v8.9.12
+ * 1. 영구 삭제: 특정 글자수마다 줄을 바꾸는 강제 줄바꿈 기능을 완전히 제거했습니다.
+ * 2. 아이콘 복구: 네비게이션 바에 '⬅️ 이전 | ❌ 취소 | 🏠 메뉴' 아이콘을 다시 추가했습니다.
+ * 3. 동적 UI: 구분선 길이를 최장 문구에 맞추되, 화면 이탈(MAX_LINE)은 방지합니다.
+ * 4. 무생략: 관리자, 유저, 단체방 시스템 전 로직을 포함합니다.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,9 +17,8 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
     MIN_LINE: 12,
-    MAX_LINE: 18,
-    // 요청하신 문구로 고정 (아이콘 제거)
-    NAV_ITEMS: ["이전", "취소", "메뉴"]
+    MAX_LINE: 18, // 구분선이 다음 줄로 넘어가지 않도록 하는 최대치
+    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
 var Utils = {
@@ -172,7 +172,7 @@ var SessionManager = {
 // ━━━━━━━━ [4. 매니저: 관리자 시스템] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier, startTime) {
-        if (msg === "이전") {
+        if (msg === "이전" || msg === "⬅️ 이전") {
             if (session.screen === "ADMIN_USER_LIST") return replier.reply(UI.renderMenu(session));
             if (session.screen === "ADMIN_USER_DETAIL") { session.screen = "ADMIN_MAIN"; return AdminManager.handle("2", session, replier, startTime); }
             if (session.history && session.history.length > 0) { var prev = session.history.pop(); session.screen = prev.screen; return replier.reply(UI.renderMenu(session)); }
@@ -251,7 +251,7 @@ var UserManager = {
                     break;
             }
         } else {
-            if (msg === "이전") {
+            if (msg === "이전" || msg === "⬅️ 이전") {
                 if (session.screen === "SHOP_ROLES") return UserManager.handle("3", {data:d, screen:"USER_MAIN", history:[]}, replier, sender);
                 if (session.screen === "SHOP_BUY_ACTION") return UserManager.handle("1", {data:d, screen:"SHOP_MAIN", history:[]}, replier, sender);
                 if (session.screen === "COL_TITLE_ACTION" || session.screen === "COL_CHAR_VIEW") return UserManager.handle("2", {data:d, screen:"USER_MAIN", history:[]}, replier, sender);
@@ -312,6 +312,10 @@ var UserManager = {
 // ━━━━━━━━ [6. 매니저: 단체방 시스템] ━━━━━━━━
 var GroupManager = {
     handle: function(msg, session, replier, sender) {
+        if (msg === "이전" || msg === "⬅️ 이전") {
+            if (session.history && session.history.length > 0) { var prev = session.history.pop(); session.screen = prev.screen; return replier.reply(UI.renderMenu(session, sender)); }
+            return replier.reply(UI.renderMenu(session, sender));
+        }
         if (session.screen === "GROUP_MAIN" && msg === "1") {
             if (!session.data) return; 
             replier.reply(UI.go(session, "GROUP_PROFILE", session.tempId, "", "내 정보 확인"));
@@ -331,12 +335,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         msg = msg.trim();
         var isAdmin = (room === Config.AdminRoom && hash === Config.AdminHash);
 
-        if (msg === "취소" || msg === "메뉴") { 
+        if (msg === "취소" || msg === "메뉴" || msg === "❌ 취소" || msg === "🏠 메뉴") { 
             SessionManager.reset(session); return replier.reply(UI.renderMenu(session, sender)); 
         }
 
         if (isAdmin) {
-            if (session.screen === "IDLE") { if (msg === "메뉴") return replier.reply(UI.renderMenu(session, sender)); return; }
+            if (session.screen === "IDLE") { if (msg === "메뉴" || msg === "🏠 메뉴") return replier.reply(UI.renderMenu(session, sender)); return; }
             return AdminManager.handle(msg, session, replier, startTime);
         }
 
@@ -354,5 +358,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier, sender);
         else if (session.type === "DIRECT") UserManager.handle(msg, session, replier, sender);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.7.7 에러]: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ [v8.9.12 에러]: " + e.message); }
 }
