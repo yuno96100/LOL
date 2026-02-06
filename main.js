@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.9.19
- * 1. UI 수정: 관리자가 유저 선택 시 프로필 하단에 세로 메뉴(수정/초기화/삭제)가 표시되도록 개선.
- * 2. 버그 수정: LP가 undefined로 표시되는 현상 방지 (기본값 0 설정).
- * 3. 구조 유지: 17자 구분선 및 중앙 정렬 네비게이션 적용.
+ * [main.js] v8.9.21
+ * 1. 알림 시스템: 유저 회원가입 완료 시 관리자 방으로 자동 알림 발송.
+ * 2. UI 유지: 구분선 17자 고정 및 네비게이션 바 중앙 정렬 레이아웃.
+ * 3. 관리자: 유저 상세 페이지 세로 메뉴 및 프로필 렌더링 최적화.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -71,23 +71,17 @@ var UI = {
         if (help) res += "💡 " + help + "\n" + div + "\n";
         return res + Utils.getNav();
     },
-    // ★ 관리자 전용 세로 메뉴를 포함할 수 있도록 content 매개변수 활용 강화
     renderProfile: function(id, data, help, content) {
         var lp = data.lp || 0;
         var tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-        
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
-        
         var div = Utils.getFixedDivider();
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
-        
-        // 여기에 세로 메뉴(content) 삽입
         if (content) res += content + "\n" + div + "\n";
         if (help) res += "💡 " + help + "\n" + div + "\n";
-        
         return res + Utils.getNav();
     },
     go: function(session, screen, title, content, help) {
@@ -96,12 +90,10 @@ var UI = {
             session.history.push({ screen: session.screen, title: session.lastTitle });
         }
         session.screen = screen; session.lastTitle = title;
-        
-        // 프로필 레이아웃을 사용하는 화면들
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var tid = session.targetUser || session.tempId;
             var td = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-            return UI.renderProfile(tid, td, help, content); // ★ content(세로메뉴) 전달
+            return UI.renderProfile(tid, td, help, content);
         }
         return this.make(title, content, help);
     },
@@ -168,7 +160,6 @@ var AdminManager = {
                 var idx = parseInt(msg) - 1;
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
-                    // ★ 프로필과 함께 보일 세로 메뉴를 content 인자로 명확히 전달
                     replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제", "기능 번호 입력"));
                 }
                 break;
@@ -211,7 +202,15 @@ var UserManager = {
             switch(session.screen) {
                 case "GUEST_MAIN": if (msg === "1") replier.reply(UI.go(session, "JOIN_ID", "가입", "ID 입력", "")); else if (msg === "2") replier.reply(UI.go(session, "LOGIN_ID", "인증", "ID 입력", "")); break;
                 case "JOIN_ID": if (Database.data[msg]) return replier.reply(UI.make("오류", "중복 ID", "")); session.tempId = msg; replier.reply(UI.go(session, "JOIN_PW", "가입", "PW 설정", "")); break;
-                case "JOIN_PW": Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data); session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session)); break;
+                case "JOIN_PW": 
+                    // ★ 회원가입 완료 로직
+                    Database.data[session.tempId] = Database.getInitData(msg); 
+                    Database.save(Database.data); 
+                    session.data = Database.data[session.tempId];
+                    // ★ 관리자 방 알림 송신
+                    Api.replyRoom(Config.AdminRoom, "[📢 가입 알림]\n유저 [" + session.tempId + "] 님이\n소환사의 협곡에 합류했습니다.");
+                    replier.reply(UI.renderMenu(session)); 
+                    break;
                 case "LOGIN_ID": session.tempId = msg; replier.reply(UI.go(session, "LOGIN_PW", "인증", "PW 입력", "")); break;
                 case "LOGIN_PW": if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) { session.data = Database.data[session.tempId]; replier.reply(UI.renderMenu(session)); } else replier.reply(UI.make("오류", "불일치", "")); break;
             }
@@ -312,5 +311,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.19 에러: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.21 에러: " + e.message); }
 }
