@@ -1,8 +1,8 @@
 /**
- * [main.js] v8.9.16
- * 1. UI 조정: 구분선 17자 고정 및 네비게이션 바 양쪽 공백을 통한 중앙 정렬.
- * 2. 완전성: 모든 관리자, 유저, 단체방 로직을 생략 없이 포함.
- * 3. 가독성: 유저 상세 메뉴 등에서 세로 작대기(|) 제거 상태 유지.
+ * [main.js] v8.9.17
+ * 1. 메뉴 개선: 유저 관리 상세 메뉴(수정, 초기화, 삭제)를 세로 배열로 변경.
+ * 2. UI 유지: 구분선 17자 고정 및 네비게이션 바 중앙 정렬 레이아웃 적용.
+ * 3. 완전성: 모든 로직을 생략 없이 포함한 통합 코드.
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -15,8 +15,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    FIXED_LINE: 17, // ★ 17글자 고정
-    // 양쪽에 공백을 주어 중앙 정렬 효과
+    FIXED_LINE: 17, 
     NAV_LEFT: "   ",
     NAV_RIGHT: "   ",
     NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
@@ -27,7 +26,6 @@ var Utils = {
         return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); 
     },
     getNav: function() { 
-        // 아이콘 사이 간격 유지 + 양쪽 사이드 공백 추가
         return Config.NAV_LEFT + Config.NAV_ITEMS.join("      ") + Config.NAV_RIGHT; 
     }
 };
@@ -160,11 +158,12 @@ var AdminManager = {
                 var idx = parseInt(msg) - 1;
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
-                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "", "1. 수정   2. 초기화   3. 삭제"));
+                    // ★ 메뉴를 세로 배열로 변경
+                    replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제", "기능 번호 입력"));
                 }
                 break;
             case "ADMIN_USER_DETAIL":
-                if (msg === "1") replier.reply(UI.go(session, "ADMIN_EDIT_SELECT", "수정 항목", "1. 골드   2. LP   3. 레벨", "항목 선택"));
+                if (msg === "1") replier.reply(UI.go(session, "ADMIN_EDIT_SELECT", "수정 항목", "1. 골드\n2. LP\n3. 레벨", "항목 선택"));
                 else if (msg === "2") replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[확인] 입력 시 리셋", "주의: 복구 불가"));
                 else if (msg === "3") replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "삭제", "[삭제확인] 입력 시 삭제", "주의: 영구 삭제"));
                 break;
@@ -303,5 +302,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.16 에러: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.17 에러: " + e.message); }
 }
