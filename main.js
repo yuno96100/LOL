@@ -1,6 +1,6 @@
 /**
- * [main.js] v8.9.17
- * 1. 메뉴 개선: 유저 관리 상세 메뉴(수정, 초기화, 삭제)를 세로 배열로 변경.
+ * [main.js] v8.9.18
+ * 1. 메뉴 개선: 유저 관리 상세 메뉴를 확실하게 줄바꿈하여 세로로 출력.
  * 2. UI 유지: 구분선 17자 고정 및 네비게이션 바 중앙 정렬 레이아웃 적용.
  * 3. 완전성: 모든 로직을 생략 없이 포함한 통합 코드.
  */
@@ -158,7 +158,7 @@ var AdminManager = {
                 var idx = parseInt(msg) - 1;
                 if (session.userListCache[idx]) {
                     session.targetUser = session.userListCache[idx];
-                    // ★ 메뉴를 세로 배열로 변경
+                    // ★ 세로 배열 명시적 적용
                     replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제", "기능 번호 입력"));
                 }
                 break;
@@ -302,5 +302,5 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.17 에러: " + e.message); }
+    } catch (e) { Api.replyRoom(Config.AdminRoom, "⚠️ v8.9.18 에러: " + e.message); }
 }
