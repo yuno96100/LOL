@@ -1,10 +1,9 @@
 /**
  * [main.js] v8.9.99
- * 1. 방 타입별 로직 완전 분리 (Admin / Group / Direct)
- * 2. 네비바: 아이콘 제거 + 세로 정렬
- * 3. 스마트 UI: 네비바 없을 시 도움말 하단 여백/선 제거
- * 4. 단톡방 로그인 연동: 개인톡 세션(data, tempId) 자동 동기화 포함
- * 5. 생략 없는 전체 기능 구현
+ * 1. 네비바 롤백: 이모지 포함 가로형 (◀이전 | ✖취소 | 🏠메뉴)
+ * 2. 방 타입별 로직 완전 분리 (Admin / Group / Direct)
+ * 3. 단톡방 로그인 연동: 개인톡 세션 자동 동기화
+ * 4. 생략 없는 전체 로직 포함
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -18,12 +17,12 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 17,
-    NAV_ITEMS: ["이전", "취소", "메뉴"] 
+    // 네비게이션 바 가로형 롤백
+    NAV_BAR: "◀이전 | ✖취소 | 🏠메뉴"
 };
 
 var Utils = {
-    getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
-    getVerticalNav: function() { return Config.NAV_ITEMS.join("\n"); }
+    getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); }
 };
 
 var TierData = [
@@ -64,12 +63,12 @@ var UI = {
         if (help) {
             res += "💡 " + help;
             if (showNav) {
-                res += "\n" + div + "\n" + Utils.getVerticalNav() + "\n" + div + "\n";
+                res += "\n" + div + "\n" + Config.NAV_BAR + "\n" + div + "\n";
             } else {
-                res += "\n" + div; // 네비바 없을 때 하단 여백 제거
+                res += "\n" + div;
             }
         } else if (showNav) {
-            res += Utils.getVerticalNav() + "\n" + div + "\n";
+            res += Config.NAV_BAR + "\n" + div + "\n";
         }
         return res;
     },
@@ -91,7 +90,7 @@ var UI = {
         if (help) {
             res += "💡 " + help;
             if (showNav) {
-                res += "\n" + div + "\n" + Utils.getVerticalNav() + "\n" + div + "\n";
+                res += "\n" + div + "\n" + Config.NAV_BAR + "\n" + div + "\n";
             } else {
                 res += "\n" + div;
             }
@@ -297,7 +296,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         msg = msg.trim(); 
         
         // 1. 공통 기능: 취소
-        if (msg === "취소") {
+        if (msg === "취소" || msg === "✖취소") {
             if (session.screen === "IDLE") return;
             session.preCancelScreen = session.screen;
             session.screen = "CANCEL_CONFIRM";
@@ -310,9 +309,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         }
 
         // 2. 공통 기능: 메뉴 (단톡방 세션 연동 포함)
-        if (msg === "메뉴") {
+        if (msg === "메뉴" || msg === "🏠메뉴") {
             if (isGroupChat && room === Config.GroupRoom) {
-                // [단톡방 전용: 개인톡 세션 동기화 로직]
                 for (var k in SessionManager.sessions) {
                     var s = SessionManager.sessions[k];
                     if (s.type === "DIRECT" && s.tempId === sender && s.data) {
@@ -326,7 +324,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         }
 
         // 3. 공통 기능: 이전
-        if (msg === "이전" && session.history && session.history.length > 0) {
+        if ((msg === "이전" || msg === "◀이전") && session.history && session.history.length > 0) {
             var p = session.history.pop();
             session.screen = p.screen; session.lastTitle = p.title;
             if (session.screen === "USER_MAIN") return replier.reply(UI.renderMenu(session));
@@ -335,7 +333,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
 
         if (session.screen === "IDLE") return;
         
-        // 4. 방 타입별 매니저 호출 (분리 상태 유지)
+        // 4. 방 타입별 매니저 호출
         if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
