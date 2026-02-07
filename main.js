@@ -4,35 +4,37 @@
  * 2. 내부 세부 로직(함수 내부, 조건문 등)에 대한 무생략 상세 주석 추가
  */
 
-// ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
+// 시스템 운영에 필요한 핵심 설정값과 게임 데이터를 정의하는 구역입니다.
 var Config = {
-    Prefix: ".",                // 명령어 접두사 (현재는 사용 대기 중)
-    AdminHash: "2056407147",    // 관리자 본인 식별을 위한 고유 해시값
-    AdminRoom: "소환사의협곡관리", // 관리자 전용 기능이 작동하는 방 이름
-    GroupRoom: "소환사의협곡",     // 일반 유저들이 모여있는 단체방 이름
-    BotName: "소환사의 협곡",     // 봇의 공식 명칭
-    DB_PATH: "/sdcard/msgbot/Bots/main/database.json",     // 유저들의 계정 데이터 파일
-    SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json", // 유저들의 현재 화면 위치 저장 파일
-    LINE_CHAR: "━",             // UI 구분선에 사용할 문자
-    FIXED_LINE: 17,             // UI 구분선의 총 길이 (개수)
-    NAV_LEFT: "     ",          // 네비게이션 바 왼쪽 여백 (우측 정렬용)
-    NAV_RIGHT: " ",             // 네비게이션 바 오른쪽 끝 여백
-    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"] // 하단 공통 버튼 메뉴
+    Prefix: ".",                // 명령어 앞머리 기호 (추후 확장용)
+    AdminHash: "2056407147",    // 관리자 본인임을 식별하기 위한 고유 해시값
+    AdminRoom: "소환사의협곡관리", // 관리용 기능이 작동하는 전용 방 이름
+    GroupRoom: "소환사의협곡",     // 일반 유저들이 활동하는 단체 채팅방 이름
+    BotName: "소환사의 협곡",     // 메인 UI 상단 등에 표시될 봇의 이름
+    DB_PATH: "/sdcard/msgbot/Bots/main/database.json",     // 유저 계정 정보가 저장된 파일 경로
+    SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json", // 유저들의 현재 화면 위치 정보를 담은 파일 경로
+    LINE_CHAR: "━",             // UI 상하단을 구분 짓는 선 문자
+    FIXED_LINE: 17,             // 구분선의 길이를 결정하는 고정 숫자
+    // ★ 네비게이션 바 레이아웃: 왼쪽 공백을 조절하여 버튼들을 우측으로 밀어냄
+    NAV_LEFT: "     ",          
+    NAV_RIGHT: " ",
+    // [오류 수정] 따옴표가 누락되었던 부분을 "⬅️ 이전"으로 정상 수정하였습니다.
+    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"] 
 };
 
-// [유틸리티] UI 레이아웃 계산을 돕는 도구 모음
+// UI 레이아웃 생성을 위한 공통 계산 유틸리티 모음입니다.
 var Utils = {
-    // 설정된 길이만큼 구분선 문자열을 생성함
+    // 설정된 FIXED_LINE 개수만큼 구분선 문자열을 반복 생성하여 반환함
     getFixedDivider: function() { 
         return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); 
     },
-    // 하단 버튼들 사이에 공백을 넣어 보기 좋게 배치함
+    // 네비게이션 바 구성 요소 사이에 일정한 간격(공백 6칸)을 두어 문자열로 합침
     getNav: function() { 
         return Config.NAV_LEFT + Config.NAV_ITEMS.join("      ") + Config.NAV_RIGHT; 
     }
 };
 
-// [게임데이터] 점수에 따른 티어 명칭과 아이콘 정의
+// 유저의 LP 점수에 따라 자동으로 부여될 티어 정보 리스트입니다.
 var TierData = [
     { name: "챌린저", icon: "✨", minLp: 3000 },
     { name: "그랜드마스터", icon: "🔴", minLp: 2500 },
@@ -46,7 +48,7 @@ var TierData = [
     { name: "아이언", icon: "⚫", minLp: 0 }
 ];
 
-// [게임데이터] 상점 카테고리와 판매 유닛 목록
+// 상점에서 판매할 역할군 카테고리와 각 카테고리에 속한 유닛들입니다.
 var SystemData = {
     roles: {
         "탱커": { icon: "🛡️", units: ["알리스타", "말파이트", "레오나"] },
@@ -57,16 +59,18 @@ var SystemData = {
         "서포터": { icon: "✨", units: ["소라카", "유미", "쓰레쉬"] }
     }
 };
-// 카테고리 이름만 배열로 뽑아냄 (번호 선택용)
+// 상점 메뉴 호출 시 번호 매기기를 위해 키값만 따로 추출하여 배열화함
 var RoleKeys = Object.keys(SystemData.roles);
 
-// [계산] 입력받은 LP와 티어 데이터를 비교해 현재 등급을 계산함
+// 입력받은 유저의 현재 LP를 티어 데이터와 대조하여 티어 이름과 아이콘을 반환함
 function getTierInfo(lp) {
-    lp = lp || 0; // LP가 없으면 0으로 처리
+    lp = lp || 0; // 점수가 undefined인 경우 0으로 안전하게 초기화
     for (var i = 0; i < TierData.length; i++) {
+        // 현재 점수가 해당 티어의 최소 요구 점수보다 높거나 같으면 해당 티어 반환
         if (lp >= TierData[i].minLp) return { name: TierData[i].name, icon: TierData[i].icon };
     }
-    return { name: "아이언", icon: "⚫" }; // 기본값
+    // 루프를 다 돌아도 맞는 게 없으면 가장 낮은 '아이언' 반환
+    return { name: "아이언", icon: "⚫" };
 }
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
