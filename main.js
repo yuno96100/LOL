@@ -74,61 +74,77 @@ function getTierInfo(lp) {
     return { name: "아이언", icon: "⚫" };
 }
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
+/**
+ * [main.js] v8.9.51
+ * 1. 가독성 향상: 문구와 구분선 사이에 빈 줄(\n)을 추가하여 여백 확보.
+ * 2. UI 렌더링 로직 전체 보존 및 세부 주석 업데이트.
+ */
+
 var UI = {
-    // 기본 텍스트 상자 UI 생성 (제목, 내용, 도움말 포함)
+    // 기본 상자 형태의 UI 생성 (문구 전후에 여백 추가)
     make: function(title, content, help) {
-        var div = Utils.getFixedDivider();
-        var res = "『 " + title + " 』\n" + div + "\n" + content + "\n" + div + "\n";
-        if (help) res += "💡 " + help + "\n" + div + "\n";
-        return res + Utils.getNav(); // 하단 네비게이션 자동 부착
+        var div = Utils.getFixedDivider(); // "━━━━" 형태의 구분선
+        // 구분선과 내용 사이에 \n을 넣어 한 줄 띄움
+        var res = "『 " + title + " 』\n" + div + "\n\n" + content + "\n\n" + div + "\n";
+        
+        // 도움말이 있을 경우에도 위아래로 공백을 주어 강조함
+        if (help) res += "💡 " + help + "\n\n" + div + "\n";
+        
+        return res + Utils.getNav(); // 하단 네비게이션 부착
     },
-    // 유저의 세부 데이터(골드, 승률 등)를 정해진 형식으로 출력
+
+    // 유저 프로필 렌더링 (각 정보 섹션 사이에 여백 추가)
     renderProfile: function(id, data, help, content) {
         var lp = data.lp || 0;
         var tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
-        var winRate = total === 0 ? 0 : Math.floor((win / total) * 100); // 승률 계산
+        var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
+        
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
+        
         var div = Utils.getFixedDivider();
-        var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
-        if (content) res += content + "\n" + div + "\n"; // 추가 내용이 있으면 삽입
-        if (help) res += "💡 " + help + "\n" + div + "\n";
+        // 각 데이터 블록 사이와 구분선 사이에 빈 줄(\n\n) 삽입
+        var res = "『 " + id + " 』\n" + div + "\n\n" + s1 + "\n\n" + div + "\n\n" + s2 + "\n\n" + div + "\n";
+        
+        if (content) res += "\n" + content + "\n\n" + div + "\n"; 
+        if (help) res += "💡 " + help + "\n\n" + div + "\n";
+        
         return res + Utils.getNav();
     },
-    // 화면 이동 처리 (이전 기록을 history 배열에 저장하여 되돌아가기 지원)
+
+    // 화면 이동 처리 (기존 로직 유지하며 여백 적용된 UI 호출)
     go: function(session, screen, title, content, help) {
         if (session.screen && session.screen !== screen && session.screen !== "IDLE") {
             if (!session.history) session.history = [];
             session.history.push({ screen: session.screen, title: session.lastTitle });
         }
-        session.screen = screen; // 현재 화면 상태 업데이트
-        session.lastTitle = title; // 마지막 제목 저장
-        // 프로필 관련 화면인 경우 전용 렌더러 호출
+        session.screen = screen;
+        session.lastTitle = title;
+        
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
-            var tid = session.targetUser || session.tempId; // 대상 ID 확인
+            var tid = session.targetUser || session.tempId;
             var td = (session.targetUser) ? Database.data[session.targetUser] : session.data;
             return UI.renderProfile(tid, td, help, content);
         }
         return this.make(title, content, help);
     },
-    // 상황별(권한/방타입/로그인여부) 초기 메뉴 구성
+
+    // 초기 메뉴 렌더링
     renderMenu: function(session) {
-        session.history = []; // 메뉴로 오면 히스토리 초기화
+        session.history = [];
         if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호를 입력하세요.");
         if (session.type === "GROUP") {
-            if (!session.data) { // 로그인 안 된 유저가 단톡방에서 메뉴 호출 시
+            if (!session.data) {
                 session.screen = "IDLE"; 
                 return UI.make("알림", "'시스템' 개인톡에서\n로그인을 해주세요.", "보안이 필요합니다."); 
             }
             return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인", "번호를 입력하세요.");
         }
-        // 로그인이 안 된 게스트 상태
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인", "번호를 선택하세요.");
-        // 로그인 완료된 일반 유저 상태
         return this.go(session, "USER_MAIN", "메인 메뉴", "1. 프로필\n2. 컬렉션\n3. 상점\n4. 로그아웃", "작업 번호를 입력하세요.");
     }
-};
+};;
 
 // ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
 var Database = {
