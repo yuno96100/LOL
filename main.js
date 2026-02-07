@@ -76,63 +76,46 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 /**
- * [main.js] v8.9.55
- * 1. 타겟팅 여백: 타이틀/네비 제외, 중앙 본문(content)이 한 줄일 때만 상하단 빈 줄 추가.
- * 2. UI 엔진 섹션: 로직 누락 없이 전체 함수 포함 풀버전.
+ * [main.js] v8.9.56
+ * 1. UI 구조 복구: 조건부 여백 로직을 제거하고 표준 레이아웃으로 회귀.
+ * 2. 주석 표준화: 매번 변하지 않는 일관된 주석 설명 적용.
  */
 
 var UI = {
-    // [기본 UI 생성] 제목과 하단 가이드를 제외한 '본문'의 줄 수를 체크합니다.
+    // 기본 상자 형태의 UI를 생성합니다. (제목, 내용, 도움말)
     make: function(title, content, help) {
-        var div = Utils.getFixedDivider(); // "━━━━" 구분선
+        var div = Utils.getFixedDivider();
+        var res = "『 " + title + " 』\n" + div + "\n" + content + "\n" + div + "\n";
         
-        // [핵심 로직] 본문(content) 내부에 줄바꿈(\n)이 없으면 한 줄로 판단하여 상하단 여백 부여
-        // 타이틀과 구분선은 이 여백 계산에서 제외됩니다.
-        var displayContent = (content.indexOf("\n") === -1) ? "\n" + content + "\n" : content;
-        
-        var res = "『 " + title + " 』\n" + div + "\n" + displayContent + "\n" + div + "\n";
-        
-        // 도움말(help) 영역: 본문과 별개로 도움말 자체가 한 줄이면 여백 추가
+        // 하단 도움말이 있을 경우에만 섹션 추가
         if (help) {
-            var displayHelp = (help.indexOf("\n") === -1) ? "\n" + help + "\n" : help;
-            res += "💡 " + displayHelp + "\n" + div + "\n";
+            res += "💡 " + help + "\n" + div + "\n";
         }
         
-        return res + Utils.getNav(); // 최하단 네비게이션 바 부착
+        return res + Utils.getNav();
     },
 
-    // [유저 프로필 생성] 프로필 본문 및 추가 문구의 여백을 관리합니다.
+    // 유저의 전적, 자산 등을 포함한 프로필 UI를 생성합니다.
     renderProfile: function(id, data, help, content) {
         var lp = data.lp || 0;
         var tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         
-        // 상단 정보와 하단 전적 정보 (기본 2줄 이상이므로 여백 로직 미적용)
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
         
         var div = Utils.getFixedDivider();
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
         
-        // 프로필 하단에 붙는 추가 문구(content)가 한 줄일 때만 여백 적용
-        if (content) {
-            var displayContent = (content.indexOf("\n") === -1) ? "\n" + content + "\n" : content;
-            res += displayContent + "\n" + div + "\n"; 
-        }
-        
-        // 하단 도움말이 한 줄일 때만 여백 적용
-        if (help) {
-            var displayHelp = (help.indexOf("\n") === -1) ? "\n" + help + "\n" : help;
-            res += "💡 " + displayHelp + "\n" + div + "\n";
-        }
+        if (content) res += content + "\n" + div + "\n"; 
+        if (help) res += "💡 " + help + "\n" + div + "\n";
         
         return res + Utils.getNav();
     },
 
-    // [화면 전환 관리] 화면 이동 및 히스토리 저장
+    // 화면 상태(Screen)를 이동시키고 이전 기록을 히스토리에 저장합니다.
     go: function(session, screen, title, content, help) {
-        // 이전 화면과 다를 때만 뒤로가기 기록 저장
         if (session.screen && session.screen !== screen && session.screen !== "IDLE") {
             if (!session.history) session.history = [];
             session.history.push({ screen: session.screen, title: session.lastTitle });
@@ -140,7 +123,7 @@ var UI = {
         session.screen = screen;
         session.lastTitle = title;
         
-        // 프로필/상세보기 화면 판별
+        // 프로필 및 상세 정보 화면 판별
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var tid = session.targetUser || session.tempId;
             var td = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -149,31 +132,25 @@ var UI = {
         return this.make(title, content, help);
     },
 
-    // [메뉴 엔진] 유저 상태에 따른 첫 화면 결정
+    // 유저 권한과 현재 방 타입에 맞는 초기 메뉴를 반환합니다.
     renderMenu: function(session) {
-        session.history = []; // 메뉴로 오면 기록 초기화
+        session.history = [];
         
-        // 1. 관리자 모드
         if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호를 입력하세요.");
         
-        // 2. 단체 채팅방 모드
         if (session.type === "GROUP") {
             if (!session.data) {
                 session.screen = "IDLE"; 
-                // "개인톡에서 로그인을 해주세요." -> 한 줄이므로 상하단 여백 자동 적용됨
                 return UI.make("알림", "개인톡에서 로그인을 해주세요.", "보안이 필요합니다."); 
             }
             return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인", "번호를 입력하세요.");
         }
         
-        // 3. 비로그인(게스트) 모드
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인", "번호를 선택하세요.");
         
-        // 4. 일반 로그인 유저 모드
         return this.go(session, "USER_MAIN", "메인 메뉴", "1. 프로필\n2. 컬렉션\n3. 상점\n4. 로그아웃", "작업 번호를 입력하세요.");
     }
 };
-
 // ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
 var Database = {
     data: {},
