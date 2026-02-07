@@ -1,9 +1,9 @@
 /**
- * [main.js] v9.0.13
- * 1. UI 자동화: 모든 출력물(알림 포함)에 UI 규격 및 네비바 자동 적용
- * 2. 알림 강화: 수정, 초기화, 삭제 시 유저 개인톡으로 UI 알림 실시간 발송
- * 3. 고객센터: 비회원 문의 기능 및 관리자 1:1 답변 시스템 (유저 목록 🔔 뱃지)
- * 4. 통합 로직: 상점 카테고리, 대전 매칭, 컬렉션 로직 생략 없이 포함
+ * [main.js] v9.0.15
+ * 1. 구조 복구: GroupManager 분리 유지
+ * 2. 문의 뱃지: 유저 관리 목록에서 문의 개수 표시 ([🔔n])
+ * 3. 닉네임 제한: 가입 시 아이디 글자수 10자 제한 적용
+ * 4. 답변 시스템: 관리자 답변 시 해당 유저 문의 카운트 초기화
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -62,7 +62,6 @@ var UI = {
         var div = Utils.getFixedDivider();
         var res = "『 " + title + " 』\n" + div + "\n" + content + "\n" + div + "\n";
         if (help) res += "💡 " + help;
-        // 루트 화면이 아니거나 특수 알림이 아닐 때만 네비바 추가
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
     },
@@ -81,7 +80,7 @@ var UI = {
         return res;
     },
     go: function(session, screen, title, content, help) {
-        var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN", "SUCCESS_IDLE"];
+        var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN"];
         var isRoot = (rootScreens.indexOf(screen) !== -1);
         
         if (session.screen && session.screen !== screen && session.screen !== "IDLE") {
@@ -125,7 +124,7 @@ var SessionManager = {
     get: function(r, h, g) {
         if (!this.sessions[h]) this.sessions[h] = { data: null, screen: "IDLE", history: [], lastTitle: "메뉴", tempId: "비회원", userListCache: [], targetUser: null, editType: null, room: r };
         var s = this.sessions[h];
-        if (r.indexOf("direct") !== -1 || !g) s.room = r; // 개인톡 방 정보 실시간 업데이트
+        s.room = r;
         if (r === Config.AdminRoom) s.type = "ADMIN";
         else if (g && r === Config.GroupRoom) s.type = "GROUP";
         else s.type = "DIRECT";
@@ -133,11 +132,16 @@ var SessionManager = {
     },
     reset: function(session) { session.screen = "IDLE"; session.history = []; session.userListCache = []; session.targetUser = null; session.editType = null; },
     findUserRoom: function(userId) {
-        for (var h in this.sessions) { if (this.sessions[h].tempId === userId) return this.sessions[h].room; }
+        for (var key in this.sessions) { if (this.sessions[key].tempId === userId) return this.sessions[key].room; }
         return userId;
     },
     forceLogout: function(userId) {
-        for (var h in this.sessions) { if (this.sessions[h].tempId === userId) { this.sessions[h].data = null; this.sessions[h].tempId = "비회원"; this.reset(this.sessions[h]); } }
+        for (var key in this.sessions) { 
+            if (this.sessions[key].tempId === userId) { 
+                this.sessions[key].data = null; this.sessions[key].tempId = "비회원"; 
+                this.reset(this.sessions[key]);
+            } 
+        }
         this.save();
     }
 };
@@ -156,7 +160,8 @@ var AdminManager = {
                 session.userListCache = Object.keys(Database.data);
                 var list = session.userListCache.map(function(id, i){ 
                     var qCount = Database.data[id].inquiryCount || 0;
-                    return (i+1)+". "+id + (qCount > 0 ? " [🔔"+qCount+"]" : ""); 
+                    var badge = (qCount > 0) ? " [🔔" + qCount + "]" : "";
+                    return (i+1)+". "+id + badge; 
                 }).join("\n");
                 return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 관리", list, "번호 입력"));
             }
@@ -170,38 +175,38 @@ var AdminManager = {
         }
         if (screen === "ADMIN_USER_DETAIL") {
             if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
-            if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 하기", "["+session.targetUser+"] 유저에게 보낼 내용을 입력하세요.", "내용 입력"));
-            if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[" + session.targetUser + "] 리셋하시겠습니까?", "'확인' 입력"));
-            if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "[" + session.targetUser + "] 삭제하시겠습니까?", "'삭제확인' 입력"));
+            if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 하기", "["+session.targetUser+"] 유저에게 답변을 작성하세요.", "내용 입력"));
+            if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[" + session.targetUser + "] 리셋합니까?", "'확인' 입력"));
+            if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "[" + session.targetUser + "] 삭제합니까?", "'삭제확인' 입력"));
         }
         if (screen === "ADMIN_ANSWER_INPUT") {
-            var targetRoom = SessionManager.findUserRoom(session.targetUser);
-            Api.replyRoom(targetRoom, UI.make("운영진 답변", "문의하신 내용에 대한 답변입니다.\n\n[내용]\n" + msg, "도움이 되셨길 바랍니다.", true));
+            var uRoom = SessionManager.findUserRoom(session.targetUser);
+            Api.replyRoom(uRoom, UI.make("운영진 답변", "문의하신 내용에 대한 답변입니다.\n\n" + msg, "알림", true));
             if(Database.data[session.targetUser]) { Database.data[session.targetUser].inquiryCount = 0; Database.save(Database.data); }
             SessionManager.reset(session);
-            return replier.reply(UI.go(session, "SUCCESS_IDLE", "성공", "답변이 유저에게 전송되었습니다.", "메뉴 복귀"));
+            return replier.reply(UI.make("성공", "답변 전송 완료!", "메뉴 복귀", true));
         }
         if (screen === "ADMIN_EDIT_MENU") {
-            if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "설정할 값을 입력하세요.", "숫자 입력")); }
-            if (msg === "2") { session.editType = "lp"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "LP 수정", "설정할 값을 입력하세요.", "숫자 입력")); }
+            if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "수정할 값을 입력하세요.", "숫자 입력")); }
+            if (msg === "2") { session.editType = "lp"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "LP 수정", "수정할 값을 입력하세요.", "숫자 입력")); }
         }
         if (screen === "ADMIN_EDIT_INPUT") {
             var val = parseInt(msg);
             if (isNaN(val)) return replier.reply(UI.make("오류", "숫자만 가능합니다.", "재입력"));
             Database.data[session.targetUser][session.editType] = val; Database.save(Database.data);
-            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("시스템 알림", "귀하의 [" + (session.editType === "gold" ? "골드" : "LP") + "] 수치가 [" + val + "] (으)로 변경되었습니다.", "관리자 조치 완료", true));
-            SessionManager.reset(session); return replier.reply(UI.go(session, "SUCCESS_IDLE", "성공", "수정 완료", "메뉴 복귀"));
+            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "[" + (session.editType === "gold" ? "골드" : "LP") + "]가 " + val + " (으)로 변경되었습니다.", "시스템 조치", true));
+            SessionManager.reset(session);
+            return replier.reply(UI.make("성공", "수정 완료", "메뉴로 복귀", true));
         }
         if (screen === "ADMIN_RESET_CONFIRM" && msg === "확인") {
             Database.data[session.targetUser] = Database.getInitData(Database.data[session.targetUser].pw); Database.save(Database.data);
-            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("시스템 알림", "귀하의 게임 데이터가 초기화되었습니다.", "관리자 조치 완료", true));
-            SessionManager.reset(session); return replier.reply(UI.go(session, "SUCCESS_IDLE", "성공", "초기화 완료", "메뉴 복귀"));
+            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "데이터가 초기화되었습니다.", "시스템 조치", true));
+            SessionManager.reset(session); return replier.reply(UI.make("성공", "초기화 완료", "메뉴 복귀", true));
         }
         if (screen === "ADMIN_DELETE_CONFIRM" && msg === "삭제확인") {
-            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("시스템 알림", "운영진에 의해 귀하의 계정이 삭제되었습니다.", "관리자 조치 완료", true));
             delete Database.data[session.targetUser]; Database.save(Database.data);
             SessionManager.forceLogout(session.targetUser);
-            SessionManager.reset(session); return replier.reply(UI.go(session, "SUCCESS_IDLE", "성공", "삭제 완료", "메뉴 복귀"));
+            return replier.reply(UI.make("성공", "계정 삭제 완료", "메뉴 복귀", true));
         }
     }
 };
@@ -213,49 +218,50 @@ var UserManager = {
         if (!d) {
             switch(session.screen) {
                 case "GUEST_MAIN": 
-                    if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디를 입력하세요.", "가입 진행"));
-                    if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디를 입력하세요.", "로그인 진행"));
-                    if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "비회원 문의", "관리자에게 보낼 내용을 입력하세요.", "내용 입력"));
+                    if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디를 입력하세요. (최대 10자)", "가입"));
+                    if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디를 입력하세요.", "로그인"));
+                    if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "비회원 문의", "내용을 입력하세요.", "전송"));
                     break;
                 case "GUEST_INQUIRY":
-                    Api.replyRoom(Config.AdminRoom, UI.make("비회원 문의", "발신방: " + session.room + "\n내용: " + msg, "비회원 전용", true));
-                    SessionManager.reset(session); return replier.reply(UI.make("성공", "문의가 전달되었습니다.", "메뉴 복귀", true));
+                    Api.replyRoom(Config.AdminRoom, UI.make("비회원 문의", "방: " + session.room + "\n내용: " + msg, "회신불가", true));
+                    SessionManager.reset(session); return replier.reply(UI.make("성공", "관리자에게 전달되었습니다.", "메뉴 복귀", true));
                 case "JOIN_ID": 
-                    if (Database.data[msg]) return replier.reply(UI.make("오류", "중복된 ID", "재입력"));
-                    session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호 설정", "보안"));
+                    if (msg.length > 10) return replier.reply(UI.make("오류", "아이디는 10자까지만 가능합니다.", "재입력"));
+                    if (Database.data[msg]) return replier.reply(UI.make("오류", "이미 존재하는 ID", "재입력"));
+                    session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호 입력", "보안"));
                 case "JOIN_PW": 
                     Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
                     session.data = Database.data[session.tempId];
-                    replier.reply(UI.make("알림", "가입 성공!\n" + session.tempId + "님 환영합니다.", "로그인 완료", true));
+                    replier.reply(UI.make("알림", "가입 성공!\n환영합니다, " + session.tempId + "님.", "로그인 완료", true));
                     SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
                 case "LOGIN_ID": session.tempId = msg; return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호 입력", "인증"));
                 case "LOGIN_PW": 
                     if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) {
                         session.data = Database.data[session.tempId];
-                        replier.reply(UI.make("알림", "로그인 성공!\n" + session.tempId + "님 반갑습니다.", "메뉴 로드", true));
+                        replier.reply(UI.make("알림", "로그인 성공!", "반갑습니다.", true));
                         SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
                     }
-                    return replier.reply(UI.make("실패", "인증 정보 오류", "재시도"));
+                    return replier.reply(UI.make("실패", "비밀번호 오류", "재시도"));
             }
             return;
         }
 
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "내 정보 조회"));
-            if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "수집 현황"));
+            if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "조회"));
             if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전", "1. AI 봇 매칭", "전투"));
             if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 구매", "상점"));
             if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의하기", "내용을 입력하세요.", "내용 입력"));
-            if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃 되었습니다.", "종료", true)); }
+            if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃 완료", "종료", true)); }
         }
 
         if (session.screen === "USER_INQUIRY") {
             d.inquiryCount = (d.inquiryCount || 0) + 1; Database.save(Database.data);
-            Api.replyRoom(Config.AdminRoom, UI.make("유저 문의", "ID: " + session.tempId + "\n내용: " + msg, "회신 대기", true));
-            SessionManager.reset(session); return replier.reply(UI.make("성공", "문의가 성공적으로 전달되었습니다.", "메뉴 복귀", true));
+            Api.replyRoom(Config.AdminRoom, UI.make("유저 문의", "ID: " + session.tempId + "\n내용: " + msg, "답변대기", true));
+            SessionManager.reset(session); return replier.reply(UI.make("성공", "문의가 전달되었습니다.", "메뉴 복귀", true));
         }
 
-        // 컬렉션
+        // 컬렉션 로직
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
                 var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
@@ -274,7 +280,7 @@ var UserManager = {
             }
         }
 
-        // 상점
+        // 상점 로직
         if (session.screen === "SHOP_MAIN" && msg === "1") return replier.reply(UI.go(session, "SHOP_ROLES", "상점 카테고리", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "선택"));
         if (session.screen === "SHOP_ROLES") {
             var rIdx = parseInt(msg) - 1;
@@ -284,21 +290,21 @@ var UserManager = {
                     var owned = d.collection.characters.indexOf(u) !== -1;
                     return (i+1) + ". " + u + (owned ? " [보유]" : " (500G)");
                 }).join("\n");
-                return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uList, "구매 번호 입력"));
+                return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uList, "번호 입력"));
             }
         }
         if (session.screen === "SHOP_BUY_ACTION") {
             var units = SystemData.roles[session.selectedRole].units, uIdx = parseInt(msg) - 1;
             if (units[uIdx]) {
                 var target = units[uIdx];
-                if (d.collection.characters.indexOf(target) !== -1) return replier.reply(UI.make("알림", "보유 중", "취소"));
+                if (d.collection.characters.indexOf(target) !== -1) return replier.reply(UI.make("알림", "보유 중입니다.", "취소"));
                 if (d.gold < 500) return replier.reply(UI.make("알림", "골드 부족", "잔액 부족"));
                 d.gold -= 500; d.collection.characters.push(target); Database.save(Database.data);
                 SessionManager.reset(session); return replier.reply(UI.make("성공", target + " 구매 완료!", "남은 골드: "+d.gold+"G", true));
             }
         }
 
-        // 대전
+        // 대전 로직
         if (session.screen === "BATTLE_MAIN" && msg === "1") return replier.reply(UI.go(session, "BATTLE_AI_SEARCH", "매칭 중", "🤖 AI 검색 중...", "대기"));
         if (session.screen === "BATTLE_AI_SEARCH") return replier.reply(UI.go(session, "BATTLE_PREP", "전투 준비", "⚔️ [중급] 봇 유미 발견.\n시작하시겠습니까?", "'시작' 입력"));
         if (session.screen === "BATTLE_PREP" && msg === "시작") {
@@ -341,7 +347,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 단체방 세션 동기화
         if (isGroupChat && room === Config.GroupRoom) {
             for (var key in SessionManager.sessions) {
                 var target = SessionManager.sessions[key];
