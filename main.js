@@ -1,5 +1,5 @@
 /**
- * [main.js] v9.2.7
+ * [main.js] v9.2.8
  * 1. UI: 17자 지능형 개행 / 14자 구분선 디자인 유지
  * 2. 취소(예): 로직은 IDLE(대기) 진입 / 문구는 "초기 상태로 전환"으로 수정
  * 3. 취소(아니오): "철회 문구" 메시지 선발송 -> "이전 작업 UI" 메시지 후발송
@@ -353,7 +353,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session)); 
         }
 
-        // ❌ 취소 로직
+        // ❌ 취소 로직 (진행 중일 때 호출)
         if (msg === "취소") {
             if (session.screen === "IDLE") return replier.reply("⚠️ 현재 진행 중인 작업이 없습니다.");
             session.preCancelScreen = session.screen;
@@ -362,9 +362,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                 "정말로 현재 작업을 취소하시겠습니까?\n\n'예'를 입력하면 초기 상태로 전환됩니다.", "'예' 또는 '아니오' 입력"));
         }
 
+        // 🛡️ 취소 컨펌 화면 로직
         if (session.screen === "CANCEL_CONFIRM") {
             if (msg === "예" || msg === "y" || msg === "1") {
-                SessionManager.reset(session); // 로직은 대기(IDLE)로 전환
+                SessionManager.reset(session); // 로직상 대기(IDLE)로 전환
                 var div = Utils.getFixedDivider();
                 return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 완전히 취소되었습니다.\n초기 상태로 전환합니다.\n" + div + "\n💡 '메뉴'를 입력하면 다시 시작됩니다.");
             } else if (msg === "아니오" || msg === "n" || msg === "2") {
@@ -372,13 +373,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                 var prevTitle = session.preCancelTitle || "메인 메뉴";
                 session.screen = prevScreen;
                 session.lastTitle = prevTitle;
+                // 히스토리 중복 방지 (CANCEL_CONFIRM은 히스토리에 쌓지 않음)
                 if (session.history.length > 0) session.history.pop();
                 
-                // [요청 사항] 문구 선발송 후 이전 UI 발송
+                // [요청 사항 반영] 안내 문구 먼저 전송 후 이전 UI 발송
                 replier.reply("💡 취소를 철회했습니다. 이전 작업을 계속 진행하세요.");
                 return replier.reply(UI.go(session, prevScreen, prevTitle, "", "기능을 선택하세요."));
             }
-            return;
+            return; // 예/아니오 외의 입력은 무시
         }
 
         // ⬅️ 이전 처리
@@ -387,9 +389,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session));
         }
 
+        // 대기 상태면 매니저로 넘기지 않음
         if (session.screen === "IDLE") return;
 
-        // 매니저 핸들러 호출
+        // 매니저 핸들러 호출 (분기 처리)
         if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
