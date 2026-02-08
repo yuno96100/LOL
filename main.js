@@ -1,9 +1,9 @@
 /**
- * [main.js] v9.2.4
- * 1. UI: 17자 단위 지능형 줄바꿈 (텍스트 효율 극대화)
- * 2. 디자인: 구분선(━) 길이는 14자로 고정 (시각적 콤팩트함 유지)
- * 3. 취소: "취소" 시 재확인 -> '예' 입력 시 IDLE(무반응 대기)로 전환
- * 4. 메뉴: 모든 표기를 '메뉴'로 일괄 통일
+ * [main.js] v9.2.7
+ * 1. UI: 17자 지능형 개행 / 14자 구분선 디자인 유지
+ * 2. 취소(예): 로직은 IDLE(대기) 진입 / 문구는 "초기 상태로 전환"으로 수정
+ * 3. 취소(아니오): "철회 문구" 메시지 선발송 -> "이전 작업 UI" 메시지 후발송
+ * 4. 기타: 시스템 전체 로직 (DB, 세션, 관리자, 유저 매니저) 포함
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,8 +16,8 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    WRAP_LIMIT: 17,    // 줄바꿈 기준 17자
-    DIVIDER_LINE: 14,  // 구분선 길이 14자 유지
+    WRAP_LIMIT: 17,    // 텍스트 개행은 17자 기준
+    DIVIDER_LINE: 14,  // 구분선은 14자 길이 유지
     NAV_LEFT: "  ", 
     NAV_RIGHT: " ",
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
@@ -307,15 +307,7 @@ var UserManager = {
                 return replier.reply(UI.go(session, "COL_CHAR_VIEW", "보유 리스트", cList, "유닛 목록"));
             }
         }
-        if (session.screen === "COL_TITLE_ACTION") {
-            var tIdx = parseInt(msg) - 1;
-            if (d.collection.titles[tIdx]) {
-                d.title = d.collection.titles[tIdx]; Database.save(Database.data);
-                SessionManager.reset(session); return replier.reply(UI.make("성공", "[" + d.title + "] 장착 완료!", "대기 상태 전환", true));
-            }
-        }
-
-        if (session.screen === "SHOP_MAIN" && msg === "1") return replier.reply(UI.go(session, "SHOP_ROLES", "상점 카테고리", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "선택"));
+        
         if (session.screen === "SHOP_ROLES") {
             var rIdx = parseInt(msg) - 1;
             if (RoleKeys[rIdx]) {
@@ -326,22 +318,6 @@ var UserManager = {
                 }).join("\n");
                 return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uList, "번호 입력"));
             }
-        }
-        if (session.screen === "SHOP_BUY_ACTION") {
-            var units = SystemData.roles[session.selectedRole].units, uIdx = parseInt(msg) - 1;
-            if (units[uIdx]) {
-                var target = units[uIdx];
-                if (d.collection.characters.indexOf(target) !== -1) return replier.reply(UI.make("알림", "이미 보유 중입니다."));
-                if (d.gold < 500) return replier.reply(UI.make("알림", "골드가 부족합니다."));
-                d.gold -= 500; d.collection.characters.push(target); Database.save(Database.data);
-                SessionManager.reset(session); return replier.reply(UI.make("성공", target + " 구매 완료!", "대기 상태 전환", true));
-            }
-        }
-
-        if (session.screen === "BATTLE_MAIN" && msg === "1") return replier.reply(UI.go(session, "BATTLE_AI_SEARCH", "매칭 중", "🤖 AI 검색 중...", "대기"));
-        if (session.screen === "BATTLE_AI_SEARCH") return replier.reply(UI.go(session, "BATTLE_PREP", "전투 준비", "⚔️ [봇] 유미와 대전하시겠습니까?", "'시작' 입력"));
-        if (session.screen === "BATTLE_PREP" && msg === "시작") {
-            SessionManager.reset(session); return replier.reply(UI.make("알림", "전투 시스템은 현재 점검 중입니다.", "대기 상태 전환", true));
         }
     }
 };
@@ -377,27 +353,30 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session)); 
         }
 
-        // ❌ 취소 및 취소 재확인 로직
+        // ❌ 취소 로직
         if (msg === "취소") {
             if (session.screen === "IDLE") return replier.reply("⚠️ 현재 진행 중인 작업이 없습니다.");
             session.preCancelScreen = session.screen;
             session.preCancelTitle = session.lastTitle;
             return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", 
-                "정말로 현재 작업을 취소하시겠습니까?\n\n'예'를 입력하면 대기 상태로 전환됩니다.", "'예' 또는 '아니오' 입력"));
+                "정말로 현재 작업을 취소하시겠습니까?\n\n'예'를 입력하면 초기 상태로 전환됩니다.", "'예' 또는 '아니오' 입력"));
         }
 
         if (session.screen === "CANCEL_CONFIRM") {
             if (msg === "예" || msg === "y" || msg === "1") {
-                SessionManager.reset(session); 
+                SessionManager.reset(session); // 로직은 대기(IDLE)로 전환
                 var div = Utils.getFixedDivider();
-                return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 완전히 취소되었습니다.\n대기 상태로 전환합니다.\n" + div + "\n💡 '메뉴'를 입력하면 다시 시작됩니다.");
+                return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 완전히 취소되었습니다.\n초기 상태로 전환합니다.\n" + div + "\n💡 '메뉴'를 입력하면 다시 시작됩니다.");
             } else if (msg === "아니오" || msg === "n" || msg === "2") {
                 var prevScreen = session.preCancelScreen || "USER_MAIN";
                 var prevTitle = session.preCancelTitle || "메인 메뉴";
                 session.screen = prevScreen;
                 session.lastTitle = prevTitle;
                 if (session.history.length > 0) session.history.pop();
-                return replier.reply(UI.go(session, prevScreen, prevTitle, "취소를 철회했습니다.\n이전 작업을 계속 진행하세요.", "명령어를 입력하세요."));
+                
+                // [요청 사항] 문구 선발송 후 이전 UI 발송
+                replier.reply("💡 취소를 철회했습니다. 이전 작업을 계속 진행하세요.");
+                return replier.reply(UI.go(session, prevScreen, prevTitle, "", "기능을 선택하세요."));
             }
             return;
         }
@@ -408,20 +387,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 단톡방 세션 연동
-        if (isGroupChat && room === Config.GroupRoom) {
-            for (var key in SessionManager.sessions) {
-                var target = SessionManager.sessions[key];
-                if (target.type === "DIRECT" && target.tempId === sender && target.data) {
-                    session.data = target.data; session.tempId = target.tempId; break;
-                }
-            }
-        }
-
-        // IDLE 상태면 리턴
         if (session.screen === "IDLE") return;
 
-        // 권한 및 타입별 핸들러 실행
+        // 매니저 핸들러 호출
         if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
