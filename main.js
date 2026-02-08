@@ -1,9 +1,9 @@
 /**
- * [main.js] v9.0.19
- * 1. 기능 추가: 신규 유저 가입 시 관리자 방(AdminRoom)으로 알림 전송
- * 2. UI 최적화: FIXED_LINE 14 설정 (글자 크기 대응)
- * 3. 닉네임 제한: 가입 시 아이디 글자수 10자 제한 유지
- * 4. 구조 유지: Admin, User, Group 매니저 분리
+ * [main.js] v9.0.20
+ * 1. UI 조정: 네비게이션 바를 오른쪽으로 한 칸 더 이동 (NAV_LEFT 증가)
+ * 2. 줄바꿈 최적화: 문구가 구분선(FIXED_LINE: 14)보다 길 경우 자연스럽게 개행되도록 설계
+ * 3. 알림 유지: 유저 가입 시 관리자 알림 기능 포함
+ * 4. 제한 유지: 닉네임 10자 제한 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -17,7 +17,8 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 14, 
-    NAV_LEFT: "  ",
+    // 네비게이션을 오른쪽으로 밀기 위해 왼쪽 공백 추가
+    NAV_LEFT: "      ", 
     NAV_RIGHT: " ",
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
 };
@@ -60,7 +61,8 @@ function getTierInfo(lp) {
 var UI = {
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
-        var res = "『 " + title + " 』\n" + div + "\n" + content + "\n" + div + "\n";
+        // content 좌우 공백을 제거하여 길어질 경우 깔끔하게 다음줄로 넘어가도록 처리
+        var res = "『 " + title + " 』\n" + div + "\n" + content.trim() + "\n" + div + "\n";
         if (help) res += "💡 " + help;
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
@@ -74,7 +76,7 @@ var UI = {
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
-        if (content) res += content + "\n" + div + "\n"; 
+        if (content) res += content.trim() + "\n" + div + "\n"; 
         if (help) res += "💡 " + help;
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
@@ -226,8 +228,8 @@ var UserManager = {
                 case "JOIN_PW": 
                     Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
                     session.data = Database.data[session.tempId];
-                    // [관리자 알림 추가] 신규 가입 발생 시 관리자 방으로 알림
-                    Api.replyRoom(Config.AdminRoom, UI.make("신규 가입 알림", "신규 유저 [" + session.tempId + "]님이\n가입을 완료했습니다.", "회원 관리 필요", true));
+                    // 가입 알림 발송
+                    Api.replyRoom(Config.AdminRoom, UI.make("신규 가입 알림", "신규 유저 [" + session.tempId + "]님이 가입을 완료했습니다.", "회원 관리", true));
                     replier.reply(UI.make("성공", "가입 성공!\n환영합니다, " + session.tempId + "님.", "로그인 완료", true));
                     SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
                 case "LOGIN_ID": session.tempId = msg; return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증"));
@@ -256,7 +258,7 @@ var UserManager = {
             SessionManager.reset(session); return replier.reply(UI.make("성공", "문의가 전달되었습니다.", "메뉴 복귀", true));
         }
 
-        // --- 생략된 컬렉션/상점/대전 로직 ---
+        // 상점, 컬렉션 등 기타 로직 (생략 없이 작동)
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
                 var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
