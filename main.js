@@ -1,10 +1,9 @@
 /**
- * [main.js] v9.0.45
- * 1. UI: 14글자 강제 줄바꿈 (구분선 14칸 완벽 일치)
- * 2. NAV: 위치 최적화 (NAV_LEFT: "   ")
- * 3. 취소: "취소" 입력 시 "작업이 취소되었습니다." 출력 후 IDLE(대기) 상태 전환
- * 4. ADM: 모든 알림 및 답변은 해당 유저의 '개인톡'으로만 전송
- * 5. 전체: 상점, 컬렉션, 대전, 가입/로그인, 관리자 시스템 무생략 포함
+ * [main.js] v9.0.50
+ * 1. UI: 단어 단위 지능형 14자 줄바꿈 (단어 중간 잘림 방지)
+ * 2. Help: 도움말 문구에도 14자 개행 로직 적용
+ * 3. 취소: "취소" 시 문구 출력 후 IDLE(대기) 상태 전환
+ * 4. 전체 로직 무생략 포함
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -26,15 +25,46 @@ var Config = {
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
     getNav: function() { return Config.NAV_LEFT + Config.NAV_ITEMS.join("   ") + Config.NAV_RIGHT; },
+    
+    // 지능형 줄바꿈: 단어 단위 보존 로직
     wrapText: function(str) {
         if (!str) return "";
-        var res = "";
-        var limit = 14; 
-        for (var i = 0; i < str.length; i++) {
-            res += str[i];
-            if ((i + 1) % limit === 0 && i !== str.length - 1) res += "\n";
+        var lines = str.split('\n');
+        var result = [];
+        var limit = 14;
+
+        for (var i = 0; i < lines.length; i++) {
+            var words = lines[i].split(' ');
+            var currentLine = "";
+
+            for (var j = 0; j < words.length; j++) {
+                var word = words[j];
+                
+                // 단어 자체가 14자를 넘으면 강제 절단
+                if (word.length > limit) {
+                    if (currentLine.length > 0) {
+                        result.push(currentLine.trim());
+                        currentLine = "";
+                    }
+                    var start = 0;
+                    while (start < word.length) {
+                        result.push(word.substring(start, start + limit));
+                        start += limit;
+                    }
+                    continue;
+                }
+
+                // 단어를 붙였을 때 14자를 넘으면 다음 줄로
+                if ((currentLine + word).length > limit) {
+                    result.push(currentLine.trim());
+                    currentLine = word + " ";
+                } else {
+                    currentLine += word + " ";
+                }
+            }
+            if (currentLine.trim().length > 0) result.push(currentLine.trim());
         }
-        return res;
+        return result.join('\n');
     }
 };
 
@@ -71,13 +101,14 @@ function getTierInfo(lp) {
 var UI = {
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
-        var lines = content.split('\n');
-        var wrappedLines = lines.map(function(line) {
-            return line.length > 14 ? Utils.wrapText(line) : line;
-        });
-        var wrappedContent = wrappedLines.join('\n');
+        var wrappedContent = Utils.wrapText(content);
         var res = "『 " + title + " 』\n" + div + "\n" + wrappedContent + "\n" + div + "\n";
-        if (help) res += "💡 " + help;
+        
+        if (help) {
+            var wrappedHelp = Utils.wrapText(help);
+            res += "💡 " + wrappedHelp;
+        }
+        
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
     },
@@ -89,8 +120,8 @@ var UI = {
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n";
-        if (content) res += content.trim() + "\n" + div + "\n"; 
-        if (help) res += "💡 " + help;
+        if (content) res += Utils.wrapText(content.trim()) + "\n" + div + "\n"; 
+        if (help) res += "💡 " + Utils.wrapText(help);
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
     },
@@ -114,7 +145,7 @@ var UI = {
         session.history = []; 
         if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호를 입력하세요.");
         if (session.type === "GROUP") {
-            if (!session.data) { session.screen = "IDLE"; return UI.make("알림", "'시스템' 개인톡에서\n로그인을 해주세요.", "보안이 필요합니다.", true); }
+            if (!session.data) { session.screen = "IDLE"; return UI.make("알림", "'시스템' 개인톡에서 로그인을 해주세요.", "보안이 필요합니다.", true); }
             return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인", "번호를 입력하세요.");
         }
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 문의하기", "번호를 선택하세요.");
@@ -244,12 +275,12 @@ var UserManager = {
                     Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
                     session.data = Database.data[session.tempId];
                     Api.replyRoom(Config.AdminRoom, UI.make("신규 가입 알림", "신규 유저 [" + session.tempId + "]님이 가입했습니다.", "관리 알림", true));
-                    SessionManager.reset(session); return replier.reply(UI.make("성공", "가입 성공!", "대기 상태 전환 ('.메뉴' 입력)", true));
+                    SessionManager.reset(session); return replier.reply(UI.make("성공", "가입 성공!", "대기 상태 전환", true));
                 case "LOGIN_ID": session.tempId = msg; return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증"));
                 case "LOGIN_PW": 
                     if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) {
                         session.data = Database.data[session.tempId];
-                        SessionManager.reset(session); return replier.reply(UI.make("성공", "로그인 성공!", "대기 상태 전환 ('.메뉴' 입력)", true));
+                        SessionManager.reset(session); return replier.reply(UI.make("성공", "로그인 성공!", "대기 상태 전환", true));
                     }
                     return replier.reply(UI.make("실패", "인증 정보가 틀립니다."));
             }
@@ -336,7 +367,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat); 
         msg = msg.trim(); 
         
-        // 🏠 메뉴 처리 (수동 호출)
+        // 🏠 메뉴 처리
         if (msg === "메뉴" || msg === ".메뉴") {
             if (isGroupChat) {
                 for (var k in SessionManager.sessions) {
@@ -350,12 +381,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session)); 
         }
 
-        // ❌ 취소 처리 (문구 출력 후 IDLE 전환)
+        // ❌ 취소 처리
         if (msg === "취소") {
             if (session.screen === "IDLE") return replier.reply("⚠️ 현재 진행 중인 작업이 없습니다.");
             SessionManager.reset(session); 
             var div = Utils.getFixedDivider();
-            return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 취소되었습니다.\n" + div + "\n💡 '.메뉴'를 입력하여 다시 시작하세요.");
+            return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 취소되었습니다.\n" + div + "\n💡 '.메뉴'로 다시 시작하세요.");
         }
 
         // ⬅️ 이전 처리
@@ -374,7 +405,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             }
         }
 
-        // 🛑 IDLE 상태에서는 명령어를 받지 않음
+        // IDLE 상태 제어
         if (session.screen === "IDLE") return;
 
         if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
