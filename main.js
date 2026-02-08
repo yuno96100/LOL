@@ -386,4 +386,48 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         }
 
         if (session.screen === "CANCEL_CONFIRM") {
-            if (msg === "예" || msg === "y" || msg === "1
+            if (msg === "예" || msg === "y" || msg === "1") {
+                SessionManager.reset(session); // 세션 초기화 (IDLE 상태로)
+                var div = Utils.getFixedDivider();
+                return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 완전히 취소되었습니다.\n대기 상태로 전환합니다.\n" + div + "\n💡 '메뉴'를 입력하면 다시 시작됩니다.");
+            } else if (msg === "아니오" || msg === "n" || msg === "2") {
+                // 이전 화면으로 복구
+                var prevScreen = session.preCancelScreen || "USER_MAIN";
+                var prevTitle = session.preCancelTitle || "메인 메뉴";
+                session.screen = prevScreen;
+                session.lastTitle = prevTitle;
+                // UI 다시 렌더링을 위해 히스토리에서 하나 빼줌 (UI.go가 중복 추가 방지)
+                if (session.history.length > 0) session.history.pop();
+                return replier.reply(UI.go(session, prevScreen, prevTitle, "취소를 철회했습니다.\n이전 작업을 계속 진행하세요.", "명령어를 입력하세요."));
+            }
+            return;
+        }
+
+        // ⬅️ 이전 처리
+        if (msg === "이전" && session.history && session.history.length > 0) {
+            var p = session.history.pop(); session.screen = p.screen; session.lastTitle = p.title;
+            return replier.reply(UI.renderMenu(session));
+        }
+
+        // 단톡방 세션 연동
+        if (isGroupChat && room === Config.GroupRoom) {
+            for (var key in SessionManager.sessions) {
+                var target = SessionManager.sessions[key];
+                if (target.type === "DIRECT" && target.tempId === sender && target.data) {
+                    session.data = target.data; session.tempId = target.tempId; break;
+                }
+            }
+        }
+
+        // IDLE 상태 제어
+        if (session.screen === "IDLE") return;
+
+        if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
+        if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
+        else UserManager.handle(msg, session, replier);
+        
+        SessionManager.save();
+    } catch (e) { 
+        Api.replyRoom(Config.AdminRoom, "오류: " + e.message + " (L:" + e.lineNumber + ")"); 
+    }
+}
