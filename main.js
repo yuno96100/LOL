@@ -1,9 +1,9 @@
 /**
- * [main.js] v9.0.24
- * 1. UI: 무조건 14글자마다 강제 줄바꿈 (구분선 폭에 완벽 일치)
- * 2. NAV: 위치 한 칸 왼쪽으로 조정 (공백 최적화)
- * 3. ADM: 답변 및 시스템 알림은 유저의 '개인톡' 전송 고정
- * 4. 전체 로직: 상점, 컬렉션, 대전, 가입 알림 등 생략 없음
+ * [main.js] v9.0.30
+ * 1. UI: 무조건 14글자마다 강제 줄바꿈 (구분선 폭 14칸에 완벽 일치)
+ * 2. NAV: 위치 최적화 (NAV_LEFT: "   ")
+ * 3. ADM: 모든 시스템 알림 및 답변은 해당 유저의 '개인톡'으로만 전송
+ * 4. 전체 로직: 상점(구매/보유), 컬렉션(칭호/유닛), 대전(매칭/전투), 가입/로그인/관리자 전체 포함
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -17,7 +17,6 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 14, 
-    // 네비게이션바 위치 한 칸 왼쪽 복구
     NAV_LEFT: "   ", 
     NAV_RIGHT: " ",
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
@@ -26,13 +25,13 @@ var Config = {
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
     getNav: function() { return Config.NAV_LEFT + Config.NAV_ITEMS.join("   ") + Config.NAV_RIGHT; },
-    // [수정] 정확히 14글자마다 줄바꿈 처리
+    // 정확히 14글자마다 강제 줄바꿈
     wrapText: function(str) {
+        if (!str) return "";
         var res = "";
         var limit = 14; 
         for (var i = 0; i < str.length; i++) {
             res += str[i];
-            // 14번째 글자마다 줄바꿈 추가 (단, 마지막 글자가 아닐 때만)
             if ((i + 1) % limit === 0 && i !== str.length - 1) {
                 res += "\n";
             }
@@ -74,7 +73,6 @@ function getTierInfo(lp) {
 var UI = {
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
-        // 각 줄을 14자 기준으로 강제 래핑
         var lines = content.split('\n');
         var wrappedLines = lines.map(function(line) {
             return line.length > 14 ? Utils.wrapText(line) : line;
@@ -87,8 +85,7 @@ var UI = {
         return res;
     },
     renderProfile: function(id, data, help, content, isRoot) {
-        var lp = data.lp || 0;
-        var tier = getTierInfo(lp);
+        var lp = data.lp || 0, tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var div = Utils.getFixedDivider();
@@ -278,7 +275,7 @@ var UserManager = {
             SessionManager.reset(session); return replier.reply(UI.make("성공", "문의가 전달되었습니다.", "메뉴 복귀", true));
         }
 
-        // --- 컬렉션 매니저 ---
+        // --- 컬렉션 시스템 ---
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
                 var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅ " : "") + t; }).join("\n");
@@ -297,7 +294,7 @@ var UserManager = {
             }
         }
 
-        // --- 상점 매니저 ---
+        // --- 상점 시스템 ---
         if (session.screen === "SHOP_MAIN" && msg === "1") return replier.reply(UI.go(session, "SHOP_ROLES", "상점 카테고리", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "선택"));
         if (session.screen === "SHOP_ROLES") {
             var rIdx = parseInt(msg) - 1;
@@ -321,7 +318,7 @@ var UserManager = {
             }
         }
 
-        // --- 대전 매니저 ---
+        // --- 대전 시스템 ---
         if (session.screen === "BATTLE_MAIN" && msg === "1") return replier.reply(UI.go(session, "BATTLE_AI_SEARCH", "매칭 중", "🤖 AI 검색 중...", "대기"));
         if (session.screen === "BATTLE_AI_SEARCH") return replier.reply(UI.go(session, "BATTLE_PREP", "전투 준비", "⚔️ [봇] 유미와 대전하시겠습니까?", "'시작' 입력"));
         if (session.screen === "BATTLE_PREP" && msg === "시작") {
@@ -347,6 +344,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat); 
         msg = msg.trim(); 
         
+        // 상시 취소/메뉴/이전 처리
         if (msg === "메뉴" || msg === "취소") {
             if (isGroupChat) {
                 for (var k in SessionManager.sessions) {
@@ -364,6 +362,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session));
         }
 
+        // 단톡방 자동 로그인 세션 연동
         if (isGroupChat && room === Config.GroupRoom) {
             for (var key in SessionManager.sessions) {
                 var target = SessionManager.sessions[key];
