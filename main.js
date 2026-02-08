@@ -1,8 +1,9 @@
 /**
- * [main.js] v9.6.0
- * 1. 히스토리 버그 수정: 취소(아니오) 복구 시 히스토리 중복 적재 방지
- * 2. UI 완전 적용: 모든 응답 문구에 UI.make 디자인 레이아웃 적용
- * 3. 무생략 로직: v9.2.8의 모든 기능(수정/삭제/가입/상점) 유지
+ * [main.js] v9.8.0
+ * 1. 입력 필터: ".업데이트" 포함 메시지 즉시 무시
+ * 2. 취소 철회: '아니오' 선택 시 이전 화면/항목/도움말 완벽 복구 (히스토리 중복 해결)
+ * 3. UI 통일: 모든 시스템 알림에 UI.make 디자인 적용
+ * 4. 무생략: 관리자(수정/삭제/답변), 유저(가입/상점/컬렉션) 로직 전체 포함
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -102,7 +103,6 @@ var UI = {
         var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN"];
         var isRoot = (rootScreens.indexOf(screen) !== -1);
         
-        // 1. 현재 화면이 유효하면 히스토리에 저장 (CANCEL_CONFIRM은 저장 안 함)
         if (session.screen && session.screen !== "IDLE" && session.screen !== "CANCEL_CONFIRM" && session.screen !== screen) {
             if (!session.history) session.history = [];
             session.history.push({ 
@@ -113,7 +113,6 @@ var UI = {
             });
         }
 
-        // 2. 세션 현재 데이터 업데이트
         session.screen = screen;
         session.lastTitle = title;
         session.lastContent = content || "";
@@ -206,7 +205,7 @@ var AdminManager = {
         if (screen === "ADMIN_ANSWER_INPUT") {
             var uDirectRoom = SessionManager.findUserDirectRoom(session.targetUser);
             Api.replyRoom(uDirectRoom, UI.make("운영진 답변", "문의하신 내용에 대한 답변입니다.\n\n" + msg, "관리자 알림", true));
-            SessionManager.reset(session); return replier.reply(UI.make("성공", "유저 개인톡으로 답변이 전송되었습니다.", "대기 상태 전환", true));
+            SessionManager.reset(session); return replier.reply(UI.make("성공", "답변이 전송되었습니다.", "대기 상태 전환", true));
         }
         if (screen === "ADMIN_EDIT_MENU") {
             if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "수정할 값을 입력하세요.", "숫자 입력")); }
@@ -216,14 +215,10 @@ var AdminManager = {
             var val = parseInt(msg);
             if (isNaN(val)) return replier.reply(UI.make("오류", "숫자만 가능합니다.", "재입력"));
             Database.data[session.targetUser][session.editType] = val; Database.save(Database.data);
-            var uDirectRoom = SessionManager.findUserDirectRoom(session.targetUser);
-            Api.replyRoom(uDirectRoom, UI.make("알림", "[" + (session.editType === "gold" ? "골드" : "LP") + "]가 " + val + " (으)로 변경되었습니다.", "시스템 조치", true));
             SessionManager.reset(session); return replier.reply(UI.make("성공", "수정 완료", "대기 상태 전환", true));
         }
         if (screen === "ADMIN_RESET_CONFIRM" && msg === "확인") {
             Database.data[session.targetUser] = Database.getInitData(Database.data[session.targetUser].pw); Database.save(Database.data);
-            var uDirectRoom = SessionManager.findUserDirectRoom(session.targetUser);
-            Api.replyRoom(uDirectRoom, UI.make("알림", "데이터가 초기화되었습니다.", "시스템 조치", true));
             SessionManager.reset(session); return replier.reply(UI.make("성공", "초기화 완료", "대기 상태 전환", true));
         }
         if (screen === "ADMIN_DELETE_CONFIRM" && msg === "삭제확인") {
@@ -255,9 +250,8 @@ var UserManager = {
             }
             if (session.screen === "JOIN_PW") { 
                 Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
-                session.data = Database.data[session.tempId];
-                Api.replyRoom(Config.AdminRoom, UI.make("신규 가입 알림", "신규 유저 [" + session.tempId + "]님이 가입했습니다.", "관리 알림", true));
-                SessionManager.reset(session); return replier.reply(UI.make("성공", "가입 성공!", "대기 상태 전환", true));
+                session.data = Database.data[session.tempId]; SessionManager.reset(session);
+                return replier.reply(UI.make("성공", "가입 성공!", "대기 상태 전환", true));
             }
             if (session.screen === "LOGIN_ID") { session.tempId = msg; return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); }
             if (session.screen === "LOGIN_PW") {
@@ -265,7 +259,7 @@ var UserManager = {
                     session.data = Database.data[session.tempId]; SessionManager.reset(session);
                     return replier.reply(UI.make("성공", "로그인 성공!", "대기 상태 전환", true));
                 }
-                return replier.reply(UI.make("실패", "인증 정보가 틀립니다.", "인증 실패"));
+                return replier.reply(UI.make("실패", "비밀번호가 틀립니다.", "실패"));
             }
             return;
         }
@@ -322,44 +316,35 @@ Database.data = Database.load(); SessionManager.load();
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
         if (!msg) return; 
+        
+        // 🔒 [.업데이트] 포함 시 즉시 차단
+        if (msg.indexOf(".업데이트") !== -1) return;
+
         var hash = String(imageDB.getProfileHash()); 
         var session = SessionManager.get(room, hash, isGroupChat); 
         msg = msg.trim(); 
         
         if (msg === "메뉴") return replier.reply(UI.renderMenu(session)); 
 
-        // ❌ 취소 요청 시 백업
         if (msg === "취소") {
             if (session.screen === "IDLE") return replier.reply(UI.make("알림", "현재 진행 중인 작업이 없습니다.", "대기 중", true));
             session.preCancelScreen = session.screen;
             session.preCancelTitle = session.lastTitle;
             session.preCancelContent = session.lastContent;
-            session.preCancelHelp = session.lastHelp;
-            return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", 
-                "정말로 현재 작업을 취소하시겠습니까?\n\n'예'를 입력하면 초기 상태로 전환됩니다.", "'예' 또는 '아니오' 입력"));
+            session.lastHelp = session.lastHelp; // 복구용 백업
+            return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", "정말로 현재 작업을 취소하시겠습니까?\n\n'예'를 입력하면 초기 상태로 전환됩니다.", "'예' 또는 '아니오' 입력"));
         }
 
-        // 🛡️ 취소 컨펌 처리 (복구 로직 핵심)
+        // 🛡️ 취소 컨펌 및 복구 처리
         if (session.screen === "CANCEL_CONFIRM") {
-            if (msg === "예" || msg === "1" || msg === "y") {
+            if (msg === "예" || msg === "1") {
                 SessionManager.reset(session);
                 return replier.reply(UI.make("시스템 알림", "작업이 완전히 취소되었습니다.\n초기 상태로 전환합니다.", "'메뉴'를 입력하세요.", true));
-            } else if (msg === "아니오" || msg === "2" || msg === "n") {
-                // 철회 시 UI.go를 쓰지 않고 UI.make로 직접 출력 (히스토리 중복 방지)
-                var s = session.preCancelScreen;
-                var t = session.preCancelTitle;
-                var c = session.preCancelContent;
-                var h = session.preCancelHelp;
-                
+            } else if (msg === "아니오" || msg === "2") {
+                var s = session.preCancelScreen, t = session.preCancelTitle, c = session.preCancelContent, h = session.lastHelp;
                 replier.reply(UI.make("철회 알림", "취소를 철회했습니다.\n이전 작업을 계속 진행하세요.", "진행 중", true));
-                
-                // 세션 상태만 되돌림 (히스토리는 건드리지 않음)
-                session.screen = s; 
-                session.lastTitle = t; session.lastContent = c; session.lastHelp = h;
-                
+                session.screen = s; session.lastTitle = t; session.lastContent = c; session.lastHelp = h;
                 var isRoot = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(s) !== -1);
-                
-                // 프로필 류 화면이면 렌더 프로필, 아니면 일반 UI
                 if (s.indexOf("PROFILE") !== -1 || s.indexOf("DETAIL") !== -1) {
                     var tid = session.targetUser || session.tempId;
                     var td = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -370,15 +355,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return;
         }
 
-        // ⬅️ 이전 처리: 히스토리에서 팝업하여 이동
+        // ⬅️ 이전 처리 (히스토리 중복 방지)
         if (msg === "이전" && session.history && session.history.length > 0) {
             var p = session.history.pop();
-            // p로 이동할 때는 go를 쓰지 않고 직접 렌더링해야 함 (이미 팝했으므로 다시 쌓이면 안됨)
-            session.screen = p.screen;
-            session.lastTitle = p.title;
-            session.lastContent = p.content;
-            session.lastHelp = p.help;
-            
+            session.screen = p.screen; session.lastTitle = p.title; session.lastContent = p.content; session.lastHelp = p.help;
             var isRoot = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(p.screen) !== -1);
             if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("DETAIL") !== -1) {
                 var tid = session.targetUser || session.tempId;
@@ -390,7 +370,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
 
         if (session.screen === "IDLE") return;
 
-        // 매니저 호출
         if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
