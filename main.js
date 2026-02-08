@@ -1,9 +1,9 @@
 /**
- * [main.js] v9.0.50
+ * [main.js] v9.1.0
  * 1. UI: 단어 단위 지능형 14자 줄바꿈 (단어 중간 잘림 방지)
  * 2. Help: 도움말 문구에도 14자 개행 로직 적용
  * 3. 취소: "취소" 시 문구 출력 후 IDLE(대기) 상태 전환
- * 4. 전체 로직 무생략 포함
+ * 4. 메뉴: 모든 '.메뉴' 표기를 '메뉴'로 일괄 변경 (사용자 편의성 강화)
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -26,7 +26,6 @@ var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
     getNav: function() { return Config.NAV_LEFT + Config.NAV_ITEMS.join("   ") + Config.NAV_RIGHT; },
     
-    // 지능형 줄바꿈: 단어 단위 보존 로직
     wrapText: function(str) {
         if (!str) return "";
         var lines = str.split('\n');
@@ -39,8 +38,6 @@ var Utils = {
 
             for (var j = 0; j < words.length; j++) {
                 var word = words[j];
-                
-                // 단어 자체가 14자를 넘으면 강제 절단
                 if (word.length > limit) {
                     if (currentLine.length > 0) {
                         result.push(currentLine.trim());
@@ -53,8 +50,6 @@ var Utils = {
                     }
                     continue;
                 }
-
-                // 단어를 붙였을 때 14자를 넘으면 다음 줄로
                 if ((currentLine + word).length > limit) {
                     result.push(currentLine.trim());
                     currentLine = word + " ";
@@ -367,8 +362,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat); 
         msg = msg.trim(); 
         
-        // 🏠 메뉴 처리
-        if (msg === "메뉴" || msg === ".메뉴") {
+        // 🏠 메뉴 처리 (모든 트리거를 '메뉴'로 통일)
+        if (msg === "메뉴") {
             if (isGroupChat) {
                 for (var k in SessionManager.sessions) {
                     var s = SessionManager.sessions[k];
@@ -381,12 +376,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session)); 
         }
 
-        // ❌ 취소 처리
+        // ❌ 취소 처리 (안내 문구에서 '.' 제거)
         if (msg === "취소") {
             if (session.screen === "IDLE") return replier.reply("⚠️ 현재 진행 중인 작업이 없습니다.");
             SessionManager.reset(session); 
             var div = Utils.getFixedDivider();
-            return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 취소되었습니다.\n" + div + "\n💡 '.메뉴'로 다시 시작하세요.");
+            return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 취소되었습니다.\n" + div + "\n💡 '메뉴'로 다시 시작하세요.");
         }
 
         // ⬅️ 이전 처리
