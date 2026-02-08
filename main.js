@@ -1,9 +1,9 @@
 /**
- * [main.js] v9.2.1
- * 1. UI: 단어 단위 지능형 14자 줄바꿈
- * 2. 메뉴: '메뉴'로 일괄 변경
- * 3. 취소: "취소" 입력 시 재확인 단계 추가
- * 4. 확인: '예' 입력 시 즉시 IDLE(대기) 상태로 전환 (무반응 상태)
+ * [main.js] v9.2.4
+ * 1. UI: 17자 단위 지능형 줄바꿈 (텍스트 효율 극대화)
+ * 2. 디자인: 구분선(━) 길이는 14자로 고정 (시각적 콤팩트함 유지)
+ * 3. 취소: "취소" 시 재확인 -> '예' 입력 시 IDLE(무반응 대기)로 전환
+ * 4. 메뉴: 모든 표기를 '메뉴'로 일괄 통일
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -16,21 +16,22 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    FIXED_LINE: 14, 
-    NAV_LEFT: "   ", 
+    WRAP_LIMIT: 17,    // 줄바꿈 기준 17자
+    DIVIDER_LINE: 14,  // 구분선 길이 14자 유지
+    NAV_LEFT: "  ", 
     NAV_RIGHT: " ",
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
 };
 
 var Utils = {
-    getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
+    getFixedDivider: function() { return Array(Config.DIVIDER_LINE + 1).join(Config.LINE_CHAR); },
     getNav: function() { return Config.NAV_LEFT + Config.NAV_ITEMS.join("   ") + Config.NAV_RIGHT; },
     
     wrapText: function(str) {
         if (!str) return "";
         var lines = str.split('\n');
         var result = [];
-        var limit = 14;
+        var limit = Config.WRAP_LIMIT;
 
         for (var i = 0; i < lines.length; i++) {
             var words = lines[i].split(' ');
@@ -387,16 +388,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
 
         if (session.screen === "CANCEL_CONFIRM") {
             if (msg === "예" || msg === "y" || msg === "1") {
-                SessionManager.reset(session); // 세션 초기화 (IDLE 상태로)
+                SessionManager.reset(session); 
                 var div = Utils.getFixedDivider();
                 return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 완전히 취소되었습니다.\n대기 상태로 전환합니다.\n" + div + "\n💡 '메뉴'를 입력하면 다시 시작됩니다.");
             } else if (msg === "아니오" || msg === "n" || msg === "2") {
-                // 이전 화면으로 복구
                 var prevScreen = session.preCancelScreen || "USER_MAIN";
                 var prevTitle = session.preCancelTitle || "메인 메뉴";
                 session.screen = prevScreen;
                 session.lastTitle = prevTitle;
-                // UI 다시 렌더링을 위해 히스토리에서 하나 빼줌 (UI.go가 중복 추가 방지)
                 if (session.history.length > 0) session.history.pop();
                 return replier.reply(UI.go(session, prevScreen, prevTitle, "취소를 철회했습니다.\n이전 작업을 계속 진행하세요.", "명령어를 입력하세요."));
             }
@@ -419,9 +418,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             }
         }
 
-        // IDLE 상태 제어
+        // IDLE 상태면 리턴
         if (session.screen === "IDLE") return;
 
+        // 권한 및 타입별 핸들러 실행
         if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
         if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
