@@ -1,9 +1,9 @@
 /**
- * [main.js] v9.1.0
- * 1. UI: 단어 단위 지능형 14자 줄바꿈 (단어 중간 잘림 방지)
- * 2. Help: 도움말 문구에도 14자 개행 로직 적용
- * 3. 취소: "취소" 시 문구 출력 후 IDLE(대기) 상태 전환
- * 4. 메뉴: 모든 '.메뉴' 표기를 '메뉴'로 일괄 변경 (사용자 편의성 강화)
+ * [main.js] v9.2.1
+ * 1. UI: 단어 단위 지능형 14자 줄바꿈
+ * 2. 메뉴: '메뉴'로 일괄 변경
+ * 3. 취소: "취소" 입력 시 재확인 단계 추가
+ * 4. 확인: '예' 입력 시 즉시 IDLE(대기) 상태로 전환 (무반응 상태)
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -123,7 +123,7 @@ var UI = {
     go: function(session, screen, title, content, help) {
         var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN"];
         var isRoot = (rootScreens.indexOf(screen) !== -1);
-        if (session.screen && session.screen !== screen && session.screen !== "IDLE") {
+        if (session.screen && session.screen !== screen && session.screen !== "IDLE" && session.screen !== "CANCEL_CONFIRM") {
             if (!session.history) session.history = [];
             session.history.push({ screen: session.screen, title: session.lastTitle });
         }
@@ -362,7 +362,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat); 
         msg = msg.trim(); 
         
-        // 🏠 메뉴 처리 (모든 트리거를 '메뉴'로 통일)
+        // 🏠 메뉴 처리
         if (msg === "메뉴") {
             if (isGroupChat) {
                 for (var k in SessionManager.sessions) {
@@ -376,39 +376,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session)); 
         }
 
-        // ❌ 취소 처리 (안내 문구에서 '.' 제거)
+        // ❌ 취소 및 취소 재확인 로직
         if (msg === "취소") {
             if (session.screen === "IDLE") return replier.reply("⚠️ 현재 진행 중인 작업이 없습니다.");
-            SessionManager.reset(session); 
-            var div = Utils.getFixedDivider();
-            return replier.reply("『 시스템 알림 』\n" + div + "\n작업이 취소되었습니다.\n" + div + "\n💡 '메뉴'로 다시 시작하세요.");
+            session.preCancelScreen = session.screen;
+            session.preCancelTitle = session.lastTitle;
+            return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", 
+                "정말로 현재 작업을 취소하시겠습니까?\n\n'예'를 입력하면 대기 상태로 전환됩니다.", "'예' 또는 '아니오' 입력"));
         }
 
-        // ⬅️ 이전 처리
-        if (msg === "이전" && session.history && session.history.length > 0) {
-            var p = session.history.pop(); session.screen = p.screen; session.lastTitle = p.title;
-            return replier.reply(UI.renderMenu(session));
-        }
-
-        // 단톡방 세션 연동
-        if (isGroupChat && room === Config.GroupRoom) {
-            for (var key in SessionManager.sessions) {
-                var target = SessionManager.sessions[key];
-                if (target.type === "DIRECT" && target.tempId === sender && target.data) {
-                    session.data = target.data; session.tempId = target.tempId; break;
-                }
-            }
-        }
-
-        // IDLE 상태 제어
-        if (session.screen === "IDLE") return;
-
-        if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
-        if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
-        else UserManager.handle(msg, session, replier);
-        
-        SessionManager.save();
-    } catch (e) { 
-        Api.replyRoom(Config.AdminRoom, "오류: " + e.message + " (L:" + e.lineNumber + ")"); 
-    }
-}
+        if (session.screen === "CANCEL_CONFIRM") {
+            if (msg === "예" || msg === "y" || msg === "1
