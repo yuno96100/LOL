@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.7 Final
- * - UPDATE: 관리자 정보 수정 시 해당 유저에게 개인 톡방 알림 전송 로직 추가
- * - FIX: 정보 수정 완료 메시지 내 유저명 출력 최적화
- * - STABILITY: 인벤토리 및 스탯 데이터 널 포인터 방어 강화
+ * [main.js] v14.4.8 Final
+ * - UPDATE: 유저 스탯 강화 방식 변경 (수치 직접 입력 방식)
+ * - UPDATE: 관리자 정보 수정 시 유저 개인 톡방 알림 기능 유지
+ * - FIX: 모든 데이터 참조에 대한 방어 코드(Null Safe) 적용
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -231,31 +231,22 @@ var AdminManager = {
         }
         if (screen === "ADMIN_EDIT_INPUT") {
             var val = parseInt(msg); if (isNaN(val) || val < 1) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
-            
             var targetId = session.targetUser; 
             var targetData = Database.data[targetId];
             if (!targetData) return replier.reply(UI.make("오류", "유저 데이터 유실"));
-
-            var changeLog = ""; // 🔹 유저에게 보낼 알림 내용
-
+            var changeLog = ""; 
             if (session.editType === "level") {
-                targetData.level = val;
-                targetData.exp = 0; 
+                targetData.level = val; targetData.exp = 0; 
                 var totalPoints = (val - 1) * 5; 
-                targetData.stats = { acc: 50, ref: 50, com: 50, int: 50 };
-                targetData.point = totalPoints; 
+                targetData.stats = { acc: 50, ref: 50, com: 50, int: 50 }; targetData.point = totalPoints; 
                 changeLog = "레벨이 " + val + "로 변경되었습니다. (스탯 포인트 " + totalPoints + "P 재지급)";
             } else {
                 var unit = (session.editType === "gold") ? "G" : "LP";
                 targetData[session.editType] = val;
                 changeLog = (session.editType === "gold" ? "골드" : "LP") + "가 " + val.toLocaleString() + unit + "로 변경되었습니다.";
             }
-            
             Database.save(Database.data);
-
-            // 🔹 [추가] 해당 유저의 개인 톡방으로 알림 전송
             Api.replyRoom(targetId, UI.make("정보 변경 알림", "운영진에 의해 회원님의 정보가 수정되었습니다.\n\n내용: " + changeLog, "시스템 메시지", true));
-
             var successMsg = UI.make("수정 완료", targetId + "님의 정보가 업데이트되었습니다.\n(유저에게 알림 전송됨)", "대기", true);
             SessionManager.reset(session); 
             return replier.reply(successMsg);
@@ -269,7 +260,7 @@ var AdminManager = {
             delete Database.data[session.targetUser]; Database.save(Database.data);
             Api.replyRoom(session.targetUser, "운영진에 의해 계정이 삭제되었습니다.");
             SessionManager.forceLogout(session.targetUser); SessionManager.reset(session);
-            return replier.reply(UI.make("성공", "삭제됨", "대기", true));
+            return replier.reply(successMsg);
         }
     }
 };
@@ -328,15 +319,31 @@ var UserManager = {
             }
         }
 
+        // 🔹 [변경됨] 스탯 항목 선택 -> 수치 입력 단계로 이동
         if (session.screen === "STAT_UP_MENU") {
             var keys = ["acc", "ref", "com", "int"];
             var names = ["정확", "반응", "침착", "직관"];
             var idx = parseInt(msg)-1;
             if (idx >= 0 && idx < 4) {
-                if ((d.point||0) <= 0) return replier.reply(UI.make("실패", "강화 포인트 부족", "포인트: 0", false));
-                d.stats[keys[idx]]++; d.point--; Database.save(Database.data);
-                return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", names[idx]+" 강화 완료!", "남은 포인트: "+d.point, true));
+                session.selectedStat = keys[idx];
+                session.selectedStatName = names[idx];
+                return replier.reply(UI.go(session, "STAT_UP_INPUT", names[idx] + " 강화", "올릴 수치를 입력하세요.\n(현재 보유 포인트: " + (d.point||0) + "P)", "숫자 입력"));
             }
+        }
+
+        // 🔹 [신규] 스탯 수치 입력 처리
+        if (session.screen === "STAT_UP_INPUT") {
+            var amount = parseInt(msg);
+            if (isNaN(amount) || amount <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력 가능합니다."));
+            if (amount > (d.point || 0)) return replier.reply(UI.make("실패", "포인트가 부족합니다.\n보유: " + (d.point || 0) + "P"));
+            
+            d.stats[session.selectedStat] += amount;
+            d.point -= amount;
+            Database.save(Database.data);
+            
+            var resTxt = session.selectedStatName + " 스탯이 " + amount + "만큼 강화되었습니다.";
+            SessionManager.reset(session); // 메인으로 돌아가거나 혹은 강화 메뉴로 복귀 선택 가능
+            return replier.reply(UI.make("강화 성공", resTxt, "포인트: " + d.point, true));
         }
 
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
@@ -400,8 +407,7 @@ var UserManager = {
         if (session.screen === "SHOP_ITEM_BUY" && msg === "1") {
             var it = SystemData.items["소모품"][0];
             if (d.gold < it.price) return replier.reply(UI.make("실패", "골드 부족"));
-            d.gold -= it.price; 
-            if (!d.inventory) d.inventory = {};
+            d.gold -= it.price; if (!d.inventory) d.inventory = {};
             d.inventory[it.id] = (d.inventory[it.id]||0)+1; 
             Database.save(Database.data);
             return replier.reply(UI.make("성공", "구매 완료", "잔액: "+d.gold));
