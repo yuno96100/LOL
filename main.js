@@ -1,8 +1,7 @@
 /**
- * [main.js] v14.5.1 Final
- * - UPDATE: 강화/초기화 시 결과창과 프로필창을 분리하여 개별 전송(두 번 출력)
- * - UX: 메시지 분리 전송을 통해 시각적 가독성 향상
- * - STABILITY: 전체 로직 및 예외 처리 유지
+ * [main.js] v14.5.2 Final
+ * - FIX: 강화/초기화 성공 후 '이전' 입력 시 메뉴로 돌아가지 않는 문제 해결
+ * - UPDATE: 성공 메시지 개별 출력 후 UI.go를 통한 프로필 이동 (히스토리 보존)
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -97,14 +96,10 @@ var UI = {
     },
     renderProfile: function(id, data, help, content, isRoot, session) {
         if (!data) return "데이터 로드 오류: 다시 로그인하세요.";
-        if (!data.stats) data.stats = { acc: 50, ref: 50, com: 50, int: 50 };
-        if (!data.inventory) data.inventory = { "RESET_TICKET": 0 };
-        if (!data.collection) data.collection = { titles: ["뉴비"], characters: [] };
-        
         var lp = data.lp || 0, tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-        var st = data.stats;
+        var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
         var lv = data.level || 1, exp = data.exp || 0, maxExp = lv * 100;
         var div = Utils.getFixedDivider();
         
@@ -292,9 +287,6 @@ var UserManager = {
             return;
         }
 
-        if (!d.inventory) d.inventory = { "RESET_TICKET": 0 };
-        if (!d.stats) d.stats = { acc: 50, ref: 50, com: 50, int: 50 };
-
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
             if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "조회"));
@@ -322,7 +314,6 @@ var UserManager = {
             }
         }
 
-        // 🔹 [변경] 분리 전송 로직 적용 (강화)
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
             if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
@@ -330,16 +321,11 @@ var UserManager = {
             
             d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
             
-            // 1. 성공 메시지 전송
+            // 🔹 [Fix] 성공 메시지 전송 후 UI.go를 통해 히스토리를 유지하며 프로필로 이동
             replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt + " 강화되었습니다!", "성공", true));
-            
-            // 2. 세션 변경 및 프로필 개별 전송
-            session.screen = "PROFILE_VIEW";
-            session.history = []; 
-            return replier.reply(UI.renderProfile(session.tempId, d, "조회", "", false, session));
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", false));
         }
 
-        // 🔹 [변경] 분리 전송 로직 적용 (초기화)
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
             var has = (d.inventory && d.inventory["RESET_TICKET"] > 0);
             if (!has) return replier.reply(UI.make("실패", "초기화권 없음"));
@@ -347,13 +333,9 @@ var UserManager = {
             d.point += ref; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
             Database.save(Database.data); 
             
-            // 1. 결과 메시지 전송
-            replier.reply(UI.make("♻️ 초기화 완료", "모든 스탯이 기본값으로 돌아갔습니다.\n환급: " + ref + "P", "완료", true));
-            
-            // 2. 세션 변경 및 프로필 개별 전송
-            session.screen = "PROFILE_VIEW";
-            session.history = [];
-            return replier.reply(UI.renderProfile(session.tempId, d, "조회", "", false, session));
+            // 🔹 [Fix] 초기화 성공 메시지 전송 후 UI.go를 통해 히스토리를 유지하며 프로필로 이동
+            replier.reply(UI.make("♻️ 초기화 완료", "모든 스탯이 초기화되었습니다.\n환급: " + ref + "P", "완료", true));
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", false));
         }
 
         if (session.screen === "COL_MAIN") {
