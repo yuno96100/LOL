@@ -1,8 +1,7 @@
 /**
- * [main.js] v14.9.3
- * - UPDATE: 유저 최대 레벨 30 제한 (Max Level Cap)
- * - UPDATE: 30레벨 도달 시 UI에 [MAX] 표기 및 경험치 획득 차단
- * - FIX: 관리자 레벨 수정 시에도 30을 초과할 수 없도록 수정
+ * [main.js] v14.9.5
+ * - UPDATE: 'MAX' 표기를 'Max'로 변경 (레벨 및 경험치 섹션)
+ * - FEATURE: 유저 최대 레벨 30 제한 및 UI 레이아웃 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -22,7 +21,7 @@ var Config = {
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
 };
 
-var MAX_LEVEL = 30; // 최대 레벨 상수 설정
+var MAX_LEVEL = 30; 
 
 var TierData = [
     { name: "챌린저", icon: "✨", minLp: 3000 }, 
@@ -106,12 +105,15 @@ var UI = {
         var lv = data.level || 1, exp = data.exp || 0, maxExp = lv * 100;
         var div = Utils.getFixedDivider();
         
-        // 🔹 만렙 UI 적용
-        var lvText = (lv >= MAX_LEVEL) ? "Lv." + MAX_LEVEL + " [MAX]" : "Lv." + lv;
-        var expText = (lv >= MAX_LEVEL) ? "MAX / MAX" : exp + " / " + maxExp;
+        // 🔹 'Max'로 표기 변경
+        var lvLabel = (lv >= MAX_LEVEL) ? "Lv." + MAX_LEVEL + " [Max]" : "Lv." + lv;
+        var expBar = (lv >= MAX_LEVEL) ? "Max / Max" : exp + " / " + maxExp;
 
-        var s1 = "👤 계정: " + id + " [" + lvText + "]\n🏅 칭호: [" + (data.title || "뉴비") + "]";
-        var s2 = "📊 경험치: " + expText + " EXP\n🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G";
+        var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + (data.title || "뉴비") + "]";
+        var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n" +
+                 "🆙 레벨: " + lvLabel + "\n" +
+                 "📊 경험: " + expBar + " EXP\n" +
+                 "💰 골드: " + (data.gold || 0).toLocaleString() + " G";
         var s3 = "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
         
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
@@ -173,7 +175,6 @@ var Database = {
             collection: { titles: ["뉴비"], characters: [] } 
         }; 
     },
-    // 🔹 경험치 추가용 통합 함수 (만렙 방지 포함)
     addExp: function(userId, amount) {
         var d = this.data[userId];
         if (!d || d.level >= MAX_LEVEL) return;
@@ -253,12 +254,10 @@ var AdminManager = {
             if (!targetData) return replier.reply(UI.make("오류", "유저 데이터 유실"));
             var log = ""; 
             if (session.editType === "level") {
-                // 🔹 관리자 수정 시에도 MAX_LEVEL 제한 적용
                 if (val > MAX_LEVEL) val = MAX_LEVEL;
                 targetData.level = val; targetData.exp = 0; var p = (val - 1) * 5; 
                 targetData.stats = { acc: 50, ref: 50, com: 50, int: 50 }; targetData.point = p; 
                 log = "레벨이 " + val + "로 변경되었습니다. (스탯 포인트 " + p + "P 재지급)";
-                if (val >= MAX_LEVEL) log += " [MAX]";
             } else {
                 var u = (session.editType === "gold") ? "G" : "LP";
                 targetData[session.editType] = val; log = (session.editType === "gold" ? "골드" : "LP") + "가 " + val.toLocaleString() + u + "로 변경되었습니다.";
