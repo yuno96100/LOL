@@ -1,8 +1,9 @@
 /**
- * [main.js] v15.3.2
+ * [main.js] v15.3.3
+ * - UPDATE: Config.WRAP_LIMIT를 18로 상향 조정
  * - FEATURE: 상점 구매 완료 시 세션 리셋(SessionManager.reset) 처리
  * - FEATURE: BATTLE_DRAFT 상태에서 '메뉴', '취소', '이전' 입력 시 탈주 확인 UI 강제 호출
- * - UPDATE: 매칭 성공 및 구매 완료 등 모든 신규 문구 UI 디자인 적용
+ * - UI: 모든 신규/기존 문구 UI 프레임워크 적용
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -15,7 +16,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    WRAP_LIMIT: 17, 
+    WRAP_LIMIT: 18, // 한 줄 최대 글자수를 18로 변경
     DIVIDER_LINE: 14,
     NAV_LEFT: "  ", 
     NAV_RIGHT: " ", 
@@ -320,7 +321,6 @@ var UserManager = {
             return replier.reply(UI.make("선택 완료", "입력하신 [" + msg + "] 챔피언의 데이터 동기화를 진행 중입니다.", "대기", true));
         }
 
-        // --- [상점 구매 완료 후 세션 마무리] ---
         if (session.screen === "SHOP_BUY_ACTION") {
             var uI = parseInt(msg)-1; var us = SystemData.roles[session.selectedRole].units;
             if (us[uI]) {
@@ -339,7 +339,6 @@ var UserManager = {
             return replier.reply(UI.make("구매 성공", "📦 " + it.name + " 구매를 완료했습니다.", "메뉴를 입력하세요.", true));
         }
 
-        // --- [기타 기능 로직] ---
         if (session.screen === "PROFILE_VIEW") {
             if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "보유 포인트: "+(d.point||0)));
             if (msg === "2") {
@@ -411,31 +410,25 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var session = SessionManager.get(room, hash, isGroupChat); 
         msg = msg.trim(); 
 
-        // --- [전투 이탈 및 취소 통합 방어 로직] ---
         if (msg === "메뉴" || msg === "취소" || msg === "이전") {
-            // IDLE 상태(세션 없음)에서의 메뉴 호출은 허용
             if (session.screen === "IDLE") {
                 if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
                 return replier.reply(UI.make("알림", "진행 중인 작업이 없습니다.", "대기", true));
             }
 
-            // [핵심] 전투 준비(BATTLE_DRAFT) 중 이탈 시도 시 강제 확인창
             if (session.screen === "BATTLE_DRAFT") {
                 session.preCancelScreen = session.screen; session.preCancelTitle = session.lastTitle;
                 session.preCancelContent = session.lastContent; session.preCancelHelp = session.lastHelp;
                 return replier.reply(UI.go(session, "CANCEL_CONFIRM", "⚠️ 탈주 확인", "정말 전장을 이탈하시겠습니까?\n지금 나가면 진행 데이터가 유실됩니다.", "'예'/'아니오' 입력", true));
             }
 
-            // 일반 상태에서의 메뉴 입력은 즉시 이동
             if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
 
-            // 일반 상태에서의 취소/이전 처리
             session.preCancelScreen = session.screen; session.preCancelTitle = session.lastTitle;
             session.preCancelContent = session.lastContent; session.preCancelHelp = session.lastHelp;
             return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", "현재 진행 중인 작업을 중단할까요?", "'예'/'아니오'", true));
         }
 
-        // 취소 컨펌 핸들러
         if (session.screen === "CANCEL_CONFIRM") {
             if (msg === "예" || msg === "1" || msg === "확인") { 
                 SessionManager.reset(session); 
@@ -451,7 +444,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
 
         if (session.screen === "IDLE") return;
         
-        // 권한별 핸들러 호출
         if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
