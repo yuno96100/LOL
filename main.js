@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.9 Final
- * - UPDATE: 스탯 강화/초기화 성공 후 업데이트된 프로필 화면 즉시 출력
- * - FEATURE: 스탯 수치 입력 방식 유지
- * - STABILITY: 모든 데이터 변경 후 자동 저장 및 화면 갱신 최적화
+ * [main.js] v14.5.0 Final
+ * - UPDATE: 강화/초기화 성공 시 [결과 메시지 + 프로필] 통합 출력 로직 적용
+ * - UX: 유저가 성공 여부를 먼저 확인하고 변경된 데이터를 즉시 인지하도록 개선
+ * - STABILITY: 세션 히스토리 최적화 및 프로필 렌더링 안정화
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -116,7 +116,7 @@ var UI = {
         
         if (session && session.screen === "PROFILE_VIEW") {
             res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n";
-        } else if (session && session.screen === "STAT_UP_MENU") {
+        } else if (session && (session.screen === "STAT_UP_MENU" || session.screen === "STAT_UP_INPUT")) {
             res += "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화\n" + div + "\n";
         }
 
@@ -322,6 +322,7 @@ var UserManager = {
             }
         }
 
+        // 🔹 [중요 업데이트] 성공창과 프로필창을 연달아 출력
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
             if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
@@ -329,10 +330,14 @@ var UserManager = {
             
             d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
             
-            // 🔹 [변경] 성공 메시지와 함께 업데이트된 프로필창 출력
-            var resTxt = "✨ " + session.selectedStatName + " +" + amt + " 강화 성공!";
-            session.history = []; // 히스토리 초기화 (프로필로 돌아가기 때문)
-            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, resTxt, "강화 완료"));
+            // 1단계: 성공 알림창 생성
+            var successUI = UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt + " 강화되었습니다!", "성공", true);
+            // 2단계: 최신 프로필창 생성
+            session.screen = "PROFILE_VIEW"; // 상태 변경
+            var profileUI = UI.renderProfile(session.tempId, d, "조회", "", false, session);
+            
+            session.history = []; 
+            return replier.reply(successUI + "\n\n" + profileUI);
         }
 
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
@@ -342,10 +347,14 @@ var UserManager = {
             d.point += ref; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
             Database.save(Database.data); 
             
-            // 🔹 [변경] 초기화 성공 후 프로필창 즉시 출력
-            var resTxt = "♻️ 능력치 초기화 완료!\n(투자 포인트 " + ref + "P 환급)";
+            // 1단계: 초기화 알림창 생성
+            var successUI = UI.make("♻️ 초기화 완료", "모든 스탯이 기본값으로 돌아갔습니다.\n환급: " + ref + "P", "완료", true);
+            // 2단계: 최신 프로필창 생성
+            session.screen = "PROFILE_VIEW";
+            var profileUI = UI.renderProfile(session.tempId, d, "조회", "", false, session);
+            
             session.history = [];
-            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, resTxt, "초기화 완료"));
+            return replier.reply(successUI + "\n\n" + profileUI);
         }
 
         if (session.screen === "COL_MAIN") {
@@ -354,7 +363,7 @@ var UserManager = {
                 return replier.reply(UI.go(session, "COL_TITLE_ACTION", "칭호 변경", tL, "번호로 장착"));
             }
             if (msg === "2") {
-                var cL = (d.collection.characters.length>0)?d.collection.characters.join("\n"):"보유 유닛 없음";
+                var cL = (d.collection.characters.length>0)?d.collection.characters.join("\n"):"보유 캐릭터 없음";
                 return replier.reply(UI.go(session, "COL_CHAR_VIEW", "캐릭터 리스트", cL, "목록"));
             }
         }
