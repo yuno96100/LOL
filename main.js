@@ -1,7 +1,7 @@
 /**
- * [main.js] v14.5.2 Final
- * - FIX: 강화/초기화 성공 후 '이전' 입력 시 메뉴로 돌아가지 않는 문제 해결
- * - UPDATE: 성공 메시지 개별 출력 후 UI.go를 통한 프로필 이동 (히스토리 보존)
+ * [main.js] v14.5.3 Final
+ * - FIX: 강화/초기화 후 '이전' 입력 시 강화 메뉴가 아닌 메인 메뉴로 이동하도록 히스토리 최적화
+ * - UPDATE: 성공 시 중간 단계 히스토리를 제거하여 UX 직관성 강화
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -95,7 +95,7 @@ var UI = {
         return res;
     },
     renderProfile: function(id, data, help, content, isRoot, session) {
-        if (!data) return "데이터 로드 오류: 다시 로그인하세요.";
+        if (!data) return "데이터 로드 오류";
         var lp = data.lp || 0, tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
@@ -133,7 +133,7 @@ var UI = {
         session.screen = screen; session.lastTitle = title;
         session.lastContent = content || ""; session.lastHelp = help || "";
         
-        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen.indexOf("DETAIL") !== -1) {
+        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1) {
             var tid = session.targetUser || session.tempId;
             var td = Database.data[tid] || session.data;
             return UI.renderProfile(tid, td, help, content, isRoot, session);
@@ -142,7 +142,6 @@ var UI = {
     },
     renderMenu: function(session) {
         session.history = []; 
-        if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호 입력");
         if (session.type === "GROUP") return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인\n2. 티어 랭킹", "번호 입력");
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 문의하기", "번호 선택");
@@ -305,25 +304,29 @@ var UserManager = {
         }
 
         if (session.screen === "STAT_UP_MENU") {
-            var keys = ["acc", "ref", "com", "int"];
-            var names = ["정확", "반응", "침착", "직관"];
+            var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
             var idx = parseInt(msg)-1;
             if (idx >= 0 && idx < 4) {
                 session.selectedStat = keys[idx]; session.selectedStatName = names[idx];
-                return replier.reply(UI.go(session, "STAT_UP_INPUT", names[idx] + " 강화", "올릴 수치를 입력하세요.\n(보유 포인트: " + (d.point||0) + "P)", "숫자 입력"));
+                return replier.reply(UI.go(session, "STAT_UP_INPUT", names[idx] + " 강화", "수치 입력 (보유: " + (d.point||0) + "P)", "숫자"));
             }
         }
 
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
-            if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
-            if (amt > (d.point || 0)) return replier.reply(UI.make("실패", "포인트 부족\n보유: " + (d.point || 0) + "P"));
+            if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자"));
+            if (amt > (d.point || 0)) return replier.reply(UI.make("실패", "포인트 부족"));
             
             d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
-            
-            // 🔹 [Fix] 성공 메시지 전송 후 UI.go를 통해 히스토리를 유지하며 프로필로 이동
-            replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt + " 강화되었습니다!", "성공", true));
-            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", false));
+            replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt, "성공", true));
+
+            // 🔹 [Fix] 히스토리 정리: 강화 관련 화면들을 기록에서 제거
+            if (session.history) {
+                session.history = session.history.filter(function(h) {
+                    return h.screen !== "STAT_UP_MENU" && h.screen !== "STAT_UP_INPUT" && h.screen !== "PROFILE_VIEW";
+                });
+            }
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
         }
 
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
@@ -332,10 +335,15 @@ var UserManager = {
             var ref = (d.stats.acc+d.stats.ref+d.stats.com+d.stats.int)-200;
             d.point += ref; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
             Database.save(Database.data); 
-            
-            // 🔹 [Fix] 초기화 성공 메시지 전송 후 UI.go를 통해 히스토리를 유지하며 프로필로 이동
-            replier.reply(UI.make("♻️ 초기화 완료", "모든 스탯이 초기화되었습니다.\n환급: " + ref + "P", "완료", true));
-            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", false));
+            replier.reply(UI.make("♻️ 초기화 완료", "환급: " + ref + "P", "완료", true));
+
+            // 🔹 [Fix] 히스토리 정리: 초기화 관련 화면들을 기록에서 제거
+            if (session.history) {
+                session.history = session.history.filter(function(h) {
+                    return h.screen !== "STAT_RESET_CONFIRM" && h.screen !== "PROFILE_VIEW";
+                });
+            }
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
         }
 
         if (session.screen === "COL_MAIN") {
@@ -438,11 +446,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             if (session.screen === "IDLE") return replier.reply(UI.make("알림", "진행 중 작업 없음", "대기", true));
             session.preCancelScreen = session.screen; session.preCancelTitle = session.lastTitle;
             session.preCancelContent = session.lastContent; session.preCancelHelp = session.lastHelp;
-            return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", "작업을 취소하시겠습니까?", "'예'/'아니오'", true));
+            return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", "취소하시겠습니까?", "'예'/'아니오'", true));
         }
 
         if (session.screen === "CANCEL_CONFIRM") {
-            if (msg === "예" || msg === "1") { SessionManager.reset(session); return replier.reply(UI.make("알림", "취소되었습니다.", "대기", true)); }
+            if (msg === "예" || msg === "1") { SessionManager.reset(session); return replier.reply(UI.make("알림", "취소됨", "대기", true)); }
             else if (msg === "아니오" || msg === "2") {
                 var s = session.preCancelScreen, t = session.preCancelTitle, c = session.preCancelContent, h = session.preCancelHelp;
                 session.screen = s; session.lastTitle = t; session.lastContent = c; session.lastHelp = h;
@@ -469,9 +477,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         SessionManager.save();
 
     } catch (e) {
-        var errUI = UI.make("⚠️ 일시적 오류", "요청 처리 중 문제가 발생했습니다.\n사유: " + e.message.split(":")[0], "잠시 후 다시 시도하거나 '메뉴'를 입력하세요.", true);
-        replier.reply(errUI);
-        var report = "『 🔴 에러 리포트 』\n" + Utils.getFixedDivider() + "\n📍 위치: " + (session?session.screen:"Unknown") + "\n👤 유저: " + (session?session.tempId:sender) + "\n❌ 내용: " + e.message + "\n" + Utils.getFixedDivider();
-        Api.replyRoom(Config.AdminRoom, report);
+        replier.reply(UI.make("⚠️ 오류", e.message.split(":")[0], "'메뉴' 입력", true));
+        Api.replyRoom(Config.AdminRoom, "에러: " + e.message);
     }
 }
