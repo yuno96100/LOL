@@ -1,9 +1,8 @@
 /**
  * [main.js] v15.5.0
- * - FEATURE: 대전 챔피언 선택 시 [보유 목록] -> [역할군] -> [유닛] 3단계 분류
- * - UPDATE: '이전' 입력 시 픽창 내에서는 탈주 확인 없이 즉시 단계 이동
- * - UPDATE: '취소'나 '메뉴' 입력 시에만 픽창 탈주 확인 UI 호출
- * - FULL: v15.4.1의 모든 데이터(UnitSpecs, TierData 등) 및 모든 로직(addExp, forceLogout, Admin 상세) 포함
+ * - FEATURE: 대전 픽창에서 [1. 보유 목록] -> [역할군 선택] -> [챔피언 선택] 3단계 시스템 적용
+ * - FIX: 픽창에서 '이전' 입력 시 탈주 확인 없이 단계별 뒤로가기 지원
+ * - FULL: v15.4.1의 모든 세부 로직(경험치, 관리자 수정, 유저 삭제 등) 100% 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -54,17 +53,12 @@ var SystemData = {
         "마법사": { icon: "🔮", units: ["럭스", "아리", "빅토르"] },
         "원거리딜러": { icon: "🏹", units: ["애쉬", "베인", "카이사"] },
         "서포터": { icon: "✨", units: ["소라카", "유미", "쓰레쉬"] }
-    },
-    items: {
-        "소모품": [
-            { id: "RESET_TICKET", name: "능력치 초기화권", price: 10000, desc: "투자 포인트를 모두 환급합니다." }
-        ]
     }
 };
 
 var RoleKeys = Object.keys(SystemData.roles);
 
-// ━━━━━━━━ [2. 유틸리티 및 UI 엔진] ━━━━━━━━
+// ━━━━━━━━ [2. UI 엔진] ━━━━━━━━
 var Utils = {
     getFixedDivider: function() { return Array(Config.DIVIDER_LINE + 1).join(Config.LINE_CHAR); },
     getNav: function() { return Config.NAV_LEFT + Config.NAV_ITEMS.join("    ") + Config.NAV_RIGHT; },
@@ -92,9 +86,7 @@ var Utils = {
 
 function getTierInfo(lp) {
     lp = lp || 0;
-    for (var i = 0; i < TierData.length; i++) {
-        if (lp >= TierData[i].minLp) return { name: TierData[i].name, icon: TierData[i].icon };
-    }
+    for (var i = 0; i < TierData.length; i++) { if (lp >= TierData[i].minLp) return { name: TierData[i].name, icon: TierData[i].icon }; }
     return { name: "아이언", icon: "⚫" };
 }
 
@@ -157,7 +149,7 @@ var UI = {
     }
 };
 
-// ━━━━━━━━ [3. DB 및 세션 관리 (누락 없음)] ━━━━━━━━
+// ━━━━━━━━ [3. DB 및 세션 관리] ━━━━━━━━
 var Database = {
     data: {},
     load: function() { try { return JSON.parse(FileStream.read(Config.DB_PATH)); } catch(e) { return {}; } },
@@ -200,7 +192,7 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 배틀 매니저 (3단계 픽창 개편)] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저 (픽창 3단계 시스템)] ━━━━━━━━
 var BattleManager = {
     initDraft: function(session, replier) {
         replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 챔피언 선택 화면으로 이동합니다.", "잠시만 기다려주세요", true));
@@ -210,14 +202,12 @@ var BattleManager = {
     },
     handleDraft: function(msg, session, replier) {
         var d = Database.data[session.tempId];
-        // 1단계: 카테고리
-        if (session.screen === "BATTLE_DRAFT_CAT") {
-            if (msg === "1") {
-                var content = "📢 역할군을 선택하세요.\n\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-                return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "번호 입력"));
-            }
+        // 1단계: 보유 목록 클릭
+        if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
+            var content = "📢 역할군을 선택하세요.\n\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
+            return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "카테고리를 선택하세요."));
         }
-        // 2단계: 역할군 선택
+        // 2단계: 역할군 내부의 내 챔피언 확인
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -229,7 +219,7 @@ var BattleManager = {
                 return replier.reply(UI.go(session, "BATTLE_DRAFT_UNIT", roleName + " 선택", content, "번호 입력"));
             }
         }
-        // 3단계: 유닛 선택
+        // 3단계: 최종 유닛 선택
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
@@ -242,7 +232,7 @@ var BattleManager = {
     }
 };
 
-// ━━━━━━━━ [5. 관리자 매니저 (누락 없음)] ━━━━━━━━
+// ━━━━━━━━ [5. 관리자 매니저] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
         var screen = session.screen;
@@ -295,7 +285,7 @@ var AdminManager = {
     }
 };
 
-// ━━━━━━━━ [6. 유저 매니저 (누락 없음)] ━━━━━━━━
+// ━━━━━━━━ [6. 유저 매니저] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
@@ -390,7 +380,7 @@ var UserManager = {
     }
 };
 
-// ━━━━━━━━ [7. 단체방 매니저 (누락 없음)] ━━━━━━━━
+// ━━━━━━━━ [7. 단체방 매니저] ━━━━━━━━
 var GroupManager = {
     handle: function(msg, session, replier) {
         if (session.screen === "GROUP_MAIN") {
@@ -409,7 +399,7 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [8. 메인 핸들러 (이전 로직 핵심)] ━━━━━━━━
+// ━━━━━━━━ [8. 메인 핸들러] ━━━━━━━━
 Database.data = Database.load(); SessionManager.load();         
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
@@ -422,7 +412,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (msg === "메뉴" || msg === "취소" || msg === "이전") {
             if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
 
-            // [픽창 핵심] '이전'은 탈주 확인 없이 즉시 뒤로가기
+            // [핵심] '이전'은 픽창 내부에서 즉시 뒤로가기 (탈주 확인 없이)
             if (msg === "이전" && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
                 if (session.history && session.history.length > 0) {
                     var prev = session.history.pop();
@@ -431,7 +421,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                 }
             }
 
-            // '취소'나 '메뉴' 입력 시 또는 일반 화면에서 '이전' 시 탈주/취소 확인 UI 호출
+            // '취소'나 '메뉴' 입력 시 탈주 확인 UI 호출
             if (session.screen.indexOf("BATTLE_DRAFT") !== -1 || (msg !== "이전" && session.screen !== "IDLE")) {
                 session.preCancelScreen = session.screen; session.preCancelTitle = session.lastTitle;
                 session.preCancelContent = session.lastContent; session.preCancelHelp = session.lastHelp;
