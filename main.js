@@ -194,51 +194,73 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 배틀 매니저 (이미지 레이아웃 기반)] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저 (이미지 레이아웃 수정)] ━━━━━━━━
 var BattleManager = {
     initDraft: function(session, replier) {
-        replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 챔피언 선택 화면으로 이동합니다.", "잠시만 기다려주세요", true));
-        java.lang.Thread.sleep(1500);
+        // 1. 매칭 성공 알림 (잠시 노출)
+        replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 캐릭터 선택 화면으로 이동합니다.", "잠시만 기다려주세요", true));
+        
+        java.lang.Thread.sleep(1500); // 연출용 대기
+        
         session.battle = { playerUnit: null, selectedRole: null };
         var d = Database.data[session.tempId];
-        var myUnits = d.collection.characters.join(", ") || "없음";
+        var myUnits = (d.collection && d.collection.characters) ? d.collection.characters.join(", ") : "없음";
         
-        // 이미지와 동일한 텍스트 구조
-        var content = "전장에 나갈 챔피언을\n선택하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n\n1. 보유 챔피언";
-        var help = "보유 챔피언: [" + myUnits + "]";
+        // [수정] 이미지 레이아웃과 100% 일치하도록 본문(Content) 구성
+        // 텍스트 줄바꿈과 번호를 이미지와 동일하게 맞춤
+        var content = "전장에 나갈 캐릭터를\n선택하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n\n1. 보유 캐릭터";
+        var help = "현재 보유 캐릭터: [" + myUnits + "]";
         
-        return replier.reply(UI.go(session, "BATTLE_DRAFT_CAT", "챔피언 선택", content, help));
+        // UI.go를 통해 화면 전환 (이제 문구가 정상적으로 표시됩니다)
+        return replier.reply(UI.go(session, "BATTLE_DRAFT_CAT", "캐릭터 선택", content, help));
     },
+    
     handleDraft: function(msg, session, replier) {
         var d = Database.data[session.tempId];
-        // 1단계: 보유 챔피언 클릭 시 카테고리(역할군) 등장
+        
+        // 1단계: 보유 캐릭터 -> 역할군 선택창으로 이동
         if (session.screen === "BATTLE_DRAFT_CAT") {
             if (msg === "1") {
                 var content = "📢 역할군을 선택하세요.\n\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
                 return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "번호 입력"));
             }
         }
-        // 2단계: 역할군 선택
+        
+        // 2단계: 역할군 선택 -> 해당 유닛 목록 (타이틀 변경 로직 포함)
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
                 var roleName = RoleKeys[idx];
-                var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
-                if (myUnits.length === 0) return replier.reply(UI.make("알림", "[" + roleName + "] 역할군에 보유 중인 챔피언이 없습니다."));
+                var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
+                    return d.collection.characters.indexOf(u) !== -1; 
+                });
+                
+                if (myUnits.length === 0) {
+                    return replier.reply(UI.make("알림", "[" + roleName + "] 역할군에 보유 중인 캐릭터가 없습니다.", "다른 번호를 입력하세요."));
+                }
+                
                 session.battle.selectedRole = roleName;
-                var content = "📢 [" + roleName + "] 챔피언을 선택하세요.\n\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
-                return replier.reply(UI.go(session, "BATTLE_DRAFT_UNIT", roleName + " 선택", content, "번호 입력"));
+                var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
+                
+                // 타이틀을 선택한 역할군 이름으로 변경하여 출력
+                return replier.reply(UI.go(session, "BATTLE_DRAFT_UNIT", roleName, content, "번호 입력"));
             }
         }
-        // 3단계: 챔피언 선택
+        
+        // 3단계: 캐릭터 최종 선택
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
-            var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
+            var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
+                return d.collection.characters.indexOf(u) !== -1; 
+            });
             var idx = parseInt(msg) - 1;
+            
             if (myUnits[idx]) {
-                session.battle.playerUnit = myUnits[idx];
-                return replier.reply(UI.make("선택 완료", "입력하신 [" + myUnits[idx] + "] 챔피언
-                                             의 데이터 동기화를 진행 중입니다.", "대기", true));
+                var unitName = myUnits[idx];
+                session.battle.playerUnit = unitName;
+                
+                var content = "입력하신 [" + unitName + "] 캐릭터의\n데이터 동기화를 진행 중입니다.";
+                return replier.reply(UI.make(unitName, content, "데이터 로딩 중...", true));
             }
         }
     }
