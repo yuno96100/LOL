@@ -1,9 +1,10 @@
 /**
- * [main.js] v15.3.3
- * - UPDATE: Config.WRAP_LIMIT를 18로 상향 조정
- * - FEATURE: 상점 구매 완료 시 세션 리셋(SessionManager.reset) 처리
- * - FEATURE: BATTLE_DRAFT 상태에서 '메뉴', '취소', '이전' 입력 시 탈주 확인 UI 강제 호출
- * - UI: 모든 신규/기존 문구 UI 프레임워크 적용
+ * [main.js] v15.4.1
+ * - FEATURE: 대전 챔피언 선택 시 보유 목록 '역할군 카테고리' 분류 추가
+ * - UPDATE: Config.WRAP_LIMIT 18 적용
+ * - FEATURE: 상점 구매 완료 시 세션 리셋 처리
+ * - FEATURE: BATTLE_DRAFT 상태(분류 포함)에서 탈주 확인 UI 강제 호출
+ * - UPDATE: 매칭 성공 및 구매 완료 등 신규 문구 UI 디자인 적용
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -16,7 +17,7 @@ var Config = {
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", 
-    WRAP_LIMIT: 18, // 한 줄 최대 글자수를 18로 변경
+    WRAP_LIMIT: 18, 
     DIVIDER_LINE: 14,
     NAV_LEFT: "  ", 
     NAV_RIGHT: " ", 
@@ -220,16 +221,51 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 배틀 매니저] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저 (역할군 분류 로직 통합)] ━━━━━━━━
 var BattleManager = {
     initDraft: function(session, replier) {
         replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 챔피언 선택 화면으로 이동합니다.", "잠시만 기다려주세요", true));
         java.lang.Thread.sleep(1500);
-        session.battle = { step: "PICK_PHASE", playerUnit: null, enemyUnit: null };
+        session.battle = { step: "ROLE_SELECT", playerUnit: null, enemyUnit: null, selectedRole: null };
+        
+        var content = "📢 출전할 챔피언의 역할군을 선택하세요.\n\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
+        return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "번호 입력"));
+    },
+    handleDraft: function(msg, session, replier) {
         var d = Database.data[session.tempId];
-        var content = "📢 전장에 나갈 챔피언을 선택하세요.\n\n상대방이 당신의 선택을 기다리고 있습니다.";
-        var help = "보유 목록: [" + (d.collection.characters.join(", ") || "없음") + "]";
-        return replier.reply(UI.go(session, "BATTLE_DRAFT", "챔피언 선택", content, help));
+        
+        // 1단계: 역할군 선택
+        if (session.screen === "BATTLE_DRAFT_ROLE") {
+            var idx = parseInt(msg) - 1;
+            if (RoleKeys[idx]) {
+                var roleName = RoleKeys[idx];
+                var myUnits = SystemData.roles[roleName].units.filter(function(u){
+                    return d.collection.characters.indexOf(u) !== -1;
+                });
+                
+                if (myUnits.length === 0) {
+                    return replier.reply(UI.make("알림", "[" + roleName + "] 역할군에 보유 중인 챔피언이 없습니다. 다른 역할군을 선택하세요."));
+                }
+                
+                session.battle.selectedRole = roleName;
+                var content = "📢 [" + roleName + "] 유닛 중 하나를 선택하세요.\n\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
+                return replier.reply(UI.go(session, "BATTLE_DRAFT_UNIT", roleName + " 선택", content, "번호 입력"));
+            }
+        }
+        
+        // 2단계: 유닛 선택
+        if (session.screen === "BATTLE_DRAFT_UNIT") {
+            var roleName = session.battle.selectedRole;
+            var myUnits = SystemData.roles[roleName].units.filter(function(u){
+                return d.collection.characters.indexOf(u) !== -1;
+            });
+            var idx = parseInt(msg) - 1;
+            
+            if (myUnits[idx]) {
+                session.battle.playerUnit = myUnits[idx];
+                return replier.reply(UI.make("선택 완료", "입력하신 [" + myUnits[idx] + "] 챔피언의 데이터 동기화를 진행 중입니다.", "대기", true));
+            }
+        }
     }
 };
 
@@ -316,9 +352,12 @@ var UserManager = {
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
+        // 대전 진입
         if (session.screen === "BATTLE_MAIN" && msg === "1") { BattleManager.initDraft(session, replier); return; }
-        if (session.screen === "BATTLE_DRAFT") {
-            return replier.reply(UI.make("선택 완료", "입력하신 [" + msg + "] 챔피언의 데이터 동기화를 진행 중입니다.", "대기", true));
+        
+        // 대전 챔피언 선택 핸들러 (분류 포함)
+        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+            return BattleManager.handleDraft(msg, session, replier);
         }
 
         if (session.screen === "SHOP_BUY_ACTION") {
@@ -416,10 +455,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                 return replier.reply(UI.make("알림", "진행 중인 작업이 없습니다.", "대기", true));
             }
 
-            if (session.screen === "BATTLE_DRAFT") {
+            // [탈주 방지] 대전 선택 중(역할군/유닛 단계 포함)일 때 강제 확인
+            if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
                 session.preCancelScreen = session.screen; session.preCancelTitle = session.lastTitle;
                 session.preCancelContent = session.lastContent; session.preCancelHelp = session.lastHelp;
-                return replier.reply(UI.go(session, "CANCEL_CONFIRM", "⚠️ 탈주 확인", "정말 전장을 이탈하시겠습니까?\n지금 나가면 진행 데이터가 유실됩니다.", "'예'/'아니오' 입력", true));
+                return replier.reply(UI.go(session, "CANCEL_CONFIRM", "⚠️ 탈주 확인", "정말 전장을 이탈하시겠습니까?\n지금 나가면 매칭이 취소됩니다.", "'예'/'아니오' 입력", true));
             }
 
             if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
