@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.0
- * 1. FIX: 스탯 참조 오류(Cannot read property 'acc') 및 상점 타이틀 버그 해결
- * 2. 복구: 컬렉션 상세(칭호 장착/체크 표시), 상점 역할군 필터링 등 v10 기능 100% 수록
- * 3. 신규: 스탯 강화, 초기화권 환급 시스템, 단체방 LP TOP 10 랭킹
+ * [main.js] v14.4.1
+ * 1. FIX: 에러 메시지 가독성 개선 (유저용 UI / 관리자용 리포트 분리)
+ * 2. 복구: v10 컬렉션(칭호 장착), 상점(역할군 필터링) 기능 100% 수록
+ * 3. 해결: 능력치 강화 시 발생하던 undefined 'acc' 참조 오류 및 상점 타이틀 버그 수정
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -104,7 +104,6 @@ var UI = {
         var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN"];
         var isRoot = (rootScreens.indexOf(screen) !== -1);
         
-        // 데이터 강제 동기화 (undefined 'acc' 방지 핵심)
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
 
         if (!skipHistory && session.screen && session.screen !== "IDLE" && session.screen !== screen) {
@@ -236,12 +235,8 @@ var UserManager = {
                 if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디", "로그인"));
                 if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "문의", "내용 입력", "전송"));
             }
-            if (session.screen === "GUEST_INQUIRY") {
-                Api.replyRoom(Config.AdminRoom, UI.make("비회원 문의", msg, "회신불가", true));
-                SessionManager.reset(session); return replier.reply(UI.make("완료", "전송됨", "대기", true));
-            }
             if (session.screen === "JOIN_ID") {
-                if (msg.length > 10 || Database.data[msg]) return replier.reply(UI.make("오류", "이미 있거나 너무 김"));
+                if (msg.length > 10 || Database.data[msg]) return replier.reply(UI.make("오류", "중복/길이"));
                 session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비번 설정", "보안"));
             }
             if (session.screen === "JOIN_PW") {
@@ -253,9 +248,9 @@ var UserManager = {
             if (session.screen === "LOGIN_PW") {
                 if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) {
                     session.data = Database.data[session.tempId]; SessionManager.reset(session);
-                    return replier.reply(UI.make("성공", "반갑습니다!", "메뉴를 입력하세요.", true));
+                    return replier.reply(UI.make("성공", "로그인됨", "메뉴를 입력하세요.", true));
                 }
-                return replier.reply(UI.make("실패", "비번이 틀렸습니다."));
+                return replier.reply(UI.make("실패", "비번 오류"));
             }
             return;
         }
@@ -269,7 +264,6 @@ var UserManager = {
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
-        // --- 스탯 & 초기화 ---
         if (session.screen === "PROFILE_VIEW") {
             if (msg === "1") {
                 var s = d.stats || {acc:50, ref:50, com:50, int:50};
@@ -281,21 +275,20 @@ var UserManager = {
         if (session.screen === "STAT_UP_MENU") {
             var keys = ["acc", "ref", "com", "int"]; var idx = parseInt(msg)-1;
             if (keys[idx]) {
-                if (d.point <= 0) return replier.reply(UI.make("실패", "포인트가 부족합니다."));
+                if (d.point <= 0) return replier.reply(UI.make("실패", "포인트 부족"));
                 d.stats[keys[idx]]++; d.point--; Database.save(Database.data);
                 var upList = "1. 정확 ("+d.stats.acc+")\n2. 반응 ("+d.stats.ref+")\n3. 침착 ("+d.stats.com+")\n4. 직관 ("+d.stats.int+")";
                 return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", upList, "포인트: "+d.point, true));
             }
         }
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
-            if ((d.inventory["RESET_TICKET"]||0) < 1) return replier.reply(UI.make("실패", "초기화권이 없습니다."));
+            if ((d.inventory["RESET_TICKET"]||0) < 1) return replier.reply(UI.make("실패", "초기화권 없음"));
             var refund = (d.stats.acc+d.stats.ref+d.stats.com+d.stats.int)-200;
             d.point += refund; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
             Database.save(Database.data); SessionManager.reset(session);
             return replier.reply(UI.make("성공", "환급: "+refund+"P", "완료", true));
         }
 
-        // --- 컬렉션 상세 복구 ---
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
                 var tList = d.collection.titles.map(function(t, i){ return (i+1)+". "+(t===d.title?"✅ ":"")+t; }).join("\n");
@@ -314,7 +307,6 @@ var UserManager = {
             }
         }
 
-        // --- 상점 상세 복구 ---
         if (session.screen === "SHOP_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "SHOP_ROLES", "역할군 선택", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "번호"));
             if (msg === "2") {
@@ -351,7 +343,7 @@ var UserManager = {
 
         if (session.screen === "USER_INQUIRY") {
             Api.replyRoom(Config.AdminRoom, UI.make("문의", msg, "ID: "+session.tempId, true));
-            SessionManager.reset(session); return replier.reply(UI.make("성공", "문의가 전달되었습니다.", "대기", true));
+            SessionManager.reset(session); return replier.reply(UI.make("성공", "전송됨", "대기", true));
         }
     }
 };
@@ -375,7 +367,7 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [7. 메인 핸들러] ━━━━━━━━
+// ━━━━━━━━ [7. 메인 핸들러 및 에러 개선] ━━━━━━━━
 Database.data = Database.load(); SessionManager.load();         
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
@@ -412,9 +404,18 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         }
 
         if (session.screen === "IDLE") return;
-        if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
-        if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
+        if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier);
+        else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "오류: " + e.message); }
+
+    } catch (e) {
+        // 🚨 사용자용 가독성 에러 UI
+        var errUI = UI.make("⚠️ 일시적 오류", "요청을 처리하는 중 문제가 발생했습니다.\n사유: " + e.message.split(":")[0], "잠시 후 다시 시도하거나 '메뉴'를 입력하세요.", true);
+        replier.reply(errUI);
+
+        // 🛠️ 관리자용 리포트
+        var report = "『 🔴 에러 리포트 』\n" + Utils.getFixedDivider() + "\n📍 위치: " + (session?session.screen:"Unknown") + "\n👤 유저: " + (session?session.tempId:sender) + "\n❌ 내용: " + e.message + "\n" + Utils.getFixedDivider();
+        Api.replyRoom(Config.AdminRoom, report);
+    }
 }
