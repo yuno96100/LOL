@@ -1,13 +1,14 @@
 /**
- * [main.js] v14.5.4 Final
- * - FIX: 강화/초기화 후 '이전' 입력 시 무조건 메인 메뉴로 이동하도록 히스토리 강제 재설정
- * - UPDATE: 성공 시점의 히스토리를 메인 메뉴 지점으로 고정
+ * [main.js] v14.9.1
+ * - UPDATE: 관리자 방(Config.AdminRoom) 유저 전원 관리자 권한 부여
+ * - NEW: 회원가입 완료 시 관리자 방으로 즉시 알림 전송 로직 추가
+ * - REMOVE: 매칭 및 픽창 등 불필요한 페이즈 진입 로직 제거 (순수 기능 유지)
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
 var Config = {
     Prefix: ".", 
-    AdminHash: "2056407147",
+    AdminHash: "2056407147", 
     AdminRoom: "소환사의협곡관리", 
     GroupRoom: "소환사의협곡",
     BotName: "소환사의 협곡", 
@@ -272,6 +273,14 @@ var UserManager = {
             }
             if (session.screen === "JOIN_PW") {
                 Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
+                
+                // 🔹 [신규] 관리자 방으로 가입 알림
+                var joinLog = "🆕 [신규 가입 알림]\n" + Utils.getFixedDivider() + "\n" +
+                              "👤 아이디: " + session.tempId + "\n" +
+                              "⏰ 시간: " + new Date().toLocaleString() + "\n" +
+                              Utils.getFixedDivider();
+                Api.replyRoom(Config.AdminRoom, joinLog);
+
                 session.data = Database.data[session.tempId]; SessionManager.reset(session);
                 return replier.reply(UI.make("성공", "가입 성공!", "메뉴를 입력하세요.", true));
             }
@@ -289,7 +298,7 @@ var UserManager = {
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
             if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "조회"));
-            if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전", "1. AI 봇 매칭", "전투"));
+            if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전", "1. AI 대결", "전투"));
             if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 상점\n2. 소모품 상점", "쇼핑"));
             if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의하기", "내용 입력", "전송"));
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
@@ -316,14 +325,9 @@ var UserManager = {
             var amt = parseInt(msg);
             if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자"));
             if (amt > (d.point || 0)) return replier.reply(UI.make("실패", "포인트 부족"));
-            
             d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
             replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt, "성공", true));
-
-            // 🔹 [Final Fix] 히스토리를 강제로 '메인 메뉴' 상태로 덮어쓰기
             session.history = [{ screen: "USER_MAIN", title: "메인 메뉴", content: "1. 프로필\n2. 컬렉션\n3. 대전\n4. 상점\n5. 문의하기\n6. 로그아웃", help: "번호 입력" }];
-            
-            // skipHistory: true로 현재 프로필 창이 히스토리에 다시 쌓이지 않게 방지
             return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", true));
         }
 
@@ -334,10 +338,7 @@ var UserManager = {
             d.point += ref; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
             Database.save(Database.data); 
             replier.reply(UI.make("♻️ 초기화 완료", "환급: " + ref + "P", "완료", true));
-
-            // 🔹 [Final Fix] 히스토리를 강제로 '메인 메뉴' 상태로 덮어쓰기
             session.history = [{ screen: "USER_MAIN", title: "메인 메뉴", content: "1. 프로필\n2. 컬렉션\n3. 대전\n4. 상점\n5. 문의하기\n6. 로그아웃", help: "번호 입력" }];
-            
             return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", true));
         }
 
@@ -466,9 +467,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         }
 
         if (session.screen === "IDLE") return;
-        if (session.type === "ADMIN" && hash === Config.AdminHash) AdminManager.handle(msg, session, replier);
+
+        // 🔹 [v14.9.1] 관리자 방 전원 권한 부여
+        if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
+        
         SessionManager.save();
 
     } catch (e) {
