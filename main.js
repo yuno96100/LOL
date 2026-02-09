@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.2
- * - FIX: STAT_UP_MENU 데이터 참조 오류 (undefined 'acc') 해결
- * - ADD: 프로필 내 레벨(Lv) 및 경험치(Exp) 표시 추가
- * - ALL: v10 상점/컬렉션 로직 + 관리자 시스템 + 에러 리포트 통합
+ * [main.js] v14.4.3
+ * 1. CRITICAL FIX: STAT_UP_MENU 내 undefined 'stats' 참조 오류 완전 봉쇄
+ * 2. UPDATE: 모든 핸들러 진입 시 실시간 DB 데이터 강제 동기화
+ * 3. FEATURE: 프로필 내 [Lv / EXP] 표시 및 포인트 강화 로직 안정화
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -32,13 +32,8 @@ var SystemData = {
         "원거리딜러": { icon: "🏹", units: ["애쉬", "베인", "카이사"] },
         "서포터": { icon: "✨", units: ["소라카", "유미", "쓰레쉬"] }
     },
-    items: {
-        "소모품": [
-            { id: "RESET_TICKET", name: "능력치 초기화권", price: 10000, desc: "투자 포인트를 모두 환급합니다." }
-        ]
-    }
+    items: { "소모품": [{ id: "RESET_TICKET", name: "능력치 초기화권", price: 10000, desc: "투자 포인트를 모두 환급합니다." }] }
 };
-
 var RoleKeys = Object.keys(SystemData.roles);
 
 var Utils = {
@@ -84,17 +79,15 @@ var UI = {
         return res;
     },
     renderProfile: function(id, data, help, content, isRoot, session) {
-        if (!data) return "데이터 로드 오류: 세션을 다시 시작하세요.";
+        if (!data) return "데이터 로드 오류";
         var lp = data.lp || 0, tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
-        var lv = data.level || 1;
-        var exp = data.exp || 0;
-        var maxExp = lv * 100;
+        var lv = data.level || 1, exp = data.exp || 0, maxExp = lv * 100;
         var div = Utils.getFixedDivider();
         
-        var s1 = "👤 계정: " + id + " [Lv." + lv + "]\n🏅 칭호: [" + data.title + "]";
+        var s1 = "👤 계정: " + id + " [Lv." + lv + "]\n🏅 칭호: [" + (data.title || "뉴비") + "]";
         var s2 = "📊 경험: " + exp + " / " + maxExp + " EXP\n🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G";
         var s3 = "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
         
@@ -109,6 +102,7 @@ var UI = {
         var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN"];
         var isRoot = (rootScreens.indexOf(screen) !== -1);
         
+        // 실시간 데이터 동기화
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
 
         if (!skipHistory && session.screen && session.screen !== "IDLE" && session.screen !== screen) {
@@ -118,9 +112,9 @@ var UI = {
         session.screen = screen; session.lastTitle = title;
         session.lastContent = content || ""; session.lastHelp = help || "";
         
-        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen.indexOf("DETAIL") !== -1) {
+        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1) {
             var tid = session.targetUser || session.tempId;
-            var td = Database.data[tid];
+            var td = Database.data[tid] || session.data;
             return UI.renderProfile(tid, td, help, content, isRoot, session);
         }
         return this.make(title, content, help, isRoot);
@@ -165,10 +159,6 @@ var SessionManager = {
     reset: function(session) { 
         session.screen = "IDLE"; session.history = []; session.userListCache = []; 
         session.targetUser = null; session.editType = null;
-    },
-    forceLogout: function(userId) {
-        for (var key in this.sessions) { if (this.sessions[key].tempId === userId) { this.sessions[key].data = null; this.sessions[key].tempId = "비회원"; this.reset(this.sessions[key]); } }
-        this.save();
     }
 };
 
@@ -220,8 +210,7 @@ var AdminManager = {
         }
         if (screen === "ADMIN_DELETE_CONFIRM" && msg === "삭제확인") {
             delete Database.data[session.targetUser]; Database.save(Database.data);
-            SessionManager.forceLogout(session.targetUser); SessionManager.reset(session);
-            return replier.reply(UI.make("성공", "삭제됨", "대기", true));
+            SessionManager.reset(session); return replier.reply(UI.make("성공", "삭제됨", "대기", true));
         }
     }
 };
@@ -229,9 +218,11 @@ var AdminManager = {
 // ━━━━━━━━ [5. 유저 매니저] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
-        if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
+        // 🔥 실시간 데이터 강제 동기화 (undefined 오류 방지)
+        if (session.tempId && Database.data[session.tempId]) {
+            session.data = Database.data[session.tempId];
+        }
         var d = session.data;
-
         if (!d) {
             if (session.screen === "GUEST_MAIN") {
                 if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디(10자)", "가입"));
@@ -258,17 +249,20 @@ var UserManager = {
             return;
         }
 
+        // 🛡️ 스탯 객체 누락 방지
+        if (!d.stats) d.stats = { acc: 50, ref: 50, com: 50, int: 50 };
+
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
             if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "조회"));
             if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전", "1. AI 봇 매칭", "전투"));
             if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 상점\n2. 소모품 상점", "쇼핑"));
             if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의하기", "내용 입력", "전송"));
-            if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
+            if (msg === "6") { session.data = null; session.tempId = "비회원"; SessionManager.reset(session); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
         if (session.screen === "PROFILE_VIEW") {
-            if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "강화할 항목 번호 입력", "포인트: "+(d.point||0)));
+            if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "강화할 번호 입력", "포인트: "+(d.point||0)));
             if (msg === "2") return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화", "보유권: "+(d.inventory["RESET_TICKET"]||0), "'사용' 입력"));
         }
         if (session.screen === "STAT_UP_MENU") {
@@ -277,7 +271,7 @@ var UserManager = {
             if (keys[idx]) {
                 if (d.point <= 0) return replier.reply(UI.make("실패", "포인트 부족"));
                 d.stats[keys[idx]]++; d.point--; Database.save(Database.data);
-                return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", names[idx]+" 능력치 +1 강화 완료!", "포인트: "+d.point, true));
+                return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", names[idx]+" 강화 완료!", "포인트: "+d.point, true));
             }
         }
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
@@ -350,6 +344,7 @@ var UserManager = {
 // ━━━━━━━━ [6. 단체방 매니저] ━━━━━━━━
 var GroupManager = {
     handle: function(msg, session, replier) {
+        if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         if (session.screen === "GROUP_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "GROUP_PROFILE", session.tempId, "", "확인"));
             if (msg === "2") {
