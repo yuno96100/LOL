@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.8 Final
- * - UPDATE: 유저 스탯 강화 방식 변경 (수치 직접 입력 방식)
- * - UPDATE: 관리자 정보 수정 시 유저 개인 톡방 알림 기능 유지
- * - FIX: 모든 데이터 참조에 대한 방어 코드(Null Safe) 적용
+ * [main.js] v14.4.9 Final
+ * - UPDATE: 스탯 강화/초기화 성공 후 업데이트된 프로필 화면 즉시 출력
+ * - FEATURE: 스탯 수치 입력 방식 유지
+ * - STABILITY: 모든 데이터 변경 후 자동 저장 및 화면 갱신 최적화
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -231,25 +231,20 @@ var AdminManager = {
         }
         if (screen === "ADMIN_EDIT_INPUT") {
             var val = parseInt(msg); if (isNaN(val) || val < 1) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
-            var targetId = session.targetUser; 
-            var targetData = Database.data[targetId];
+            var targetId = session.targetUser; var targetData = Database.data[targetId];
             if (!targetData) return replier.reply(UI.make("오류", "유저 데이터 유실"));
-            var changeLog = ""; 
+            var log = ""; 
             if (session.editType === "level") {
-                targetData.level = val; targetData.exp = 0; 
-                var totalPoints = (val - 1) * 5; 
-                targetData.stats = { acc: 50, ref: 50, com: 50, int: 50 }; targetData.point = totalPoints; 
-                changeLog = "레벨이 " + val + "로 변경되었습니다. (스탯 포인트 " + totalPoints + "P 재지급)";
+                targetData.level = val; targetData.exp = 0; var p = (val - 1) * 5; 
+                targetData.stats = { acc: 50, ref: 50, com: 50, int: 50 }; targetData.point = p; 
+                log = "레벨이 " + val + "로 변경되었습니다. (스탯 포인트 " + p + "P 재지급)";
             } else {
-                var unit = (session.editType === "gold") ? "G" : "LP";
-                targetData[session.editType] = val;
-                changeLog = (session.editType === "gold" ? "골드" : "LP") + "가 " + val.toLocaleString() + unit + "로 변경되었습니다.";
+                var u = (session.editType === "gold") ? "G" : "LP";
+                targetData[session.editType] = val; log = (session.editType === "gold" ? "골드" : "LP") + "가 " + val.toLocaleString() + u + "로 변경되었습니다.";
             }
             Database.save(Database.data);
-            Api.replyRoom(targetId, UI.make("정보 변경 알림", "운영진에 의해 회원님의 정보가 수정되었습니다.\n\n내용: " + changeLog, "시스템 메시지", true));
-            var successMsg = UI.make("수정 완료", targetId + "님의 정보가 업데이트되었습니다.\n(유저에게 알림 전송됨)", "대기", true);
-            SessionManager.reset(session); 
-            return replier.reply(successMsg);
+            Api.replyRoom(targetId, UI.make("정보 변경 알림", "운영진에 의해 회원님의 정보가 수정되었습니다.\n\n내용: " + log, "시스템 메시지", true));
+            SessionManager.reset(session); return replier.reply(UI.make("수정 완료", targetId + "님의 정보가 업데이트되었습니다.\n(유저에게 알림 전송됨)", "대기", true));
         }
         if (screen === "ADMIN_RESET_CONFIRM" && msg === "확인") {
             Database.data[session.targetUser] = Database.getInitData(Database.data[session.targetUser].pw); Database.save(Database.data);
@@ -260,7 +255,7 @@ var AdminManager = {
             delete Database.data[session.targetUser]; Database.save(Database.data);
             Api.replyRoom(session.targetUser, "운영진에 의해 계정이 삭제되었습니다.");
             SessionManager.forceLogout(session.targetUser); SessionManager.reset(session);
-            return replier.reply(successMsg);
+            return replier.reply(UI.make("성공", "삭제됨", "대기", true));
         }
     }
 };
@@ -268,9 +263,7 @@ var AdminManager = {
 // ━━━━━━━━ [5. 유저 매니저] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
-        if (session.tempId && Database.data[session.tempId]) {
-            session.data = Database.data[session.tempId];
-        }
+        if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         var d = session.data;
 
         if (!d) {
@@ -314,62 +307,62 @@ var UserManager = {
         if (session.screen === "PROFILE_VIEW") {
             if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "포인트: "+(d.point||0)));
             if (msg === "2") {
-                var count = (d.inventory && d.inventory["RESET_TICKET"]) || 0;
-                return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화", "보유권: "+count, "'사용' 입력"));
+                var c = (d.inventory && d.inventory["RESET_TICKET"]) || 0;
+                return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화", "보유권: "+c, "'사용' 입력"));
             }
         }
 
-        // 🔹 [변경됨] 스탯 항목 선택 -> 수치 입력 단계로 이동
         if (session.screen === "STAT_UP_MENU") {
             var keys = ["acc", "ref", "com", "int"];
             var names = ["정확", "반응", "침착", "직관"];
             var idx = parseInt(msg)-1;
             if (idx >= 0 && idx < 4) {
-                session.selectedStat = keys[idx];
-                session.selectedStatName = names[idx];
-                return replier.reply(UI.go(session, "STAT_UP_INPUT", names[idx] + " 강화", "올릴 수치를 입력하세요.\n(현재 보유 포인트: " + (d.point||0) + "P)", "숫자 입력"));
+                session.selectedStat = keys[idx]; session.selectedStatName = names[idx];
+                return replier.reply(UI.go(session, "STAT_UP_INPUT", names[idx] + " 강화", "올릴 수치를 입력하세요.\n(보유 포인트: " + (d.point||0) + "P)", "숫자 입력"));
             }
         }
 
-        // 🔹 [신규] 스탯 수치 입력 처리
         if (session.screen === "STAT_UP_INPUT") {
-            var amount = parseInt(msg);
-            if (isNaN(amount) || amount <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력 가능합니다."));
-            if (amount > (d.point || 0)) return replier.reply(UI.make("실패", "포인트가 부족합니다.\n보유: " + (d.point || 0) + "P"));
+            var amt = parseInt(msg);
+            if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
+            if (amt > (d.point || 0)) return replier.reply(UI.make("실패", "포인트 부족\n보유: " + (d.point || 0) + "P"));
             
-            d.stats[session.selectedStat] += amount;
-            d.point -= amount;
-            Database.save(Database.data);
+            d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
             
-            var resTxt = session.selectedStatName + " 스탯이 " + amount + "만큼 강화되었습니다.";
-            SessionManager.reset(session); // 메인으로 돌아가거나 혹은 강화 메뉴로 복귀 선택 가능
-            return replier.reply(UI.make("강화 성공", resTxt, "포인트: " + d.point, true));
+            // 🔹 [변경] 성공 메시지와 함께 업데이트된 프로필창 출력
+            var resTxt = "✨ " + session.selectedStatName + " +" + amt + " 강화 성공!";
+            session.history = []; // 히스토리 초기화 (프로필로 돌아가기 때문)
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, resTxt, "강화 완료"));
         }
 
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
-            var hasTicket = (d.inventory && d.inventory["RESET_TICKET"] > 0);
-            if (!hasTicket) return replier.reply(UI.make("실패", "초기화권 없음"));
-            var refund = (d.stats.acc+d.stats.ref+d.stats.com+d.stats.int)-200;
-            d.point += refund; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
-            Database.save(Database.data); SessionManager.reset(session);
-            return replier.reply(UI.make("성공", "환급: "+refund+"P", "완료", true));
+            var has = (d.inventory && d.inventory["RESET_TICKET"] > 0);
+            if (!has) return replier.reply(UI.make("실패", "초기화권 없음"));
+            var ref = (d.stats.acc+d.stats.ref+d.stats.com+d.stats.int)-200;
+            d.point += ref; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
+            Database.save(Database.data); 
+            
+            // 🔹 [변경] 초기화 성공 후 프로필창 즉시 출력
+            var resTxt = "♻️ 능력치 초기화 완료!\n(투자 포인트 " + ref + "P 환급)";
+            session.history = [];
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, resTxt, "초기화 완료"));
         }
 
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
-                var tList = d.collection.titles.map(function(t, i){ return (i+1)+". "+(t===d.title?"✅ ":"")+t; }).join("\n");
-                return replier.reply(UI.go(session, "COL_TITLE_ACTION", "칭호 변경", tList, "번호로 장착"));
+                var tL = d.collection.titles.map(function(t, i){ return (i+1)+". "+(t===d.title?"✅ ":"")+t; }).join("\n");
+                return replier.reply(UI.go(session, "COL_TITLE_ACTION", "칭호 변경", tL, "번호로 장착"));
             }
             if (msg === "2") {
-                var cList = (d.collection.characters.length>0)?d.collection.characters.join("\n"):"보유 유닛 없음";
-                return replier.reply(UI.go(session, "COL_CHAR_VIEW", "캐릭터 리스트", cList, "목록"));
+                var cL = (d.collection.characters.length>0)?d.collection.characters.join("\n"):"보유 유닛 없음";
+                return replier.reply(UI.go(session, "COL_CHAR_VIEW", "캐릭터 리스트", cL, "목록"));
             }
         }
 
         if (session.screen === "COL_TITLE_ACTION") {
-            var tIdx = parseInt(msg)-1;
-            if (d.collection.titles[tIdx]) {
-                d.title = d.collection.titles[tIdx]; Database.save(Database.data);
+            var tI = parseInt(msg)-1;
+            if (d.collection.titles[tI]) {
+                d.title = d.collection.titles[tI]; Database.save(Database.data);
                 return replier.reply(UI.make("성공", "["+d.title+"] 장착 완료!", "변경됨"));
             }
         }
@@ -383,24 +376,24 @@ var UserManager = {
         }
 
         if (session.screen === "SHOP_ROLES") {
-            var rIdx = parseInt(msg)-1;
-            if (RoleKeys[rIdx]) {
-                session.selectedRole = RoleKeys[rIdx];
-                var uList = SystemData.roles[session.selectedRole].units.map(function(u, i){
-                    var owned = d.collection.characters.indexOf(u) !== -1;
-                    return (i+1)+". "+u+(owned?" [보유]":" (500G)");
+            var rI = parseInt(msg)-1;
+            if (RoleKeys[rI]) {
+                session.selectedRole = RoleKeys[rI];
+                var uL = SystemData.roles[session.selectedRole].units.map(function(u, i){
+                    var o = d.collection.characters.indexOf(u) !== -1;
+                    return (i+1)+". "+u+(o?" [보유]":" (500G)");
                 }).join("\n");
-                return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uList, "구매 번호"));
+                return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uL, "구매 번호"));
             }
         }
 
         if (session.screen === "SHOP_BUY_ACTION") {
-            var uIdx = parseInt(msg)-1; var units = SystemData.roles[session.selectedRole].units;
-            if (units[uIdx]) {
-                if (d.collection.characters.indexOf(units[uIdx]) !== -1) return replier.reply(UI.make("알림", "보유 중입니다."));
+            var uI = parseInt(msg)-1; var us = SystemData.roles[session.selectedRole].units;
+            if (us[uI]) {
+                if (d.collection.characters.indexOf(us[uI]) !== -1) return replier.reply(UI.make("알림", "보유 중입니다."));
                 if (d.gold < 500) return replier.reply(UI.make("실패", "골드 부족"));
-                d.gold -= 500; d.collection.characters.push(units[uIdx]); Database.save(Database.data);
-                return replier.reply(UI.make("성공", units[uIdx]+" 구매 완료", "잔액: "+d.gold));
+                d.gold -= 500; d.collection.characters.push(us[uI]); Database.save(Database.data);
+                return replier.reply(UI.make("성공", us[uI]+" 구매 완료", "잔액: "+d.gold));
             }
         }
 
@@ -408,8 +401,7 @@ var UserManager = {
             var it = SystemData.items["소모품"][0];
             if (d.gold < it.price) return replier.reply(UI.make("실패", "골드 부족"));
             d.gold -= it.price; if (!d.inventory) d.inventory = {};
-            d.inventory[it.id] = (d.inventory[it.id]||0)+1; 
-            Database.save(Database.data);
+            d.inventory[it.id] = (d.inventory[it.id]||0)+1; Database.save(Database.data);
             return replier.reply(UI.make("성공", "구매 완료", "잔액: "+d.gold));
         }
 
@@ -428,10 +420,10 @@ var GroupManager = {
             if (msg === "1") return replier.reply(UI.go(session, "GROUP_PROFILE", session.tempId, "", "확인"));
             if (msg === "2") {
                 var users = Object.keys(Database.data);
-                var ranking = users.map(function(id){ return {id:id, lp:Database.data[id].lp||0}; }).sort(function(a,b){return b.lp-a.lp;});
-                var txt = "", cnt = Math.min(ranking.length, 10);
+                var rank = users.map(function(id){ return {id:id, lp:Database.data[id].lp||0}; }).sort(function(a,b){return b.lp-a.lp;});
+                var txt = "", cnt = Math.min(rank.length, 10);
                 for (var i=0; i<cnt; i++) {
-                    var u = ranking[i], t = getTierInfo(u.lp), m = (i===0)?"🥇":(i===1)?"🥈":(i===2)?"🥉":(i+1)+".";
+                    var u = rank[i], t = getTierInfo(u.lp), m = (i===0)?"🥇":(i===1)?"🥈":(i===2)?"🥉":(i+1)+".";
                     txt += m+" "+u.id+" ("+t.icon+u.lp+" LP)\n";
                 }
                 return replier.reply(UI.go(session, "GROUP_RANKING", "랭킹 TOP 10", txt, "조회 완료"));
@@ -453,7 +445,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (msg === "메뉴") return replier.reply(UI.renderMenu(session)); 
 
         if (msg === "취소") {
-            if (session.screen === "IDLE") return replier.reply(UI.make("알림", "진행 중인 작업이 없습니다.", "대기", true));
+            if (session.screen === "IDLE") return replier.reply(UI.make("알림", "진행 중 작업 없음", "대기", true));
             session.preCancelScreen = session.screen; session.preCancelTitle = session.lastTitle;
             session.preCancelContent = session.lastContent; session.preCancelHelp = session.lastHelp;
             return replier.reply(UI.go(session, "CANCEL_CONFIRM", "취소 확인", "작업을 취소하시겠습니까?", "'예'/'아니오'", true));
@@ -464,20 +456,20 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             else if (msg === "아니오" || msg === "2") {
                 var s = session.preCancelScreen, t = session.preCancelTitle, c = session.preCancelContent, h = session.preCancelHelp;
                 session.screen = s; session.lastTitle = t; session.lastContent = c; session.lastHelp = h;
-                var isRoot = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(s) !== -1);
-                if (s.indexOf("PROFILE") !== -1 || s.indexOf("STAT") !== -1) return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], h, c, isRoot, session));
-                return replier.reply(UI.make(t, c, h, isRoot));
+                var root = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(s) !== -1);
+                if (s.indexOf("PROFILE") !== -1 || s.indexOf("STAT") !== -1) return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], h, c, root, session));
+                return replier.reply(UI.make(t, c, h, root));
             }
         }
 
         if (msg === "이전" && session.history && session.history.length > 0) {
             var p = session.history.pop();
             session.screen = p.screen; session.lastTitle = p.title; session.lastContent = p.content; session.lastHelp = p.help;
-            var isRoot = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(p.screen) !== -1);
+            var root = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(p.screen) !== -1);
             if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("STAT") !== -1) {
-                return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], p.help, p.content, isRoot, session));
+                return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], p.help, p.content, root, session));
             }
-            return replier.reply(UI.make(p.title, p.content, p.help, isRoot));
+            return replier.reply(UI.make(p.title, p.content, p.help, root));
         }
 
         if (session.screen === "IDLE") return;
