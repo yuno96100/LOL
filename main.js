@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.5.0 Final
- * - UPDATE: 강화/초기화 성공 시 [결과 메시지 + 프로필] 통합 출력 로직 적용
- * - UX: 유저가 성공 여부를 먼저 확인하고 변경된 데이터를 즉시 인지하도록 개선
- * - STABILITY: 세션 히스토리 최적화 및 프로필 렌더링 안정화
+ * [main.js] v14.5.1 Final
+ * - UPDATE: 강화/초기화 시 결과창과 프로필창을 분리하여 개별 전송(두 번 출력)
+ * - UX: 메시지 분리 전송을 통해 시각적 가독성 향상
+ * - STABILITY: 전체 로직 및 예외 처리 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -322,7 +322,7 @@ var UserManager = {
             }
         }
 
-        // 🔹 [중요 업데이트] 성공창과 프로필창을 연달아 출력
+        // 🔹 [변경] 분리 전송 로직 적용 (강화)
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
             if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
@@ -330,16 +330,16 @@ var UserManager = {
             
             d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
             
-            // 1단계: 성공 알림창 생성
-            var successUI = UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt + " 강화되었습니다!", "성공", true);
-            // 2단계: 최신 프로필창 생성
-            session.screen = "PROFILE_VIEW"; // 상태 변경
-            var profileUI = UI.renderProfile(session.tempId, d, "조회", "", false, session);
+            // 1. 성공 메시지 전송
+            replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt + " 강화되었습니다!", "성공", true));
             
+            // 2. 세션 변경 및 프로필 개별 전송
+            session.screen = "PROFILE_VIEW";
             session.history = []; 
-            return replier.reply(successUI + "\n\n" + profileUI);
+            return replier.reply(UI.renderProfile(session.tempId, d, "조회", "", false, session));
         }
 
+        // 🔹 [변경] 분리 전송 로직 적용 (초기화)
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
             var has = (d.inventory && d.inventory["RESET_TICKET"] > 0);
             if (!has) return replier.reply(UI.make("실패", "초기화권 없음"));
@@ -347,14 +347,13 @@ var UserManager = {
             d.point += ref; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
             Database.save(Database.data); 
             
-            // 1단계: 초기화 알림창 생성
-            var successUI = UI.make("♻️ 초기화 완료", "모든 스탯이 기본값으로 돌아갔습니다.\n환급: " + ref + "P", "완료", true);
-            // 2단계: 최신 프로필창 생성
-            session.screen = "PROFILE_VIEW";
-            var profileUI = UI.renderProfile(session.tempId, d, "조회", "", false, session);
+            // 1. 결과 메시지 전송
+            replier.reply(UI.make("♻️ 초기화 완료", "모든 스탯이 기본값으로 돌아갔습니다.\n환급: " + ref + "P", "완료", true));
             
+            // 2. 세션 변경 및 프로필 개별 전송
+            session.screen = "PROFILE_VIEW";
             session.history = [];
-            return replier.reply(successUI + "\n\n" + profileUI);
+            return replier.reply(UI.renderProfile(session.tempId, d, "조회", "", false, session));
         }
 
         if (session.screen === "COL_MAIN") {
@@ -363,7 +362,7 @@ var UserManager = {
                 return replier.reply(UI.go(session, "COL_TITLE_ACTION", "칭호 변경", tL, "번호로 장착"));
             }
             if (msg === "2") {
-                var cL = (d.collection.characters.length>0)?d.collection.characters.join("\n"):"보유 캐릭터 없음";
+                var cL = (d.collection.characters.length>0)?d.collection.characters.join("\n"):"보유 유닛 없음";
                 return replier.reply(UI.go(session, "COL_CHAR_VIEW", "캐릭터 리스트", cL, "목록"));
             }
         }
