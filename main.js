@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.4 Final
- * - FIX: STAT_UP_MENU 데이터 참조 오류 및 메뉴 미표시 문제 해결
- * - ADD: 프로필 내 [Lv.XX] 및 [EXP] 표시 시스템
- * - INTEGRATION: 상점, 컬렉션, 관리자, 단체방 시스템 통합
+ * [main.js] v14.4.5 Final
+ * - UPDATE: 관리자 유저 정보 수정 내 [레벨 수정] 기능 강화
+ * - UPDATE: 포인트 직접 수정 차단 (레벨 수정 시 자동 계산)
+ * - FIX: STAT_UP_MENU 데이터 참조 및 메뉴 출력 최적화
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -110,7 +110,6 @@ var UI = {
         
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
         
-        // 화면 상태에 따른 가변 메뉴 출력
         if (session && session.screen === "PROFILE_VIEW") {
             res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n";
         } else if (session && session.screen === "STAT_UP_MENU") {
@@ -213,7 +212,7 @@ var AdminManager = {
             }
         }
         if (screen === "ADMIN_USER_DETAIL") {
-            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드\n2. LP\n3. 포인트", "항목 선택"));
+            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정 (포인트 자동지급)", "항목 선택"));
             if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 하기", "["+session.targetUser+"] 답변 입력", "내용 입력"));
             if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[" + session.targetUser + "] 초기화?", "'확인' 입력"));
             if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "[" + session.targetUser + "] 삭제?", "'삭제확인' 입력"));
@@ -223,13 +222,31 @@ var AdminManager = {
             SessionManager.reset(session); return replier.reply(UI.make("성공", "전송됨", "대기", true));
         }
         if (screen === "ADMIN_EDIT_MENU") {
-            var types = {"1":"gold", "2":"lp", "3":"point"};
-            if (types[msg]) { session.editType = types[msg]; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "수정", "값 입력", "숫자")); }
+            // 🔹 포인트(point) 항목 삭제, 레벨(level) 항목으로 교체
+            var types = {"1":"gold", "2":"lp", "3":"level"};
+            if (types[msg]) { session.editType = types[msg]; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "수정", "새로운 값 입력", "숫자")); }
         }
         if (screen === "ADMIN_EDIT_INPUT") {
-            var val = parseInt(msg); if (isNaN(val)) return replier.reply(UI.make("오류", "숫자만"));
-            Database.data[session.targetUser][session.editType] = val; Database.save(Database.data);
-            SessionManager.reset(session); return replier.reply(UI.make("성공", "수정됨", "대기", true));
+            var val = parseInt(msg); if (isNaN(val) || val < 1) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
+            
+            var targetData = Database.data[session.targetUser];
+            
+            // 🔹 레벨 수정 시 관련 데이터 연동 처리
+            if (session.editType === "level") {
+                targetData.level = val;
+                targetData.exp = 0; // 레벨 변경 시 경험치 0으로 초기화
+                // 레벨업당 5포인트를 준다고 가정할 시 총 획득 포인트 계산 (레벨 1은 0포인트)
+                var totalPoints = (val - 1) * 5; 
+                // 기존 투자 스탯 초기화 (기본값 50)
+                targetData.stats = { acc: 50, ref: 50, com: 50, int: 50 };
+                targetData.point = totalPoints; 
+            } else {
+                targetData[session.editType] = val;
+            }
+            
+            Database.save(Database.data);
+            SessionManager.reset(session); 
+            return replier.reply(UI.make("수정 완료", session.targetUser + "님의 정보가 업데이트되었습니다.", "대기", true));
         }
         if (screen === "ADMIN_RESET_CONFIRM" && msg === "확인") {
             Database.data[session.targetUser] = Database.getInitData(Database.data[session.targetUser].pw); Database.save(Database.data);
