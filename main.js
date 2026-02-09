@@ -1,8 +1,8 @@
 /**
- * [main.js] v15.5.0
- * - FEATURE: 대전 픽창에서 [1. 보유 목록] -> [역할군 선택] -> [챔피언 선택] 3단계 시스템 적용
- * - FIX: 픽창에서 '이전' 입력 시 탈주 확인 없이 단계별 뒤로가기 지원
- * - FULL: v15.4.1의 모든 세부 로직(경험치, 관리자 수정, 유저 삭제 등) 100% 유지
+ * [main.js] v15.6.0
+ * - UI: 유저 제공 이미지의 레이아웃 및 '보유 캐릭터' 명칭 적용
+ * - FLOW: [대전] -> [1. 보유 캐릭터] -> [역할군] -> [유닛 선택]
+ * - FULL: v15.4.1의 관리자 기능, 경험치(addExp), 강제로그아웃 등 모든 로직 포함 (무생략)
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -58,7 +58,7 @@ var SystemData = {
 
 var RoleKeys = Object.keys(SystemData.roles);
 
-// ━━━━━━━━ [2. UI 엔진] ━━━━━━━━
+// ━━━━━━━━ [2. 유틸리티 및 UI 엔진] ━━━━━━━━
 var Utils = {
     getFixedDivider: function() { return Array(Config.DIVIDER_LINE + 1).join(Config.LINE_CHAR); },
     getNav: function() { return Config.NAV_LEFT + Config.NAV_ITEMS.join("    ") + Config.NAV_RIGHT; },
@@ -86,7 +86,9 @@ var Utils = {
 
 function getTierInfo(lp) {
     lp = lp || 0;
-    for (var i = 0; i < TierData.length; i++) { if (lp >= TierData[i].minLp) return { name: TierData[i].name, icon: TierData[i].icon }; }
+    for (var i = 0; i < TierData.length; i++) {
+        if (lp >= TierData[i].minLp) return { name: TierData[i].name, icon: TierData[i].icon };
+    }
     return { name: "아이언", icon: "⚫" };
 }
 
@@ -192,22 +194,31 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 배틀 매니저 (픽창 3단계 시스템)] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저 (이미지 레이아웃 기반)] ━━━━━━━━
 var BattleManager = {
     initDraft: function(session, replier) {
         replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 챔피언 선택 화면으로 이동합니다.", "잠시만 기다려주세요", true));
         java.lang.Thread.sleep(1500);
         session.battle = { playerUnit: null, selectedRole: null };
-        return replier.reply(UI.go(session, "BATTLE_DRAFT_CAT", "캐릭터 선택", "1. 보유 목록", "번호 선택"));
+        var d = Database.data[session.tempId];
+        var myUnits = d.collection.characters.join(", ") || "없음";
+        
+        // 이미지와 동일한 텍스트 구조
+        var content = "전장에 나갈 챔피언을\n선택하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n\n1. 보유 챔피언";
+        var help = "보유 챔피언: [" + myUnits + "]";
+        
+        return replier.reply(UI.go(session, "BATTLE_DRAFT_CAT", "챔피언 선택", content, help));
     },
     handleDraft: function(msg, session, replier) {
         var d = Database.data[session.tempId];
-        // 1단계: 보유 목록 클릭
-        if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
-            var content = "📢 역할군을 선택하세요.\n\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-            return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "카테고리를 선택하세요."));
+        // 1단계: 보유 챔피언 클릭 시 카테고리(역할군) 등장
+        if (session.screen === "BATTLE_DRAFT_CAT") {
+            if (msg === "1") {
+                var content = "📢 역할군을 선택하세요.\n\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
+                return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "번호 입력"));
+            }
         }
-        // 2단계: 역할군 내부의 내 챔피언 확인
+        // 2단계: 역할군 선택
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -215,18 +226,19 @@ var BattleManager = {
                 var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
                 if (myUnits.length === 0) return replier.reply(UI.make("알림", "[" + roleName + "] 역할군에 보유 중인 챔피언이 없습니다."));
                 session.battle.selectedRole = roleName;
-                var content = "📢 [" + roleName + "] 유닛을 선택하세요.\n\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
+                var content = "📢 [" + roleName + "] 챔피언을 선택하세요.\n\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
                 return replier.reply(UI.go(session, "BATTLE_DRAFT_UNIT", roleName + " 선택", content, "번호 입력"));
             }
         }
-        // 3단계: 최종 유닛 선택
+        // 3단계: 챔피언 선택
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
             var idx = parseInt(msg) - 1;
             if (myUnits[idx]) {
                 session.battle.playerUnit = myUnits[idx];
-                return replier.reply(UI.make("선택 완료", "입력하신 [" + myUnits[idx] + "] 챔피언의 데이터 동기화를 진행 중입니다.", "대기", true));
+                return replier.reply(UI.make("선택 완료", "입력하신 [" + myUnits[idx] + "] 챔피언
+                                             의 데이터 동기화를 진행 중입니다.", "대기", true));
             }
         }
     }
@@ -258,12 +270,12 @@ var AdminManager = {
         if (screen === "ADMIN_USER_DETAIL") {
             if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
             if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 하기", "["+session.targetUser+"] 답변 입력", "내용 입력"));
-            if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[" + session.targetUser + "] 초기화?", "'확인' 입력"));
-            if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "[" + session.targetUser + "] 삭제?", "'삭제확인' 입력"));
+            if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[" + session.targetUser + "] 초기화 하시겠습니까?", "'확인' 입력"));
+            if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "[" + session.targetUser + "] 삭제 하시겠습니까?", "'삭제확인' 입력"));
         }
         if (screen === "ADMIN_ANSWER_INPUT") {
             Api.replyRoom(session.targetUser, UI.make("운영진 답변", msg, "시스템 메시지", true));
-            SessionManager.reset(session); return replier.reply(UI.make("성공", "전송됨", "대기", true));
+            SessionManager.reset(session); return replier.reply(UI.make("성공", "전송완료", "대기", true));
         }
         if (screen === "ADMIN_EDIT_MENU") {
             var types = ["gold", "lp", "level"];
@@ -319,9 +331,9 @@ var UserManager = {
 
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
-            if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 캐릭터", "조회"));
+            if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 챔피언", "조회"));
             if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전", "1. AI 대결", "전투"));
-            if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 상점\n2. 소모품 상점", "쇼핑"));
+            if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 챔피언 상점\n2. 소모품 상점", "쇼핑"));
             if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의하기", "내용 입력", "전송"));
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
