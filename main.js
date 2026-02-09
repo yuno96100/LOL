@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.5 Final
- * - UPDATE: 관리자 유저 정보 수정 내 [레벨 수정] 기능 강화
- * - UPDATE: 포인트 직접 수정 차단 (레벨 수정 시 자동 계산)
- * - FIX: STAT_UP_MENU 데이터 참조 및 메뉴 출력 최적화
+ * [main.js] v14.4.7 Final
+ * - UPDATE: 관리자 정보 수정 시 해당 유저에게 개인 톡방 알림 전송 로직 추가
+ * - FIX: 정보 수정 완료 메시지 내 유저명 출력 최적화
+ * - STABILITY: 인벤토리 및 스탯 데이터 널 포인터 방어 강화
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -97,10 +97,14 @@ var UI = {
     },
     renderProfile: function(id, data, help, content, isRoot, session) {
         if (!data) return "데이터 로드 오류: 다시 로그인하세요.";
+        if (!data.stats) data.stats = { acc: 50, ref: 50, com: 50, int: 50 };
+        if (!data.inventory) data.inventory = { "RESET_TICKET": 0 };
+        if (!data.collection) data.collection = { titles: ["뉴비"], characters: [] };
+        
         var lp = data.lp || 0, tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-        var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
+        var st = data.stats;
         var lv = data.level || 1, exp = data.exp || 0, maxExp = lv * 100;
         var div = Utils.getFixedDivider();
         
@@ -222,38 +226,48 @@ var AdminManager = {
             SessionManager.reset(session); return replier.reply(UI.make("성공", "전송됨", "대기", true));
         }
         if (screen === "ADMIN_EDIT_MENU") {
-            // 🔹 포인트(point) 항목 삭제, 레벨(level) 항목으로 교체
             var types = {"1":"gold", "2":"lp", "3":"level"};
             if (types[msg]) { session.editType = types[msg]; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "수정", "새로운 값 입력", "숫자")); }
         }
         if (screen === "ADMIN_EDIT_INPUT") {
             var val = parseInt(msg); if (isNaN(val) || val < 1) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력하세요."));
             
-            var targetData = Database.data[session.targetUser];
-            
-            // 🔹 레벨 수정 시 관련 데이터 연동 처리
+            var targetId = session.targetUser; 
+            var targetData = Database.data[targetId];
+            if (!targetData) return replier.reply(UI.make("오류", "유저 데이터 유실"));
+
+            var changeLog = ""; // 🔹 유저에게 보낼 알림 내용
+
             if (session.editType === "level") {
                 targetData.level = val;
-                targetData.exp = 0; // 레벨 변경 시 경험치 0으로 초기화
-                // 레벨업당 5포인트를 준다고 가정할 시 총 획득 포인트 계산 (레벨 1은 0포인트)
+                targetData.exp = 0; 
                 var totalPoints = (val - 1) * 5; 
-                // 기존 투자 스탯 초기화 (기본값 50)
                 targetData.stats = { acc: 50, ref: 50, com: 50, int: 50 };
                 targetData.point = totalPoints; 
+                changeLog = "레벨이 " + val + "로 변경되었습니다. (스탯 포인트 " + totalPoints + "P 재지급)";
             } else {
+                var unit = (session.editType === "gold") ? "G" : "LP";
                 targetData[session.editType] = val;
+                changeLog = (session.editType === "gold" ? "골드" : "LP") + "가 " + val.toLocaleString() + unit + "로 변경되었습니다.";
             }
             
             Database.save(Database.data);
+
+            // 🔹 [추가] 해당 유저의 개인 톡방으로 알림 전송
+            Api.replyRoom(targetId, UI.make("정보 변경 알림", "운영진에 의해 회원님의 정보가 수정되었습니다.\n\n내용: " + changeLog, "시스템 메시지", true));
+
+            var successMsg = UI.make("수정 완료", targetId + "님의 정보가 업데이트되었습니다.\n(유저에게 알림 전송됨)", "대기", true);
             SessionManager.reset(session); 
-            return replier.reply(UI.make("수정 완료", session.targetUser + "님의 정보가 업데이트되었습니다.", "대기", true));
+            return replier.reply(successMsg);
         }
         if (screen === "ADMIN_RESET_CONFIRM" && msg === "확인") {
             Database.data[session.targetUser] = Database.getInitData(Database.data[session.targetUser].pw); Database.save(Database.data);
+            Api.replyRoom(session.targetUser, UI.make("데이터 초기화", "운영진에 의해 데이터가 초기화되었습니다.", "알림", true));
             SessionManager.reset(session); return replier.reply(UI.make("성공", "초기화됨", "대기", true));
         }
         if (screen === "ADMIN_DELETE_CONFIRM" && msg === "삭제확인") {
             delete Database.data[session.targetUser]; Database.save(Database.data);
+            Api.replyRoom(session.targetUser, "운영진에 의해 계정이 삭제되었습니다.");
             SessionManager.forceLogout(session.targetUser); SessionManager.reset(session);
             return replier.reply(UI.make("성공", "삭제됨", "대기", true));
         }
@@ -294,6 +308,7 @@ var UserManager = {
             return;
         }
 
+        if (!d.inventory) d.inventory = { "RESET_TICKET": 0 };
         if (!d.stats) d.stats = { acc: 50, ref: 50, com: 50, int: 50 };
 
         if (session.screen === "USER_MAIN") {
@@ -307,7 +322,10 @@ var UserManager = {
 
         if (session.screen === "PROFILE_VIEW") {
             if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "포인트: "+(d.point||0)));
-            if (msg === "2") return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화", "보유권: "+(d.inventory["RESET_TICKET"]||0), "'사용' 입력"));
+            if (msg === "2") {
+                var count = (d.inventory && d.inventory["RESET_TICKET"]) || 0;
+                return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화", "보유권: "+count, "'사용' 입력"));
+            }
         }
 
         if (session.screen === "STAT_UP_MENU") {
@@ -322,7 +340,8 @@ var UserManager = {
         }
 
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
-            if ((d.inventory["RESET_TICKET"]||0) < 1) return replier.reply(UI.make("실패", "초기화권 없음"));
+            var hasTicket = (d.inventory && d.inventory["RESET_TICKET"] > 0);
+            if (!hasTicket) return replier.reply(UI.make("실패", "초기화권 없음"));
             var refund = (d.stats.acc+d.stats.ref+d.stats.com+d.stats.int)-200;
             d.point += refund; d.stats = {acc:50, ref:50, com:50, int:50}; d.inventory["RESET_TICKET"]--;
             Database.save(Database.data); SessionManager.reset(session);
@@ -381,7 +400,10 @@ var UserManager = {
         if (session.screen === "SHOP_ITEM_BUY" && msg === "1") {
             var it = SystemData.items["소모품"][0];
             if (d.gold < it.price) return replier.reply(UI.make("실패", "골드 부족"));
-            d.gold -= it.price; d.inventory[it.id] = (d.inventory[it.id]||0)+1; Database.save(Database.data);
+            d.gold -= it.price; 
+            if (!d.inventory) d.inventory = {};
+            d.inventory[it.id] = (d.inventory[it.id]||0)+1; 
+            Database.save(Database.data);
             return replier.reply(UI.make("성공", "구매 완료", "잔액: "+d.gold));
         }
 
@@ -436,7 +458,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             else if (msg === "아니오" || msg === "2") {
                 var s = session.preCancelScreen, t = session.preCancelTitle, c = session.preCancelContent, h = session.preCancelHelp;
                 session.screen = s; session.lastTitle = t; session.lastContent = c; session.lastHelp = h;
-                return replier.reply(UI.make(t, c, h, (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(s) !== -1)));
+                var isRoot = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(s) !== -1);
+                if (s.indexOf("PROFILE") !== -1 || s.indexOf("STAT") !== -1) return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], h, c, isRoot, session));
+                return replier.reply(UI.make(t, c, h, isRoot));
             }
         }
 
