@@ -1,8 +1,7 @@
 /**
- * [main.js] v14.9.1
- * - UPDATE: 관리자 방(Config.AdminRoom) 유저 전원 관리자 권한 부여
- * - NEW: 회원가입 완료 시 관리자 방으로 즉시 알림 전송 로직 추가
- * - REMOVE: 매칭 및 픽창 등 불필요한 페이즈 진입 로직 제거 (순수 기능 유지)
+ * [main.js] v14.9.2
+ * - FIX: 관리자 '유저 관리'에서 대상 유저의 프로필이 보이지 않던 문제 해결
+ * - UPDATE: AdminManager에서 유저 선택 시 즉시 UI.renderProfile 호출
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -110,8 +109,13 @@ var UI = {
         
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
         
-        if (session && session.screen === "PROFILE_VIEW") {
-            res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n";
+        // 관리자가 보고 있을 때의 메뉴 구성 추가
+        if (session && (session.screen === "ADMIN_USER_DETAIL" || session.screen === "PROFILE_VIEW")) {
+            if (session.type === "ADMIN") {
+                res += "1. 정보 수정\n2. 답변 하기\n3. 데이터 초기화\n4. 계정 삭제\n" + div + "\n";
+            } else {
+                res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n";
+            }
         } else if (session && (session.screen === "STAT_UP_MENU" || session.screen === "STAT_UP_INPUT")) {
             res += "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화\n" + div + "\n";
         }
@@ -134,9 +138,10 @@ var UI = {
         session.screen = screen; session.lastTitle = title;
         session.lastContent = content || ""; session.lastHelp = help || "";
         
-        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1) {
+        // 프로필 렌더링 조건 수정 (관리자 화면 포함)
+        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL") {
             var tid = session.targetUser || session.tempId;
-            var td = Database.data[tid] || session.data;
+            var td = Database.data[tid];
             return UI.renderProfile(tid, td, help, content, isRoot, session);
         }
         return this.make(title, content, help, isRoot);
@@ -207,7 +212,8 @@ var AdminManager = {
             var idx = parseInt(msg) - 1;
             if (session.userListCache[idx]) {
                 session.targetUser = session.userListCache[idx];
-                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "1. 정보 수정\n2. 답변 하기\n3. 데이터 초기화\n4. 계정 삭제", "기능 선택"));
+                // 🔹 유저 선택 시 해당 유저의 프로필을 즉시 렌더링하도록 UI.go 호출
+                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "기능을 선택하세요.", "조회 중"));
             }
         }
         if (screen === "ADMIN_USER_DETAIL") {
@@ -274,7 +280,6 @@ var UserManager = {
             if (session.screen === "JOIN_PW") {
                 Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
                 
-                // 🔹 [신규] 관리자 방으로 가입 알림
                 var joinLog = "🆕 [신규 가입 알림]\n" + Utils.getFixedDivider() + "\n" +
                               "👤 아이디: " + session.tempId + "\n" +
                               "⏰ 시간: " + new Date().toLocaleString() + "\n" +
@@ -451,7 +456,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                 var s = session.preCancelScreen, t = session.preCancelTitle, c = session.preCancelContent, h = session.preCancelHelp;
                 session.screen = s; session.lastTitle = t; session.lastContent = c; session.lastHelp = h;
                 var root = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(s) !== -1);
-                if (s.indexOf("PROFILE") !== -1 || s.indexOf("STAT") !== -1) return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], h, c, root, session));
+                if (s.indexOf("PROFILE") !== -1 || s.indexOf("STAT") !== -1 || s === "ADMIN_USER_DETAIL") {
+                    return replier.reply(UI.renderProfile(session.targetUser || session.tempId, Database.data[session.targetUser || session.tempId], h, c, root, session));
+                }
                 return replier.reply(UI.make(t, c, h, root));
             }
         }
@@ -460,15 +467,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             var p = session.history.pop();
             session.screen = p.screen; session.lastTitle = p.title; session.lastContent = p.content; session.lastHelp = p.help;
             var root = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(p.screen) !== -1);
-            if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("STAT") !== -1) {
-                return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], p.help, p.content, root, session));
+            if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("STAT") !== -1 || p.screen === "ADMIN_USER_DETAIL") {
+                return replier.reply(UI.renderProfile(session.targetUser || session.tempId, Database.data[session.targetUser || session.tempId], p.help, p.content, root, session));
             }
             return replier.reply(UI.make(p.title, p.content, p.help, root));
         }
 
         if (session.screen === "IDLE") return;
 
-        // 🔹 [v14.9.1] 관리자 방 전원 권한 부여
         if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
