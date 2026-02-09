@@ -195,38 +195,39 @@ var SessionManager = {
 };
 
 // ━━━━━━━━ [4. 배틀 매니저 (이미지 레이아웃 수정)] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저 (공백 제거 버전)] ━━━━━━━━
 var BattleManager = {
     initDraft: function(session, replier) {
-        // 1. 매칭 성공 알림 (잠시 노출)
         replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 캐릭터 선택 화면으로 이동합니다.", "잠시만 기다려주세요", true));
         
-        java.lang.Thread.sleep(1500); // 연출용 대기
+        java.lang.Thread.sleep(1500); 
         
         session.battle = { playerUnit: null, selectedRole: null };
-        var d = Database.data[session.tempId];
-        var myUnits = (d.collection && d.collection.characters) ? d.collection.characters.join(", ") : "없음";
         
-        // [수정] 이미지 레이아웃과 100% 일치하도록 본문(Content) 구성
-        // 텍스트 줄바꿈과 번호를 이미지와 동일하게 맞춤
-        var content = "전장에 나갈 캐릭터를\n선택하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n\n1. 보유 캐릭터";
-        var help = "현재 보유 캐릭터: [" + myUnits + "]";
+        // [수정] 모든 여백(빈 줄) 제거 및 밀착 배치
+        var div = Utils.getFixedDivider();
+        var content = "전장에 나갈 캐릭터를\n선택하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n" 
+                    + div + "\n" 
+                    + "1. 보유 캐릭터";
         
-        // UI.go를 통해 화면 전환 (이제 문구가 정상적으로 표시됩니다)
+        var help = "번호를 입력하여 선택하세요.";
+        
         return replier.reply(UI.go(session, "BATTLE_DRAFT_CAT", "캐릭터 선택", content, help));
     },
     
     handleDraft: function(msg, session, replier) {
         var d = Database.data[session.tempId];
+        var div = Utils.getFixedDivider();
         
-        // 1단계: 보유 캐릭터 -> 역할군 선택창으로 이동
         if (session.screen === "BATTLE_DRAFT_CAT") {
             if (msg === "1") {
-                var content = "📢 역할군을 선택하세요.\n\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
+                var content = "📢 역할군을 선택하세요.\n" 
+                            + div + "\n" 
+                            + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
                 return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "번호 입력"));
             }
         }
         
-        // 2단계: 역할군 선택 -> 해당 유닛 목록 (타이틀 변경 로직 포함)
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -240,14 +241,14 @@ var BattleManager = {
                 }
                 
                 session.battle.selectedRole = roleName;
-                var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
+                var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n" 
+                            + div + "\n"
+                            + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
                 
-                // 타이틀을 선택한 역할군 이름으로 변경하여 출력
                 return replier.reply(UI.go(session, "BATTLE_DRAFT_UNIT", roleName, content, "번호 입력"));
             }
         }
         
-        // 3단계: 캐릭터 최종 선택
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
