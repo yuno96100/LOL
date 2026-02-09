@@ -1,26 +1,38 @@
 /**
- * [main.js] v14.4.3
- * 1. CRITICAL FIX: STAT_UP_MENU 내 undefined 'stats' 참조 오류 완전 봉쇄
- * 2. UPDATE: 모든 핸들러 진입 시 실시간 DB 데이터 강제 동기화
- * 3. FEATURE: 프로필 내 [Lv / EXP] 표시 및 포인트 강화 로직 안정화
+ * [main.js] v14.4.4 Final
+ * - FIX: STAT_UP_MENU 데이터 참조 오류 및 메뉴 미표시 문제 해결
+ * - ADD: 프로필 내 [Lv.XX] 및 [EXP] 표시 시스템
+ * - INTEGRATION: 상점, 컬렉션, 관리자, 단체방 시스템 통합
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
 var Config = {
-    Prefix: ".", AdminHash: "2056407147",
-    AdminRoom: "소환사의협곡관리", GroupRoom: "소환사의협곡",
-    BotName: "소환사의 협곡", DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
+    Prefix: ".", 
+    AdminHash: "2056407147",
+    AdminRoom: "소환사의협곡관리", 
+    GroupRoom: "소환사의협곡",
+    BotName: "소환사의 협곡", 
+    DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
-    LINE_CHAR: "━", WRAP_LIMIT: 17, DIVIDER_LINE: 14,
-    NAV_LEFT: "  ", NAV_RIGHT: " ", NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
+    LINE_CHAR: "━", 
+    WRAP_LIMIT: 17, 
+    DIVIDER_LINE: 14,
+    NAV_LEFT: "  ", 
+    NAV_RIGHT: " ", 
+    NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
 };
 
 var TierData = [
-    { name: "챌린저", icon: "✨", minLp: 3000 }, { name: "그랜드마스터", icon: "🔴", minLp: 2500 },
-    { name: "마스터", icon: "🟣", minLp: 2000 }, { name: "다이아몬드", icon: "💎", minLp: 1700 },
-    { name: "에메랄드", icon: "💚", minLp: 1400 }, { name: "플래티넘", icon: "💿", minLp: 1100 },
-    { name: "골드", icon: "🟡", minLp: 800 }, { name: "실버", icon: "⚪", minLp: 500 },
-    { name: "브론즈", icon: "🟤", minLp: 200 }, { name: "아이언", icon: "⚫", minLp: 0 }
+    { name: "챌린저", icon: "✨", minLp: 3000 }, 
+    { name: "그랜드마스터", icon: "🔴", minLp: 2500 },
+    { name: "마스터", icon: "🟣", minLp: 2000 }, 
+    { name: "다이아몬드", icon: "💎", minLp: 1700 },
+    { name: "에메랄드", icon: "💚", minLp: 1400 }, 
+    { name: "플래티넘", icon: "💿", minLp: 1100 },
+    { name: "골드", icon: "🟡", minLp: 800 }, 
+    { name: "실버", icon: "⚪", minLp: 500 },
+    { name: "브론즈", icon: "🟤", minLp: 200 }, 
+    { name: "아이언", icon: "⚫", minLp: 0 }
 ];
 
 var SystemData = {
@@ -32,8 +44,13 @@ var SystemData = {
         "원거리딜러": { icon: "🏹", units: ["애쉬", "베인", "카이사"] },
         "서포터": { icon: "✨", units: ["소라카", "유미", "쓰레쉬"] }
     },
-    items: { "소모품": [{ id: "RESET_TICKET", name: "능력치 초기화권", price: 10000, desc: "투자 포인트를 모두 환급합니다." }] }
+    items: {
+        "소모품": [
+            { id: "RESET_TICKET", name: "능력치 초기화권", price: 10000, desc: "투자 포인트를 모두 환급합니다." }
+        ]
+    }
 };
+
 var RoleKeys = Object.keys(SystemData.roles);
 
 var Utils = {
@@ -79,7 +96,7 @@ var UI = {
         return res;
     },
     renderProfile: function(id, data, help, content, isRoot, session) {
-        if (!data) return "데이터 로드 오류";
+        if (!data) return "데이터 로드 오류: 다시 로그인하세요.";
         var lp = data.lp || 0, tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
@@ -92,7 +109,14 @@ var UI = {
         var s3 = "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
         
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
-        if (session && id === session.tempId) { res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n"; }
+        
+        // 화면 상태에 따른 가변 메뉴 출력
+        if (session && session.screen === "PROFILE_VIEW") {
+            res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n";
+        } else if (session && session.screen === "STAT_UP_MENU") {
+            res += "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화\n" + div + "\n";
+        }
+
         if (content) res += Utils.wrapText(content.trim()) + "\n" + div + "\n"; 
         if (help) res += "💡 " + Utils.wrapText(help);
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
@@ -102,7 +126,6 @@ var UI = {
         var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN"];
         var isRoot = (rootScreens.indexOf(screen) !== -1);
         
-        // 실시간 데이터 동기화
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
 
         if (!skipHistory && session.screen && session.screen !== "IDLE" && session.screen !== screen) {
@@ -112,7 +135,7 @@ var UI = {
         session.screen = screen; session.lastTitle = title;
         session.lastContent = content || ""; session.lastHelp = help || "";
         
-        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1) {
+        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var tid = session.targetUser || session.tempId;
             var td = Database.data[tid] || session.data;
             return UI.renderProfile(tid, td, help, content, isRoot, session);
@@ -159,6 +182,10 @@ var SessionManager = {
     reset: function(session) { 
         session.screen = "IDLE"; session.history = []; session.userListCache = []; 
         session.targetUser = null; session.editType = null;
+    },
+    forceLogout: function(userId) {
+        for (var key in this.sessions) { if (this.sessions[key].tempId === userId) { this.sessions[key].data = null; this.sessions[key].tempId = "비회원"; this.reset(this.sessions[key]); } }
+        this.save();
     }
 };
 
@@ -210,7 +237,8 @@ var AdminManager = {
         }
         if (screen === "ADMIN_DELETE_CONFIRM" && msg === "삭제확인") {
             delete Database.data[session.targetUser]; Database.save(Database.data);
-            SessionManager.reset(session); return replier.reply(UI.make("성공", "삭제됨", "대기", true));
+            SessionManager.forceLogout(session.targetUser); SessionManager.reset(session);
+            return replier.reply(UI.make("성공", "삭제됨", "대기", true));
         }
     }
 };
@@ -218,11 +246,11 @@ var AdminManager = {
 // ━━━━━━━━ [5. 유저 매니저] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
-        // 🔥 실시간 데이터 강제 동기화 (undefined 오류 방지)
         if (session.tempId && Database.data[session.tempId]) {
             session.data = Database.data[session.tempId];
         }
         var d = session.data;
+
         if (!d) {
             if (session.screen === "GUEST_MAIN") {
                 if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디(10자)", "가입"));
@@ -249,7 +277,6 @@ var UserManager = {
             return;
         }
 
-        // 🛡️ 스탯 객체 누락 방지
         if (!d.stats) d.stats = { acc: 50, ref: 50, com: 50, int: 50 };
 
         if (session.screen === "USER_MAIN") {
@@ -258,22 +285,25 @@ var UserManager = {
             if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전", "1. AI 봇 매칭", "전투"));
             if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 캐릭터 상점\n2. 소모품 상점", "쇼핑"));
             if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의하기", "내용 입력", "전송"));
-            if (msg === "6") { session.data = null; session.tempId = "비회원"; SessionManager.reset(session); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
+            if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
         if (session.screen === "PROFILE_VIEW") {
-            if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "강화할 번호 입력", "포인트: "+(d.point||0)));
+            if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "포인트: "+(d.point||0)));
             if (msg === "2") return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화", "보유권: "+(d.inventory["RESET_TICKET"]||0), "'사용' 입력"));
         }
+
         if (session.screen === "STAT_UP_MENU") {
-            var keys = ["acc", "ref", "com", "int"]; var names = ["정확", "반응", "침착", "직관"];
+            var keys = ["acc", "ref", "com", "int"];
+            var names = ["정확", "반응", "침착", "직관"];
             var idx = parseInt(msg)-1;
-            if (keys[idx]) {
-                if (d.point <= 0) return replier.reply(UI.make("실패", "포인트 부족"));
+            if (idx >= 0 && idx < 4) {
+                if ((d.point||0) <= 0) return replier.reply(UI.make("실패", "강화 포인트 부족", "포인트: 0", false));
                 d.stats[keys[idx]]++; d.point--; Database.save(Database.data);
-                return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", names[idx]+" 강화 완료!", "포인트: "+d.point, true));
+                return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", names[idx]+" 강화 완료!", "남은 포인트: "+d.point, true));
             }
         }
+
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
             if ((d.inventory["RESET_TICKET"]||0) < 1) return replier.reply(UI.make("실패", "초기화권 없음"));
             var refund = (d.stats.acc+d.stats.ref+d.stats.com+d.stats.int)-200;
@@ -292,6 +322,7 @@ var UserManager = {
                 return replier.reply(UI.go(session, "COL_CHAR_VIEW", "캐릭터 리스트", cList, "목록"));
             }
         }
+
         if (session.screen === "COL_TITLE_ACTION") {
             var tIdx = parseInt(msg)-1;
             if (d.collection.titles[tIdx]) {
@@ -307,6 +338,7 @@ var UserManager = {
                 return replier.reply(UI.go(session, "SHOP_ITEM_BUY", "소모품 상점", "1. "+it.name+" ("+it.price+"G)", "구매 번호"));
             }
         }
+
         if (session.screen === "SHOP_ROLES") {
             var rIdx = parseInt(msg)-1;
             if (RoleKeys[rIdx]) {
@@ -318,6 +350,7 @@ var UserManager = {
                 return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uList, "구매 번호"));
             }
         }
+
         if (session.screen === "SHOP_BUY_ACTION") {
             var uIdx = parseInt(msg)-1; var units = SystemData.roles[session.selectedRole].units;
             if (units[uIdx]) {
@@ -327,6 +360,7 @@ var UserManager = {
                 return replier.reply(UI.make("성공", units[uIdx]+" 구매 완료", "잔액: "+d.gold));
             }
         }
+
         if (session.screen === "SHOP_ITEM_BUY" && msg === "1") {
             var it = SystemData.items["소모품"][0];
             if (d.gold < it.price) return replier.reply(UI.make("실패", "골드 부족"));
@@ -393,7 +427,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             var p = session.history.pop();
             session.screen = p.screen; session.lastTitle = p.title; session.lastContent = p.content; session.lastHelp = p.help;
             var isRoot = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(p.screen) !== -1);
-            if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("STAT") !== -1) return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], p.help, p.content, isRoot, session));
+            if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("STAT") !== -1) {
+                return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], p.help, p.content, isRoot, session));
+            }
             return replier.reply(UI.make(p.title, p.content, p.help, isRoot));
         }
 
