@@ -1,7 +1,7 @@
 /**
- * [main.js] v14.5.3 Final
- * - FIX: 강화/초기화 후 '이전' 입력 시 강화 메뉴가 아닌 메인 메뉴로 이동하도록 히스토리 최적화
- * - UPDATE: 성공 시 중간 단계 히스토리를 제거하여 UX 직관성 강화
+ * [main.js] v14.5.4 Final
+ * - FIX: 강화/초기화 후 '이전' 입력 시 무조건 메인 메뉴로 이동하도록 히스토리 강제 재설정
+ * - UPDATE: 성공 시점의 히스토리를 메인 메뉴 지점으로 고정
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -104,7 +104,7 @@ var UI = {
         var div = Utils.getFixedDivider();
         
         var s1 = "👤 계정: " + id + " [Lv." + lv + "]\n🏅 칭호: [" + (data.title || "뉴비") + "]";
-        var s2 = "📊 경험: " + exp + " / " + maxExp + " EXP\n🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G";
+        var s2 = "📊 경험치: " + exp + " / " + maxExp + " EXP\n🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G";
         var s3 = "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
         
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
@@ -320,13 +320,11 @@ var UserManager = {
             d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
             replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt, "성공", true));
 
-            // 🔹 [Fix] 히스토리 정리: 강화 관련 화면들을 기록에서 제거
-            if (session.history) {
-                session.history = session.history.filter(function(h) {
-                    return h.screen !== "STAT_UP_MENU" && h.screen !== "STAT_UP_INPUT" && h.screen !== "PROFILE_VIEW";
-                });
-            }
-            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
+            // 🔹 [Final Fix] 히스토리를 강제로 '메인 메뉴' 상태로 덮어쓰기
+            session.history = [{ screen: "USER_MAIN", title: "메인 메뉴", content: "1. 프로필\n2. 컬렉션\n3. 대전\n4. 상점\n5. 문의하기\n6. 로그아웃", help: "번호 입력" }];
+            
+            // skipHistory: true로 현재 프로필 창이 히스토리에 다시 쌓이지 않게 방지
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", true));
         }
 
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
@@ -337,13 +335,10 @@ var UserManager = {
             Database.save(Database.data); 
             replier.reply(UI.make("♻️ 초기화 완료", "환급: " + ref + "P", "완료", true));
 
-            // 🔹 [Fix] 히스토리 정리: 초기화 관련 화면들을 기록에서 제거
-            if (session.history) {
-                session.history = session.history.filter(function(h) {
-                    return h.screen !== "STAT_RESET_CONFIRM" && h.screen !== "PROFILE_VIEW";
-                });
-            }
-            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
+            // 🔹 [Final Fix] 히스토리를 강제로 '메인 메뉴' 상태로 덮어쓰기
+            session.history = [{ screen: "USER_MAIN", title: "메인 메뉴", content: "1. 프로필\n2. 컬렉션\n3. 대전\n4. 상점\n5. 문의하기\n6. 로그아웃", help: "번호 입력" }];
+            
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", true));
         }
 
         if (session.screen === "COL_MAIN") {
