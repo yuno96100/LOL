@@ -1,8 +1,8 @@
 /**
- * [main.js] v14.4.1
- * 1. FIX: 에러 메시지 가독성 개선 (유저용 UI / 관리자용 리포트 분리)
- * 2. 복구: v10 컬렉션(칭호 장착), 상점(역할군 필터링) 기능 100% 수록
- * 3. 해결: 능력치 강화 시 발생하던 undefined 'acc' 참조 오류 및 상점 타이틀 버그 수정
+ * [main.js] v14.4.2
+ * - FIX: STAT_UP_MENU 데이터 참조 오류 (undefined 'acc') 해결
+ * - ADD: 프로필 내 레벨(Lv) 및 경험치(Exp) 표시 추가
+ * - ALL: v10 상점/컬렉션 로직 + 관리자 시스템 + 에러 리포트 통합
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -84,15 +84,20 @@ var UI = {
         return res;
     },
     renderProfile: function(id, data, help, content, isRoot, session) {
-        if (!data) return "데이터 로드 오류";
+        if (!data) return "데이터 로드 오류: 세션을 다시 시작하세요.";
         var lp = data.lp || 0, tier = getTierInfo(lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
+        var lv = data.level || 1;
+        var exp = data.exp || 0;
+        var maxExp = lv * 100;
         var div = Utils.getFixedDivider();
-        var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]";
-        var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)";
-        var s3 = "🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
+        
+        var s1 = "👤 계정: " + id + " [Lv." + lv + "]\n🏅 칭호: [" + data.title + "]";
+        var s2 = "📊 경험: " + exp + " / " + maxExp + " EXP\n🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n💰 골드: " + (data.gold || 0).toLocaleString() + " G";
+        var s3 = "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
+        
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
         if (session && id === session.tempId) { res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n"; }
         if (content) res += Utils.wrapText(content.trim()) + "\n" + div + "\n"; 
@@ -113,20 +118,18 @@ var UI = {
         session.screen = screen; session.lastTitle = title;
         session.lastContent = content || ""; session.lastHelp = help || "";
         
-        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("DETAIL") !== -1) {
+        if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen.indexOf("DETAIL") !== -1) {
             var tid = session.targetUser || session.tempId;
-            var td = (session.targetUser) ? Database.data[session.targetUser] : session.data;
+            var td = Database.data[tid];
             return UI.renderProfile(tid, td, help, content, isRoot, session);
         }
         return this.make(title, content, help, isRoot);
     },
     renderMenu: function(session) {
         session.history = []; 
-        if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호를 입력하세요.");
-        if (session.type === "GROUP") {
-            if (!session.tempId || session.tempId === "비회원") return UI.make("알림", "개인톡에서 로그인을 먼저 해주세요.", "인증 필요", true);
-            return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인\n2. 티어 랭킹", "번호 입력");
-        }
+        if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
+        if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호 입력");
+        if (session.type === "GROUP") return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인\n2. 티어 랭킹", "번호 입력");
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 문의하기", "번호 선택");
         return this.go(session, "USER_MAIN", "메인 메뉴", "1. 프로필\n2. 컬렉션\n3. 대전\n4. 상점\n5. 문의하기\n6. 로그아웃", "번호 입력");
     }
@@ -139,7 +142,7 @@ var Database = {
     save: function(d) { this.data = d; FileStream.write(Config.DB_PATH, JSON.stringify(d, null, 4)); },
     getInitData: function(pw) { 
         return { 
-            pw: pw, gold: 1000, level: 1, lp: 0, win: 0, lose: 0, title: "뉴비", 
+            pw: pw, gold: 1000, level: 1, exp: 0, lp: 0, win: 0, lose: 0, title: "뉴비", 
             point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 },
             inventory: { "RESET_TICKET": 0 },
             collection: { titles: ["뉴비"], characters: [] } 
@@ -265,20 +268,16 @@ var UserManager = {
         }
 
         if (session.screen === "PROFILE_VIEW") {
-            if (msg === "1") {
-                var s = d.stats || {acc:50, ref:50, com:50, int:50};
-                var sList = "1. 정확 ("+s.acc+")\n2. 반응 ("+s.ref+")\n3. 침착 ("+s.com+")\n4. 직관 ("+s.int+")";
-                return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", sList, "포인트: "+(d.point||0)));
-            }
+            if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "강화할 항목 번호 입력", "포인트: "+(d.point||0)));
             if (msg === "2") return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화", "보유권: "+(d.inventory["RESET_TICKET"]||0), "'사용' 입력"));
         }
         if (session.screen === "STAT_UP_MENU") {
-            var keys = ["acc", "ref", "com", "int"]; var idx = parseInt(msg)-1;
+            var keys = ["acc", "ref", "com", "int"]; var names = ["정확", "반응", "침착", "직관"];
+            var idx = parseInt(msg)-1;
             if (keys[idx]) {
                 if (d.point <= 0) return replier.reply(UI.make("실패", "포인트 부족"));
                 d.stats[keys[idx]]++; d.point--; Database.save(Database.data);
-                var upList = "1. 정확 ("+d.stats.acc+")\n2. 반응 ("+d.stats.ref+")\n3. 침착 ("+d.stats.com+")\n4. 직관 ("+d.stats.int+")";
-                return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", upList, "포인트: "+d.point, true));
+                return replier.reply(UI.go(session, "STAT_UP_MENU", "성공", names[idx]+" 능력치 +1 강화 완료!", "포인트: "+d.point, true));
             }
         }
         if (session.screen === "STAT_RESET_CONFIRM" && msg === "사용") {
@@ -367,7 +366,7 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [7. 메인 핸들러 및 에러 개선] ━━━━━━━━
+// ━━━━━━━━ [7. 메인 핸들러] ━━━━━━━━
 Database.data = Database.load(); SessionManager.load();         
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
@@ -399,7 +398,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             var p = session.history.pop();
             session.screen = p.screen; session.lastTitle = p.title; session.lastContent = p.content; session.lastHelp = p.help;
             var isRoot = (["USER_MAIN","ADMIN_MAIN","GUEST_MAIN","GROUP_MAIN"].indexOf(p.screen) !== -1);
-            if (p.screen.indexOf("PROFILE") !== -1) return replier.reply(UI.renderProfile(session.tempId, (session.targetUser?Database.data[session.targetUser]:session.data), p.help, p.content, isRoot, session));
+            if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("STAT") !== -1) return replier.reply(UI.renderProfile(session.tempId, Database.data[session.tempId], p.help, p.content, isRoot, session));
             return replier.reply(UI.make(p.title, p.content, p.help, isRoot));
         }
 
@@ -410,11 +409,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         SessionManager.save();
 
     } catch (e) {
-        // 🚨 사용자용 가독성 에러 UI
-        var errUI = UI.make("⚠️ 일시적 오류", "요청을 처리하는 중 문제가 발생했습니다.\n사유: " + e.message.split(":")[0], "잠시 후 다시 시도하거나 '메뉴'를 입력하세요.", true);
+        var errUI = UI.make("⚠️ 일시적 오류", "요청 처리 중 문제가 발생했습니다.\n사유: " + e.message.split(":")[0], "잠시 후 다시 시도하거나 '메뉴'를 입력하세요.", true);
         replier.reply(errUI);
-
-        // 🛠️ 관리자용 리포트
         var report = "『 🔴 에러 리포트 』\n" + Utils.getFixedDivider() + "\n📍 위치: " + (session?session.screen:"Unknown") + "\n👤 유저: " + (session?session.tempId:sender) + "\n❌ 내용: " + e.message + "\n" + Utils.getFixedDivider();
         Api.replyRoom(Config.AdminRoom, report);
     }
