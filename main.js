@@ -1,9 +1,8 @@
 /**
- * [main.js] v15.6.5
- * - UI: 보유 캐릭터 없는 창도 픽창 헤더 유지
- * - FLOW: 모든 단계에서 '이전' 시 초기화 방지 및 완벽 복구
- * - TEXT: 캐릭터 선택 시 역할군 이름만 출력
- * - FULL: AdminManager, UserManager 포함 모든 기능 생략 없음
+ * [main.js] v15.6.7
+ * - UI: 에러 발생 시 전용 에러 UI 레이아웃 적용
+ * - FIX: Unterminated string literal 방지 최적화
+ * - FULL: UserManager(문의/상점/컬렉션), AdminManager(전체) 생략 없음
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -101,6 +100,11 @@ var UI = {
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
     },
+    // 에러 전용 UI 추가
+    makeError: function(err, screen) {
+        var div = "━━━━━━━━━━━━━━";
+        return "『 ⚠️ 시스템 오류 』\n" + div + "\n" + "위치: " + (screen || "알 수 없음") + "\n내용: " + err + "\n" + div + "\n메뉴를 입력하여 복구하세요.";
+    },
     renderProfile: function(id, data, help, content, isRoot, session) {
         if (!data) return "데이터 로드 오류";
         var lp = data.lp || 0, tier = getTierInfo(lp);
@@ -115,6 +119,7 @@ var UI = {
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + (data.title || "뉴비") + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n🆙 레벨: " + lvLabel + "\n📊 경험: " + expBar + " EXP\n💰 골드: " + (data.gold || 0).toLocaleString() + " G";
         var s3 = "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
+        
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
         
         if (session && (session.screen === "ADMIN_USER_DETAIL" || session.screen === "PROFILE_VIEW")) {
@@ -285,11 +290,11 @@ var LoadingManager = {
                   
         replier.reply(UI.make("진입 중", res, "잠시만 기다려주세요", true));
         java.lang.Thread.sleep(2000);
-        return replier.reply(UI.make("전장 도착", "🚩 전투가 시작되었습니다!\n(로직에 따라 전투 결과가 곧 출력됩니다)", "메뉴를 입력하여 종료", true));
+        return replier.reply(UI.make("전장 도착", "🚩 전투가 시작되었습니다!", "메뉴를 입력하여 종료", true));
     }
 };
 
-// ━━━━━━━━ [6. 관리자 매니저 (완전복구)] ━━━━━━━━
+// ━━━━━━━━ [6. 관리자 매니저] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
         var screen = session.screen;
@@ -347,7 +352,7 @@ var AdminManager = {
     }
 };
 
-// ━━━━━━━━ [7. 유저 매니저 (완전복구)] ━━━━━━━━
+// ━━━━━━━━ [7. 유저 매니저] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
@@ -540,8 +545,10 @@ function showCancelConfirm(session, replier) {
     session.preCancelTitle = session.lastTitle;
     session.preCancelContent = session.lastContent;
     session.preCancelHelp = session.lastHelp;
-    var isBattle = session.screen.indexOf("BATTLE") !== -1;
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", isBattle ? "⚠️ 탈주 확인" : "중단 확인", isBattle ? "전장을 이탈하시겠습니까?\n매칭이 취소됩니다." : "현재 작업을 중단하시겠습니까?", "'예'/'아니오' 입력", true));
+    var isBattle = (session.screen || "").indexOf("BATTLE") !== -1;
+    var title = isBattle ? "⚠️ 탈주 확인" : "중단 확인";
+    var body = isBattle ? "전장을 이탈하시겠습니까?\n매칭이 취소됩니다." : "현재 작업을 중단하시겠습니까?";
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "'예'/'아니오' 입력", true));
 }
 
 function handleCancelConfirm(msg, session, replier) {
@@ -554,6 +561,7 @@ function handleCancelConfirm(msg, session, replier) {
 }
 
 function reportError(e, msg, session, sender, replier) {
-    replier.reply(UI.make("알림", "처리 중 오류 발생.\n메뉴로 복귀합니다.", "Error: " + e.message, true));
+    // 강화된 에러 전용 UI 출력
+    replier.reply(UI.makeError(e.message, session.screen));
     SessionManager.reset(session);
 }
