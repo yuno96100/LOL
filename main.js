@@ -198,52 +198,39 @@ var SessionManager = {
 
 // ━━━━━━━━ [4. 배틀 매니저] ━━━━━━━━
 var MatchingManager = {
-    renderDraftUI: function(session, bodyContent, help) {
+    // UI 전체 레이아웃을 한 번에 그려주는 함수 (중복 방지 핵심)
+    renderDraftUI: function(session, body, help) {
         var div = Utils.getFixedDivider();
-        var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
+        var selected = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
         
-        var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
+        // 상단 헤더 (항상 고정)
+        var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selected + "]\n" + div + "\n";
         
+        // 기록 저장
         session.lastTitle = "전투 준비";
-        session.lastContent = bodyContent;
+        session.lastContent = body;
         session.lastHelp = help;
 
-        return UI.make("전투 준비", header + bodyContent, help, false);
-    },
-
-    initDraft: function(session, replier) {
-        session.battle = { playerUnit: null, aiUnit: null, selectedRole: null };
-        session.history = []; 
-        session.screen = "BATTLE_DRAFT_CAT";
-        return replier.reply(this.renderDraftUI(session, "1. 보유 캐릭터", "'준비완료' 입력 시 게임을 시작합니다."));
+        // 조립 (UI.make를 거치지 않고 직접 구성하여 중복 선 생성을 막음)
+        return "『 전투 준비 』\n" + div + "\n" + header + Utils.wrapText(body) + "\n" + div + "\n" + 
+               "💡 " + Utils.wrapText(help) + "\n" + div + "\n" + Utils.getNav();
     },
 
     handleDraft: function(msg, session, replier) {
-        if (msg === "취소" || msg === "이전") {
-            if (session.history && session.history.length > 0) {
-                var prev = session.history.pop();
-                session.screen = prev.screen;
-                return replier.reply(this.renderDraftUI(session, prev.content, prev.help));
-            } else {
-                return showCancelConfirm(session, replier);
-            }
-        }
-
         var d = Database.data[session.tempId];
         var helpText = "'준비완료' 입력 시 게임을 시작합니다.";
 
-        if (msg === "준비완료") {
-            if (!session.battle.playerUnit) return replier.reply(UI.make("알림", "⚠️ 캐릭터를 선택하지 않았습니다."));
-            return LoadingManager.start(session, replier);
+        // 1. 이전/취소 처리
+        if (msg === "취소" || msg === "이전") {
+            if (session.history.length > 0) {
+                var prev = session.history.pop();
+                session.screen = prev.screen;
+                return replier.reply(this.renderDraftUI(session, prev.content, prev.help));
+            }
+            return showCancelConfirm(session, replier);
         }
-        
-        if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
-            session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
-            session.screen = "BATTLE_DRAFT_ROLE";
-            var content = "📢 역할군을 선택하세요.\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-            return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요."));
-        }
-        
+
+        // 2. 역할군 선택 단계
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -252,32 +239,43 @@ var MatchingManager = {
                     return d.collection.characters.indexOf(u) !== -1; 
                 });
                 
+                // [수정 포인트 1] 캐릭터가 없을 때 '알림'창으로 튕기지 않고 레이아웃 유지
+                if (myUnits.length === 0) {
+                    var emptyBody = "📢 **[" + roleName + "]**\n\n⚠️ 보유 중인 캐릭터가 없습니다.";
+                    return replier.reply(this.renderDraftUI(session, emptyBody, "다른 역할군을 선택하세요."));
+                }
+                
+                // [수정 포인트 2] 중복 문구 삭제 및 깔끔한 출력
                 session.history.push({ screen: "BATTLE_DRAFT_ROLE", content: session.lastContent, help: session.lastHelp });
                 session.battle.selectedRole = roleName;
                 session.screen = "BATTLE_DRAFT_UNIT";
-
-                if (myUnits.length === 0) {
-                    var emptyText = "**[" + roleName + "]**\n\n⚠️ 보유 중인 캐릭터가 없습니다.";
-                    return replier.reply(this.renderDraftUI(session, emptyText, "다른 역할군을 선택하세요."));
-                }
                 
-                var unitText = "**[" + roleName + "]**\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
-                return replier.reply(this.renderDraftUI(session, unitText, "캐릭터 번호를 입력하세요."));
+                var unitBody = "📢 **[" + roleName + "]**\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
+                return replier.reply(this.renderDraftUI(session, unitBody, "캐릭터 번호를 입력하세요."));
             }
         }
         
+        // 3. 캐릭터 선택 확정 단계
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
                 return d.collection.characters.indexOf(u) !== -1; 
             });
-            var idx = parseInt(msg) - 1;
+            var uIdx = parseInt(msg) - 1;
             
-            if (myUnits[idx]) {
-                session.battle.playerUnit = myUnits[idx];
-                session.screen = "BATTLE_DRAFT_CAT"; 
-                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (변경)", helpText));
+            if (myUnits[uIdx]) {
+                session.battle.playerUnit = myUnits[uIdx];
+                session.screen = "BATTLE_DRAFT_CAT"; // 다시 첫 화면으로
+                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[uIdx] + "] 선택 완료!\n\n1. 보유 캐릭터 (변경)", helpText));
             }
+        }
+
+        // 4. 초기 카테고리 선택
+        if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
+            session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
+            session.screen = "BATTLE_DRAFT_ROLE";
+            var roleBody = "📢 역할군을 선택하세요.\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
+            return replier.reply(this.renderDraftUI(session, roleBody, "역할군 번호를 입력하세요."));
         }
     }
 };
