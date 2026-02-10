@@ -200,14 +200,16 @@ var SessionManager = {
 var MatchingManager = {
     renderDraftUI: function(session, content, help) {
         var div = Utils.getFixedDivider();
+        // 선택된 캐릭터가 있으면 이름을, 없으면 '선택 안함' 표시
         var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
-        // 상단 캐릭터 선택 문구에만 출력하도록 구성
+        
         var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
         
         session.lastTitle = "전투 준비";
         session.lastContent = content; 
         session.lastHelp = help;
 
+        // 항상 '전투 준비' 타이틀과 헤더(선택 캐릭터 정보)를 포함한 UI 반환
         return UI.make("전투 준비", header + content, help, false);
     },
 
@@ -237,6 +239,7 @@ var MatchingManager = {
             return LoadingManager.start(session, replier);
         }
         
+        // 1단계: 카테고리 선택
         if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
             session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
             session.screen = "BATTLE_DRAFT_ROLE";
@@ -244,38 +247,44 @@ var MatchingManager = {
             return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요."));
         }
         
+        // 2단계: 역할군 선택
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
                 var roleName = RoleKeys[idx];
-                var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
+                var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
+                    return d.collection.characters.indexOf(u) !== -1; 
+                });
                 
                 session.history.push({ screen: "BATTLE_DRAFT_ROLE", content: session.lastContent, help: session.lastHelp });
                 session.battle.selectedRole = roleName;
                 session.screen = "BATTLE_DRAFT_UNIT";
 
-                // 수정포인트 1: 보유 캐릭터 없을 때도 픽창 UI 유지
+                // [수정] 보유 캐릭터가 없어도 UI 레이아웃 유지
                 if (myUnits.length === 0) {
-                    var content = "⚠️ [" + roleName + "]\n보유 캐릭터가 없습니다.";
-                    return replier.reply(this.renderDraftUI(session, content, "다른 역할군을 선택하세요."));
+                    var content = "**[" + roleName + "]**\n\n⚠️ 보유 중인 캐릭터가 없습니다.";
+                    return replier.reply(this.renderDraftUI(session, content, "다른 역할군을 선택(이전)하세요."));
                 }
                 
-                // 수정포인트 2: [역할군] 이름만 나오도록 간소화
+                // [수정] 문구 간소화: 역할군 이름만 출력
                 var content = "**[" + roleName + "]**\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
                 return replier.reply(this.renderDraftUI(session, content, "캐릭터 번호를 입력하세요."));
             }
         }
         
+        // 3단계: 유닛 최종 선택
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
-            var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
+            var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
+                return d.collection.characters.indexOf(u) !== -1; 
+            });
             var idx = parseInt(msg) - 1;
             
             if (myUnits[idx]) {
-                // 수정포인트 3: 선택 시 상단 캐릭터 정보 업데이트 및 하단 간소화
                 session.battle.playerUnit = myUnits[idx];
                 session.screen = "BATTLE_DRAFT_CAT"; 
-                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText));
+                // 선택 후 메인으로 돌아갔을 때 상단에 캐릭터 이름이 찍힘
+                return replier.reply(this.renderDraftUI(session, "✅ 선택이 완료되었습니다!\n\n1. 보유 캐릭터 (변경)", helpText));
             }
         }
     }
