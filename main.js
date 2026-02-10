@@ -194,40 +194,62 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 배틀 매니저 (이미지 레이아웃 수정)] ━━━━━━━━
-// ━━━━━━━━ [4. 배틀 매니저 (공백 제거 버전)] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저 (전투 준비 완성형)] ━━━━━━━━
 var BattleManager = {
+    // 모든 준비 단계에서 공용으로 사용할 렌더러
+    renderDraftUI: function(session, content, help) {
+        var div = Utils.getFixedDivider();
+        var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
+        
+        // [상단] 상황 브리핑 영역 (고정)
+        var header = "전투를 준비하세요.\n"
+                   + "상대방이 당신의 선택을 기다리고 있습니다.\n"
+                   + "선택 캐릭터: [" + selectedName + "]\n"
+                   + div + "\n";
+        
+        // 타이틀은 항상 "전투 준비"로 고정
+        return UI.go(session, session.screen, "전투 준비", header + content, help);
+    },
+
     initDraft: function(session, replier) {
-        replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 캐릭터 선택 화면으로 이동합니다.", "잠시만 기다려주세요", true));
+        replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 전투 준비 화면으로 이동합니다.", "잠시만 기다려주세요", true));
         
         java.lang.Thread.sleep(1500); 
         
         session.battle = { playerUnit: null, selectedRole: null };
+        session.screen = "BATTLE_DRAFT_CAT";
         
-        // [수정] 모든 여백(빈 줄) 제거 및 밀착 배치
-        var div = Utils.getFixedDivider();
-        var content = "전장에 나갈 캐릭터를\n선택하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n" 
-                    + div + "\n" 
-                    + "1. 보유 캐릭터";
+        var content = "1. 보유 캐릭터";
+        // [도움말] 요청하신 문구로 수정
+        var help = "'준비완료' 입력 시 게임을 시작합니다.";
         
-        var help = "번호를 입력하여 선택하세요.";
-        
-        return replier.reply(UI.go(session, "BATTLE_DRAFT_CAT", "캐릭터 선택", content, help));
+        return replier.reply(this.renderDraftUI(session, content, help));
     },
     
     handleDraft: function(msg, session, replier) {
         var d = Database.data[session.tempId];
-        var div = Utils.getFixedDivider();
+        var helpText = "'준비완료' 입력 시 게임을 시작합니다.";
+
+        // [준비완료 로직]
+        if (msg === "준비완료") {
+            if (!session.battle.playerUnit || session.battle.playerUnit === "선택 안함") {
+                return replier.reply(UI.make("알림", "⚠️ 캐릭터를 선택하지 않았습니다.\n캐릭터를 선택해야 전투를 시작할 수 있습니다.", "캐릭터를 먼저 선택하세요."));
+            }
+            // 캐릭터가 선택된 경우 전투 시작
+            return this.startBattle(session, replier);
+        }
         
+        // 1단계: 카테고리 선택
         if (session.screen === "BATTLE_DRAFT_CAT") {
             if (msg === "1") {
+                session.screen = "BATTLE_DRAFT_ROLE";
                 var content = "📢 역할군을 선택하세요.\n" 
-                            + div + "\n" 
                             + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-                return replier.reply(UI.go(session, "BATTLE_DRAFT_ROLE", "역할군 선택", content, "번호 입력"));
+                return replier.reply(this.renderDraftUI(session, content, helpText));
             }
         }
         
+        // 2단계: 역할군 선택
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -241,14 +263,15 @@ var BattleManager = {
                 }
                 
                 session.battle.selectedRole = roleName;
+                session.screen = "BATTLE_DRAFT_UNIT";
                 var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n" 
-                            + div + "\n"
                             + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
                 
-                return replier.reply(UI.go(session, "BATTLE_DRAFT_UNIT", roleName, content, "번호 입력"));
+                return replier.reply(this.renderDraftUI(session, content, helpText));
             }
         }
         
+        // 3단계: 유닛 선택
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
@@ -258,12 +281,29 @@ var BattleManager = {
             
             if (myUnits[idx]) {
                 var unitName = myUnits[idx];
-                session.battle.playerUnit = unitName;
+                session.battle.playerUnit = unitName; // 상단 현황판에 반영됨
                 
-                var content = "입력하신 [" + unitName + "] 캐릭터의\n데이터 동기화를 진행 중입니다.";
-                return replier.reply(UI.make(unitName, content, "데이터 로딩 중...", true));
+                var content = "✅ [" + unitName + "] 선택 완료!\n\n"
+                            + "1. 보유 캐릭터 (다시 선택)";
+                return replier.reply(this.renderDraftUI(session, content, helpText));
             }
         }
+    },
+
+    // 전투 시작 로직 (예시)
+    startBattle: function(session, replier) {
+        var player = session.battle.playerUnit;
+        var aiUnits = ["가렌", "애쉬", "럭스"];
+        var ai = aiUnits[Math.floor(Math.random() * aiUnits.length)];
+        
+        var res = "⚔️ 전투가 시작됩니다!\n\n"
+                + "[플레이어] " + player + "\n"
+                + "      VS      \n"
+                + "[인공지능] " + ai + "\n\n"
+                + "전장으로 진입하는 중...";
+        
+        // 세션 초기화 및 전투 모드로 전환 (이후 전투 로직 연결)
+        return replier.reply(UI.make("전투 시작", res, "로딩 중...", true));
     }
 };
 
