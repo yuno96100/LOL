@@ -195,119 +195,105 @@ var SessionManager = {
 };
 
 // ━━━━━━━━ [4. 배틀 매니저 (전투 준비 완성형)] ━━━━━━━━
-var BattleManager = {
-    // 모든 준비 단계에서 공용으로 사용할 렌더러
+var MatchingManager = {
+    // 픽창 전용 UI 렌더링 (상단에 선택한 챔피언 정보 고정)
     renderDraftUI: function(session, content, help) {
         var div = Utils.getFixedDivider();
         var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
-        
-        // [상단] 상황 브리핑 영역 (고정)
-        var header = "전투를 준비하세요.\n"
-                   + "상대방이 당신의 선택을 기다리고 있습니다.\n"
-                   + "선택 캐릭터: [" + selectedName + "]\n"
-                   + div + "\n";
-        
-        // 타이틀은 항상 "전투 준비"로 고정
-        return UI.go(session, session.screen, "전투 준비", header + content, help);
+        var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
+        return UI.go(session, session.screen, "전투 준비", header + content, help, true);
     },
 
+    // 매칭 성공 시 초기화 및 진입
     initDraft: function(session, replier) {
         replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 전투 준비 화면으로 이동합니다.", "잠시만 기다려주세요", true));
-        
         java.lang.Thread.sleep(1500); 
         
-        session.battle = { playerUnit: null, selectedRole: null };
-        session.screen = "BATTLE_DRAFT_CAT";
+        session.battle = { playerUnit: null, selectedRole: null }; // 배틀 세션 초기화
+        session.screen = "BATTLE_DRAFT_CAT"; // 첫 단계: 카테고리 선택
+        session.history = []; // 픽창 내 이동을 위한 히스토리 초기화
         
-        var content = "1. 보유 캐릭터";
-        // [도움말] 요청하신 문구로 수정
-        var help = "'준비완료' 입력 시 게임을 시작합니다.";
-        
-        return replier.reply(this.renderDraftUI(session, content, help));
+        return replier.reply(this.renderDraftUI(session, "1. 보유 캐릭터", "'준비완료' 입력 시 게임을 시작합니다."));
     },
     
+    // 픽창 내부 입력 처리
     handleDraft: function(msg, session, replier) {
         var d = Database.data[session.tempId];
         var helpText = "'준비완료' 입력 시 게임을 시작합니다.";
 
-        // [준비완료 로직]
+        // 준비 완료 검사
         if (msg === "준비완료") {
-            if (!session.battle.playerUnit || session.battle.playerUnit === "선택 안함") {
-                return replier.reply(UI.make("알림", "⚠️ 캐릭터를 선택하지 않았습니다.\n캐릭터를 선택해야 전투를 시작할 수 있습니다.", "캐릭터를 먼저 선택하세요."));
-            }
-            // 캐릭터가 선택된 경우 전투 시작
-            return this.startBattle(session, replier);
+            if (!session.battle.playerUnit) return replier.reply(UI.make("알림", "⚠️ 캐릭터를 선택하지 않았습니다."));
+            return LoadingManager.start(session, replier);
         }
         
-        // 1단계: 카테고리 선택
-        if (session.screen === "BATTLE_DRAFT_CAT") {
-            if (msg === "1") {
-                session.screen = "BATTLE_DRAFT_ROLE";
-                var content = "📢 역할군을 선택하세요.\n" 
-                            + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-                return replier.reply(this.renderDraftUI(session, content, helpText));
-            }
+        // 1단계: 카테고리 선택 (보유 캐릭터 리스트업)
+        if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
+            session.screen = "BATTLE_DRAFT_ROLE";
+            var content = "📢 역할군을 선택하세요.\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
+            return replier.reply(this.renderDraftUI(session, content, helpText));
         }
         
-        // 2단계: 역할군 선택
+        // 2단계: 역할군(Role) 선택
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
                 var roleName = RoleKeys[idx];
-                var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
-                    return d.collection.characters.indexOf(u) !== -1; 
-                });
+                // 해당 역할군 중 유저가 보유한 캐릭터만 필터링
+                var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
                 
-                if (myUnits.length === 0) {
-                    return replier.reply(UI.make("알림", "[" + roleName + "] 역할군에 보유 중인 캐릭터가 없습니다.", "다른 번호를 입력하세요."));
-                }
+                if (myUnits.length === 0) return replier.reply(UI.make("알림", "[" + roleName + "] 보유 캐릭터가 없습니다."));
                 
                 session.battle.selectedRole = roleName;
                 session.screen = "BATTLE_DRAFT_UNIT";
-                var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n" 
-                            + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
-                
+                var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
                 return replier.reply(this.renderDraftUI(session, content, helpText));
             }
         }
         
-        // 3단계: 유닛 선택
+        // 3단계: 최종 유닛(Unit) 선택
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
-            var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
-                return d.collection.characters.indexOf(u) !== -1; 
-            });
+            var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
             var idx = parseInt(msg) - 1;
             
             if (myUnits[idx]) {
-                var unitName = myUnits[idx];
-                session.battle.playerUnit = unitName; // 상단 현황판에 반영됨
-                
-                var content = "✅ [" + unitName + "] 선택 완료!\n\n"
-                            + "1. 보유 캐릭터 (다시 선택)";
-                return replier.reply(this.renderDraftUI(session, content, helpText));
+                session.battle.playerUnit = myUnits[idx];
+                session.screen = "BATTLE_DRAFT_CAT"; // 다시 선택 가능하도록 카테고리로 복귀
+                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText));
             }
         }
-    },
-
-    // 전투 시작 로직 (예시)
-    startBattle: function(session, replier) {
-        var player = session.battle.playerUnit;
-        var aiUnits = ["가렌", "애쉬", "럭스"];
-        var ai = aiUnits[Math.floor(Math.random() * aiUnits.length)];
+    }
+};
+// ━━━━━━━━ [5. 로딩 매니저] ━━━━━━━━
+var LoadingManager = {
+    start: function(session, replier) {
+        session.screen = "BATTLE_LOADING"; // 로딩 상태로 전환 (입력 차단용)
         
-        var res = "⚔️ 전투가 시작됩니다!\n\n"
-                + "[플레이어] " + player + "\n"
-                + "      VS      \n"
-                + "[인공지능] " + ai + "\n\n"
-                + "전장으로 진입하는 중...";
+        // AI 캐릭터 무작위 배정
+        var aiUnits = ["가렌", "애쉬", "럭스", "다리우스", "제드"];
+        session.battle.aiUnit = aiUnits[Math.floor(Math.random() * aiUnits.length)];
         
-        // 세션 초기화 및 전투 모드로 전환 (이후 전투 로직 연결)
-        return replier.reply(UI.make("전투 시작", res, "로딩 중...", true));
+        var res = "⚔️ 전투가 시작됩니다!\n\n" +
+                  "[플레이어] " + session.battle.playerUnit + "\n" +
+                  "      VS      \n" +
+                  "[인공지능] " + session.battle.aiUnit + "\n\n" +
+                  "전장 데이터 동기화 중...";
+                  
+        replier.reply(UI.make("진입 중", res, "잠시만 기다려주세요", true));
+        
+        // 실제 전장 진입 전 지연 시간 (연출)
+        java.lang.Thread.sleep(2000);
+        
+        // 실제 전투 엔진(BattleManager 등)으로 넘겨주는 브릿지 역할
+        return replier.reply(UI.make("전장 도착", "🚩 전투가 시작되었습니다!\n(BattleManager를 통해 결과가 산출됩니다)", "메뉴를 입력하여 종료", true));
     }
 };
 
-// ━━━━━━━━ [5. 관리자 매니저] ━━━━━━━━
+
+
+
+// ━━━━━━━━ [6. 관리자 매니저] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
         var screen = session.screen;
@@ -475,7 +461,8 @@ var GroupManager = {
 };
 
 // ━━━━━━━━ [8. 메인 핸들러] ━━━━━━━━
-Database.data = Database.load(); SessionManager.load();         
+Database.data = Database.load(); 
+if (typeof SessionManager.load === "function") SessionManager.load();         
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
@@ -491,15 +478,26 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             if (msg === "이전" && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
                 if (session.history && session.history.length > 0) {
                     var prev = session.history.pop();
-                    session.screen = prev.screen; session.lastTitle = prev.title; session.lastContent = prev.content; session.lastHelp = prev.help;
+                    session.screen = prev.screen; 
+                    session.lastTitle = prev.title; 
+                    session.lastContent = prev.content; 
+                    session.lastHelp = prev.help;
+                    
+                    // 픽창UI인 경우 전용 렌더러 사용, 일반 UI인 경우 make 사용
+                    if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+                        return replier.reply(MatchingManager.renderDraftUI(session, session.lastContent, session.lastHelp));
+                    }
                     return replier.reply(UI.make(session.lastTitle, session.lastContent, session.lastHelp, false));
                 }
             }
 
             // '취소'나 '메뉴' 입력 시 탈주 확인 UI 호출
             if (session.screen.indexOf("BATTLE_DRAFT") !== -1 || (msg !== "이전" && session.screen !== "IDLE")) {
-                session.preCancelScreen = session.screen; session.preCancelTitle = session.lastTitle;
-                session.preCancelContent = session.lastContent; session.preCancelHelp = session.lastHelp;
+                session.preCancelScreen = session.screen; 
+                session.preCancelTitle = session.lastTitle;
+                session.preCancelContent = session.lastContent; 
+                session.preCancelHelp = session.lastHelp;
+                
                 var title = (session.screen.indexOf("BATTLE_DRAFT") !== -1) ? "⚠️ 탈주 확인" : "취소 확인";
                 var body = (session.screen.indexOf("BATTLE_DRAFT") !== -1) ? "정말 전장을 이탈하시겠습니까?\n지금 나가면 매칭이 취소됩니다." : "현재 진행 중인 작업을 중단할까요?";
                 return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "'예'/'아니오' 입력", true));
@@ -513,16 +511,25 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
                 SessionManager.reset(session); 
                 return replier.reply(UI.make("알림", "작업이 취소되었습니다.", "메뉴를 입력하세요.", true)); 
             } else {
-                session.screen = session.preCancelScreen; session.lastTitle = session.preCancelTitle;
-                session.lastContent = session.preCancelContent; session.lastHelp = session.preCancelHelp;
+                session.screen = session.preCancelScreen; 
+                session.lastTitle = session.preCancelTitle;
+                session.lastContent = session.preCancelContent; 
+                session.lastHelp = session.preCancelHelp;
+                
+                if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+                    return replier.reply(MatchingManager.renderDraftUI(session, session.lastContent, session.lastHelp));
+                }
                 return replier.reply(UI.make(session.lastTitle, session.lastContent, session.lastHelp, false));
             }
         }
 
         if (session.screen === "IDLE") return;
+        if (session.screen === "BATTLE_LOADING") return; // 로딩 중 입력 방어
+
         if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
         else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
-        SessionManager.save();
+        
+        if (typeof SessionManager.save === "function") SessionManager.save();
     } catch (e) { replier.reply("Error: " + e.message); }
 }
