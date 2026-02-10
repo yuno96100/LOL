@@ -496,82 +496,108 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
-        // [핵심 1] '메뉴' 입력 시: 무조건 탈주/중단 확인창 출력
+        // 1. 탈주/중단 확인창(CANCEL_CONFIRM)은 최우선 순위로 처리
+        if (session.screen === "CANCEL_CONFIRM") {
+            return handleCancelConfirm(msg, session, replier);
+        }
+
+        // 2. '메뉴' 입력은 어떤 상황에서든 중단 로직으로 연결
         if (msg === "메뉴") {
             if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
-            
-            session.preCancelScreen = session.screen;
-            session.preCancelContent = session.lastContent;
-            session.preCancelHelp = session.lastHelp;
-
-            var isBattle = session.screen.indexOf("BATTLE") !== -1;
-            var title = isBattle ? "⚠️ 탈주 확인" : "중단 확인";
-            var body = isBattle ? "정말 전장을 이탈하시겠습니까?\n지금 나가면 매칭이 취소됩니다." : "현재 작업을 중단하고 메인 메뉴로 돌아갈까요?";
-            
-            return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "'예'/'아니오' 입력", true));
+            return showCancelConfirm(session, replier);
         }
 
-        // [핵심 2] 픽창 내부에서 '취소/이전' 입력 시: 탈주창 없이 즉시 뒤로가기
-        if ((msg === "취소" || msg === "이전") && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+        // 3. 현재 세션 상태에 따라 핸들러를 완전히 분류 (매칭 vs 일반)
+        if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+            // [매칭/픽창 전용 핸들러]
             return MatchingManager.handleDraft(msg, session, replier);
+        } else {
+            // [일반 메뉴 전용 핸들러]
+            return handleGeneralMenu(msg, session, sender, replier);
         }
-
-        // [핵심 3] 탈주/중단 가드(CANCEL_CONFIRM) 처리
-        if (session.screen === "CANCEL_CONFIRM") {
-            if (msg === "예" || msg === "1" || msg === "확인") { 
-                SessionManager.reset(session); 
-                return replier.reply(UI.renderMenu(session)); 
-            } else if (msg === "아니오" || msg === "2") {
-                session.screen = session.preCancelScreen;
-                if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-                    return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp));
-                }
-                return replier.reply(UI.make(session.lastTitle, session.preCancelContent, session.preCancelHelp, false));
-            }
-            return;
-        }
-
-        // [핵심 4] 일반적인 상황에서의 '취소/이전' (픽창 아닐 때)
-        if (msg === "취소" || msg === "이전") {
-            if (session.history && session.history.length > 0) {
-                var prev = session.history.pop();
-                session.screen = prev.screen;
-                // 프로필/능력치 화면 복구는 UI.go 활용, 그 외는 make
-                if (session.screen.indexOf("PROFILE") !== -1 || session.screen.indexOf("STAT") !== -1) {
-                    return replier.reply(UI.go(session, session.screen, prev.title, prev.content, prev.help, true));
-                }
-                return replier.reply(UI.make(prev.title, prev.content, prev.help, false));
-            }
-            return replier.reply(UI.renderMenu(session));
-        }
-
-        // [핵심 5] 입력 차단 및 핸들러 위임
-        if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
-
-        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-            return MatchingManager.handleDraft(msg, session, replier);
-        }
-
-        if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
-        else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
-        else UserManager.handle(msg, session, replier);
-        
-        if (typeof SessionManager.save === "function") SessionManager.save();
 
     } catch (e) {
-        // ━━━━━━━ [관리자 에러 보고 UI] ━━━━━━━
-        var errTitle = "🚨 시스템 오류 발생";
-        var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n" +
-                     "💬 입력: " + msg + "\n" +
-                     "👤 유저: " + (session.tempId || sender) + "\n" +
-                     "🛠 내용: " + e.message;
+        reportError(e, msg, session, sender, replier);
+    }
+}
 
-        // 1. 유저에게는 정중한 안내 전송
-        replier.reply(UI.make("알림", "처리 중 일시적인 오류가 발생했습니다.\n지속될 경우 관리자에게 문의해주세요.", "메뉴를 입력하여 복귀", true));
+// ━━━━━━━━ [9. 분류된 세부 핸들러 함수들] ━━━━━━━━
 
-        // 2. 관리자방으로 상세 로그 전송
-        if (Config.AdminRoom) {
-            Api.replyRoom(Config.AdminRoom, UI.make(errTitle, errLog, "에러 라인: " + e.lineNumber, true));
+/**
+ * [A] 일반 메뉴 핸들러: 픽창이 아닐 때의 모든 로직
+ */
+function handleGeneralMenu(msg, session, sender, replier) {
+    // 일반적인 이전/취소 로직 (히스토리 역추적)
+    if (msg === "취소" || msg === "이전") {
+        if (session.history && session.history.length > 0) {
+            var prev = session.history.pop();
+            session.screen = prev.screen;
+            // 특정 화면(프로필 등)은 UI.go, 나머지는 UI.make
+            if (session.screen.indexOf("PROFILE") !== -1 || session.screen.indexOf("STAT") !== -1) {
+                return replier.reply(UI.go(session, session.screen, prev.title, prev.content, prev.help, true));
+            }
+            return replier.reply(UI.make(prev.title, prev.content, prev.help, false));
         }
+        return replier.reply(UI.renderMenu(session));
+    }
+
+    // 기본 대기 상태 방어
+    if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
+
+    // 기존 매니저 연결 유지
+    if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
+    else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
+    else UserManager.handle(msg, session, replier);
+    
+    if (typeof SessionManager.save === "function") SessionManager.save();
+}
+
+/**
+ * [B] 탈주/중단 확인창 출력 로직
+ */
+function showCancelConfirm(session, replier) {
+    session.preCancelScreen = session.screen;
+    session.preCancelTitle = session.lastTitle;
+    session.preCancelContent = session.lastContent;
+    session.preCancelHelp = session.lastHelp;
+
+    var isBattle = session.screen.indexOf("BATTLE") !== -1;
+    var title = isBattle ? "⚠️ 탈주 확인" : "중단 확인";
+    var body = isBattle ? "정말 전장을 이탈하시겠습니까?\n매칭이 취소됩니다." : "현재 작업을 중단하고 메인 메뉴로 돌아갈까요?";
+    
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "'예'/'아니오' 입력", true));
+}
+
+/**
+ * [C] 탈주/중단 확인창 입력 처리
+ */
+function handleCancelConfirm(msg, session, replier) {
+    if (msg === "예" || msg === "1" || msg === "확인") { 
+        SessionManager.reset(session); 
+        return replier.reply(UI.renderMenu(session)); // 중단 후 끝이 아니라 메뉴판 출력
+    } else if (msg === "아니오" || msg === "2") {
+        // 복구 시 데이터 복원
+        session.screen = session.preCancelScreen;
+        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+            // 픽창 복구 시 UI 중첩 방지용 전용 렌더러
+            return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp));
+        }
+        return replier.reply(UI.make(session.preCancelTitle || session.lastTitle, session.preCancelContent, session.preCancelHelp, false));
+    }
+}
+
+/**
+ * [D] 에러 리포팅 (기존 UI 유지)
+ */
+function reportError(e, msg, session, sender, replier) {
+    var errLog = "📍 위치: " + (session.screen || "알 수 없음") + 
+                 "\n💬 입력: " + msg + 
+                 "\n👤 유저: " + (session.tempId || sender) + 
+                 "\n🛠 내용: " + e.message;
+
+    replier.reply(UI.make("알림", "처리 중 오류가 발생했습니다.\n메뉴를 입력하여 복귀하세요.", "에러 코드: " + e.lineNumber, true));
+
+    if (Config.AdminRoom) {
+        Api.replyRoom(Config.AdminRoom, UI.make("🚨 시스템 오류 발생", errLog, "Line: " + e.lineNumber, true));
     }
 }
