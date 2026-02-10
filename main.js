@@ -1,9 +1,9 @@
 /**
- * [main.js] v15.7.1
- * - FIX: Unterminated string literal 오류 수정
- * - UI: 보유 캐릭터 없을 때도 픽창 레이아웃(헤더) 고정 유지
- * - UI: 역할군 선택 시 "[역할군]" 이름만 표시
- * - UI: 캐릭터 선택 시 상단 실시간 반영
+ * [main.js] v15.7.9
+ * - FIX: Syntax Error (Unterminated string literal) 해결
+ * - FIX: 데이터 로드 시 안전장치 강화
+ * - UI: 대전 픽창 헤더(선택 캐릭터) 실시간 갱신 적용
+ * - UI: 캐릭터 미보유 시에도 픽창 레이아웃 깨짐 방지
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -167,8 +167,16 @@ var UI = {
 // ━━━━━━━━ [3. DB 및 세션 관리] ━━━━━━━━
 var Database = {
     data: {},
-    load: function() { try { return JSON.parse(FileStream.read(Config.DB_PATH)); } catch(e) { return {}; } },
-    save: function(d) { this.data = d; FileStream.write(Config.DB_PATH, JSON.stringify(d, null, 4)); },
+    load: function() { 
+        try { 
+            var file = FileStream.read(Config.DB_PATH);
+            return file ? JSON.parse(file) : {}; 
+        } catch(e) { return {}; } 
+    },
+    save: function(d) { 
+        this.data = d; 
+        FileStream.write(Config.DB_PATH, JSON.stringify(d, null, 4)); 
+    },
     getInitData: function(pw) { 
         return { pw: pw, gold: 1000, level: 1, exp: 0, lp: 0, win: 0, lose: 0, title: "뉴비", point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, inventory: { "RESET_TICKET": 0 }, collection: { titles: ["뉴비"], characters: [] } }; 
     }
@@ -196,14 +204,12 @@ var SessionManager = {
     }
 };
 
-
-━━━━━━━
+// ━━━━━━━━ [4. 매칭 매니저] ━━━━━━━━
 var MatchingManager = {
-    // 픽창 전용 레이아웃 렌더러
+    // 픽창 전용 레이아웃 (헤더 고정 및 실시간 반영)
     renderDraftUI: function(session, body, help) {
         var div = Utils.getFixedDivider();
         var selected = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
-        
         var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selected + "]\n" + div + "\n";
         
         session.lastTitle = "전투 준비";
@@ -214,15 +220,10 @@ var MatchingManager = {
                "💡 " + Utils.wrapText(help) + "\n" + div + "\n" + Utils.getNav();
     },
 
-    // 대전 카테고리에서 1번 선택 시 호출되는 진입 함수
     initDraft: function(session, replier) {
-        // 1. 사라졌던 진입 알림창 복구
         replier.reply(UI.make("대전 진입", "⚔️ 대전 상대를 탐색하고\n전장을 생성 중입니다...", "잠시만 기다려주세요", true));
-        
-        // 2. 약간의 대기 시간 (로딩 효과)
         java.lang.Thread.sleep(1200);
 
-        // 3. 매칭 데이터 초기화 및 픽창 진입
         session.battle = { playerUnit: null, aiUnit: null, selectedRole: null };
         session.history = []; 
         session.screen = "BATTLE_DRAFT_CAT";
@@ -245,11 +246,9 @@ var MatchingManager = {
 
         if (msg === "준비완료") {
             if (!session.battle.playerUnit) return replier.reply(UI.make("알림", "⚠️ 캐릭터를 선택하지 않았습니다.", "캐릭터를 먼저 골라주세요"));
-            // 게임 시작 로딩으로 전환
             return LoadingManager.start(session, replier);
         }
 
-        // 카테고리: 1. 보유 캐릭터 선택 시
         if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
             session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
             session.screen = "BATTLE_DRAFT_ROLE";
@@ -257,7 +256,6 @@ var MatchingManager = {
             return replier.reply(this.renderDraftUI(session, roleBody, "번호를 입력하세요."));
         }
 
-        // 역할군 선택 시
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -273,13 +271,11 @@ var MatchingManager = {
                 session.history.push({ screen: "BATTLE_DRAFT_ROLE", content: session.lastContent, help: session.lastHelp });
                 session.battle.selectedRole = roleName;
                 session.screen = "BATTLE_DRAFT_UNIT";
-                
                 var unitBody = "📢 **[" + roleName + "]**\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
                 return replier.reply(this.renderDraftUI(session, unitBody, "번호를 입력하세요."));
             }
         }
 
-        // 캐릭터 선택 시
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ 
@@ -514,12 +510,12 @@ Database.data = Database.load();
 SessionManager.load();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
-    var hash = String(imageDB.getProfileHash()); 
-    var session = SessionManager.get(room, hash, isGroupChat); 
+    var hash = String(imageDB.getProfileHash());
+    var session = SessionManager.get(room, hash, isGroupChat);
     
     try {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
-        msg = msg.trim(); 
+        msg = msg.trim();
 
         if (session.screen === "CANCEL_CONFIRM") return handleCancelConfirm(msg, session, replier);
 
