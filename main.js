@@ -1,8 +1,8 @@
 /**
- * [main.js] v15.6.0
- * - UI: 유저 제공 이미지의 레이아웃 및 '보유 캐릭터' 명칭 적용
- * - FLOW: [대전] -> [1. 보유 캐릭터] -> [역할군] -> [유닛 선택]
- * - FULL: v15.4.1의 관리자 기능, 경험치(addExp), 강제로그아웃 등 모든 로직 포함 (무생략)
+ * [main.js] v15.6.1 (최종 수정본)
+ * - UI: 헤더 중복 출력 근본 해결 (UI.go 분리)
+ * - FLOW: 단계별 '이전' 시 탈주창 대신 정상 뒤로가기 구현
+ * - FULL: 모든 관리자 및 시스템 로직 무생략 포함
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -196,33 +196,34 @@ var SessionManager = {
 
 // ━━━━━━━━ [4. 배틀 매니저 (전투 준비 완성형)] ━━━━━━━━
 var MatchingManager = {
-    // [핵심] isRestore가 true이면 UI.go를 타지 않고 UI.make로 바로 출력하여 중복 방지
-    renderDraftUI: function(session, content, help, isRestore) {
+    // [근본 해결] UI.go를 타지 않고 수동으로 데이터 세팅하여 중복 방지
+    renderDraftUI: function(session, content, help) {
         var div = Utils.getFixedDivider();
         var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
         var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
         
-        // 뒤로가기를 위한 현재 데이터 저장
+        session.lastTitle = "전투 준비";
         session.lastContent = content; 
         session.lastHelp = help;
 
-        if (isRestore) {
-            // 복구 시에는 새로운 이력을 쌓지 않고 화면만 다시 그림
-            return UI.make("전투 준비", header + content, help, false);
-        }
-        // 일반 진입 시에는 이력을 쌓으며 이동
-        return UI.go(session, session.screen, "전투 준비", header + content, help, true);
+        // UI.make는 순수 틀만 생성하므로 헤더 중복이 불가능함
+        return UI.make("전투 준비", header + content, help, false);
+    },
+
+    initDraft: function(session, replier) {
+        session.battle = { playerUnit: null, aiUnit: null, selectedRole: null };
+        session.history = []; // 진입 시 히스토리 초기화
+        session.screen = "BATTLE_DRAFT_CAT";
+        return replier.reply(this.renderDraftUI(session, "1. 보유 캐릭터", "'준비완료' 입력 시 게임을 시작합니다."));
     },
 
     handleDraft: function(msg, session, replier) {
-        // [수정] 이전/취소 처리
         if (msg === "취소" || msg === "이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
                 session.screen = prev.screen;
-                return replier.reply(this.renderDraftUI(session, prev.content, prev.help, false));
+                return replier.reply(this.renderDraftUI(session, prev.content, prev.help));
             } else {
-                // 더 이상 뒤로 갈 곳이 없는 '완전 초기화면'일 때만 탈주창 출력
                 return showCancelConfirm(session, replier);
             }
         }
@@ -235,15 +236,15 @@ var MatchingManager = {
             return LoadingManager.start(session, replier);
         }
         
-        // 1단계 -> 2단계 이동 시 현재 상태를 히스토리에 저장
+        // 1단계 -> 2단계
         if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
             session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
             session.screen = "BATTLE_DRAFT_ROLE";
             var content = "📢 역할군을 선택하세요.\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-            return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요.", false));
+            return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요."));
         }
         
-        // 2단계 -> 3단계 이동 시 현재 상태를 히스토리에 저장
+        // 2단계 -> 3단계
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -255,11 +256,11 @@ var MatchingManager = {
                 session.battle.selectedRole = roleName;
                 session.screen = "BATTLE_DRAFT_UNIT";
                 var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
-                return replier.reply(this.renderDraftUI(session, content, "캐릭터 번호를 입력하세요.", false));
+                return replier.reply(this.renderDraftUI(session, content, "캐릭터 번호를 입력하세요."));
             }
         }
         
-        // 3단계 완료 시 (CAT으로 복귀하지만 히스토리는 유지하여 '이전' 가능하게 함)
+        // 3단계 -> CAT 복귀 (히스토리 보존)
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
@@ -268,19 +269,16 @@ var MatchingManager = {
             if (myUnits[idx]) {
                 session.battle.playerUnit = myUnits[idx];
                 session.screen = "BATTLE_DRAFT_CAT"; 
-                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText, false));
+                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText));
             }
         }
     }
 };
 
-
 // ━━━━━━━━ [5. 로딩 매니저] ━━━━━━━━
 var LoadingManager = {
     start: function(session, replier) {
-        session.screen = "BATTLE_LOADING"; // 로딩 상태로 전환 (입력 차단용)
-        
-        // AI 캐릭터 무작위 배정
+        session.screen = "BATTLE_LOADING";
         var aiUnits = ["가렌", "애쉬", "럭스", "다리우스", "제드"];
         session.battle.aiUnit = aiUnits[Math.floor(Math.random() * aiUnits.length)];
         
@@ -291,17 +289,10 @@ var LoadingManager = {
                   "전장 데이터 동기화 중...";
                   
         replier.reply(UI.make("진입 중", res, "잠시만 기다려주세요", true));
-        
-        // 실제 전장 진입 전 지연 시간 (연출)
         java.lang.Thread.sleep(2000);
-        
-        // 실제 전투 엔진(BattleManager 등)으로 넘겨주는 브릿지 역할
         return replier.reply(UI.make("전장 도착", "🚩 전투가 시작되었습니다!\n(BattleManager를 통해 결과가 산출됩니다)", "메뉴를 입력하여 종료", true));
     }
 };
-
-
-
 
 // ━━━━━━━━ [6. 관리자 매니저] ━━━━━━━━
 var AdminManager = {
@@ -356,7 +347,7 @@ var AdminManager = {
     }
 };
 
-// ━━━━━━━━ [6. 유저 매니저] ━━━━━━━━
+// ━━━━━━━━ [7. 유저 매니저] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
@@ -398,6 +389,8 @@ var UserManager = {
         }
 
         if (session.screen === "BATTLE_MAIN" && msg === "1") { MatchingManager.initDraft(session, replier); return; }
+        
+        // 픽창일 경우 핸들러에서 가로챔
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) return MatchingManager.handleDraft(msg, session, replier);
 
         if (session.screen === "PROFILE_VIEW") {
@@ -451,7 +444,7 @@ var UserManager = {
     }
 };
 
-// ━━━━━━━━ [7. 단체방 매니저] ━━━━━━━━
+// ━━━━━━━━ [8. 단체방 매니저] ━━━━━━━━
 var GroupManager = {
     handle: function(msg, session, replier) {
         if (session.screen === "GROUP_MAIN") {
@@ -470,7 +463,7 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [8. 메인 핸들러] ━━━━━━━━
+// ━━━━━━━━ [9. 메인 핸들러] ━━━━━━━━
 Database.data = Database.load(); 
 if (typeof SessionManager.load === "function") SessionManager.load();         
 
@@ -482,23 +475,19 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
-        // 1. 탈주/중단 확인창(CANCEL_CONFIRM)은 최우선 순위로 처리
-        if (session.screen === "CANCEL_CONFIRM") {
-            return handleCancelConfirm(msg, session, replier);
-        }
+        // 1. 탈주/중단 확인창 최우선
+        if (session.screen === "CANCEL_CONFIRM") return handleCancelConfirm(msg, session, replier);
 
-        // 2. '메뉴' 입력은 어떤 상황에서든 중단 로직으로 연결
+        // 2. '메뉴' 입력
         if (msg === "메뉴") {
             if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
             return showCancelConfirm(session, replier);
         }
 
-        // 3. 현재 세션 상태에 따라 핸들러를 완전히 분류 (매칭 vs 일반)
+        // 3. 픽창 분류 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-            // [매칭/픽창 전용 핸들러]
             return MatchingManager.handleDraft(msg, session, replier);
         } else {
-            // [일반 메뉴 전용 핸들러]
             return handleGeneralMenu(msg, session, sender, replier);
         }
 
@@ -507,18 +496,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     }
 }
 
-// ━━━━━━━━ [9. 분류된 세부 핸들러 함수들] ━━━━━━━━
+// ━━━━━━━━ [10. 분류된 세부 핸들러] ━━━━━━━━
 
-/**
- * [A] 일반 메뉴 핸들러: 픽창이 아닐 때의 모든 로직
- */
 function handleGeneralMenu(msg, session, sender, replier) {
-    // 일반적인 이전/취소 로직 (히스토리 역추적)
     if (msg === "취소" || msg === "이전") {
         if (session.history && session.history.length > 0) {
             var prev = session.history.pop();
             session.screen = prev.screen;
-            // 특정 화면(프로필 등)은 UI.go, 나머지는 UI.make
             if (session.screen.indexOf("PROFILE") !== -1 || session.screen.indexOf("STAT") !== -1) {
                 return replier.reply(UI.go(session, session.screen, prev.title, prev.content, prev.help, true));
             }
@@ -527,10 +511,8 @@ function handleGeneralMenu(msg, session, sender, replier) {
         return replier.reply(UI.renderMenu(session));
     }
 
-    // 기본 대기 상태 방어
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
 
-    // 기존 매니저 연결 유지
     if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
     else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
     else UserManager.handle(msg, session, replier);
@@ -538,9 +520,6 @@ function handleGeneralMenu(msg, session, sender, replier) {
     if (typeof SessionManager.save === "function") SessionManager.save();
 }
 
-/**
- * [B] 탈주/중단 확인창 출력 로직
- */
 function showCancelConfirm(session, replier) {
     session.preCancelScreen = session.screen;
     session.preCancelTitle = session.lastTitle;
@@ -554,9 +533,6 @@ function showCancelConfirm(session, replier) {
     return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "'예'/'아니오' 입력", true));
 }
 
-/**
- * [C] 탈주/중단 확인창 입력 처리
- */
 function handleCancelConfirm(msg, session, replier) {
     if (msg === "예" || msg === "1" || msg === "확인") { 
         SessionManager.reset(session); 
@@ -564,24 +540,19 @@ function handleCancelConfirm(msg, session, replier) {
     } else if (msg === "아니오" || msg === "2") {
         session.screen = session.preCancelScreen;
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-            // [중요] 4번째 인자로 true를 보내서 UI 중복 생성을 막음
-            return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp, true));
+            // [수정] renderDraftUI는 이제 내부에서 UI.make만 하므로 중복 없음
+            return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp));
         }
         return replier.reply(UI.make(session.preCancelTitle || session.lastTitle, session.preCancelContent, session.preCancelHelp, false));
     }
 }
 
-/**
- * [D] 에러 리포팅 (기존 UI 유지)
- */
 function reportError(e, msg, session, sender, replier) {
     var errLog = "📍 위치: " + (session.screen || "알 수 없음") + 
                  "\n💬 입력: " + msg + 
                  "\n👤 유저: " + (session.tempId || sender) + 
                  "\n🛠 내용: " + e.message;
-
     replier.reply(UI.make("알림", "처리 중 오류가 발생했습니다.\n메뉴를 입력하여 복귀하세요.", "에러 코드: " + e.lineNumber, true));
-
     if (Config.AdminRoom) {
         Api.replyRoom(Config.AdminRoom, UI.make("🚨 시스템 오류 발생", errLog, "Line: " + e.lineNumber, true));
     }
