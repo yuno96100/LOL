@@ -196,45 +196,30 @@ var SessionManager = {
 
 // ━━━━━━━━ [4. 배틀 매니저 (전투 준비 완성형)] ━━━━━━━━
 var MatchingManager = {
-    // 픽창 전용 UI 렌더링 (상단에 선택한 챔피언 정보 고정)
-    renderDraftUI: function(session, content, help) {
+    // [보정] UI 중복 방지를 위해 UI.make와 UI.go를 상황에 맞게 사용
+    renderDraftUI: function(session, content, help, isRestore) {
         var div = Utils.getFixedDivider();
         var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
         var header = "전투를 준비하세요.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
         
-        // 뒤로가기 시 복구를 위해 현재 텍스트 저장
         session.lastContent = content; 
         session.lastHelp = help;
-        
+
+        // '아니오'로 복구할 때는 UI.make를 써서 헤더 중복을 막음
+        if (isRestore) return UI.make("전투 준비", header + content, help, false);
         return UI.go(session, session.screen, "전투 준비", header + content, help, true);
     },
 
-    // 매칭 성공 시 초기화 및 진입
-    initDraft: function(session, replier) {
-        replier.reply(UI.make("배틀 알림", "🔔 대전 매칭에 성공했습니다!\n잠시 후 전투 준비 화면으로 이동합니다.", "잠시만 기다려주세요", true));
-        java.lang.Thread.sleep(1000); 
-        
-        session.battle = { playerUnit: null, selectedRole: null }; 
-        session.screen = "BATTLE_DRAFT_CAT"; 
-        session.history = []; 
-        
-        return replier.reply(this.renderDraftUI(session, "1. 보유 캐릭터", "'준비완료' 입력 시 게임을 시작합니다."));
-    },
-    
-    // 픽창 내부 입력 처리
     handleDraft: function(msg, session, replier) {
-        // [핵심] 취소나 이전을 누르면 히스토리를 역추적하여 단계 이동
         if (msg === "취소" || msg === "이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
                 session.screen = prev.screen;
-                return replier.reply(this.renderDraftUI(session, prev.content, prev.help));
+                // 이전으로 돌아갈 때는 일반 렌더링
+                return replier.reply(this.renderDraftUI(session, prev.content, prev.help, false));
             } else {
-                // 첫 단계에서 취소를 누르면 탈주 확인창으로 유도
-                session.preCancelScreen = session.screen;
-                session.preCancelContent = session.lastContent;
-                session.preCancelHelp = session.lastHelp;
-                return replier.reply(UI.go(session, "CANCEL_CONFIRM", "⚠️ 탈주 확인", "매칭을 취소하고 메뉴로 돌아갈까요?", "'예'/'아니오' 입력", true));
+                // 진짜 초기화면(히스토리 없음)일 때만 탈주창
+                return showCancelConfirm(session, replier);
             }
         }
 
@@ -246,32 +231,32 @@ var MatchingManager = {
             return LoadingManager.start(session, replier);
         }
         
-        // 1단계: 카테고리 선택 -> 역할군 선택으로 이동
+        // 1단계: 카테고리 선택
         if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
+            // 현재 화면(CAT)을 히스토리에 저장
             session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
             session.screen = "BATTLE_DRAFT_ROLE";
             var content = "📢 역할군을 선택하세요.\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-            return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요."));
+            return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요.", false));
         }
         
-        // 2단계: 역할군 선택 -> 유닛 선택으로 이동
+        // 2단계: 역할군 선택
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
                 var roleName = RoleKeys[idx];
                 var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
-                
                 if (myUnits.length === 0) return replier.reply(UI.make("알림", "[" + roleName + "] 보유 캐릭터가 없습니다."));
                 
                 session.history.push({ screen: "BATTLE_DRAFT_ROLE", content: session.lastContent, help: session.lastHelp });
                 session.battle.selectedRole = roleName;
                 session.screen = "BATTLE_DRAFT_UNIT";
                 var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
-                return replier.reply(this.renderDraftUI(session, content, "캐릭터 번호를 입력하세요."));
+                return replier.reply(this.renderDraftUI(session, content, "캐릭터 번호를 입력하세요.", false));
             }
         }
         
-        // 3단계: 유닛 선택 완료
+        // 3단계: 유닛 선택 완료 (여기서 history를 비우지 않음!)
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
@@ -280,9 +265,8 @@ var MatchingManager = {
             if (myUnits[idx]) {
                 session.battle.playerUnit = myUnits[idx];
                 session.screen = "BATTLE_DRAFT_CAT"; 
-                // 선택 완료 후 다시 카테고리 화면으로 가되 히스토리는 비움 (루프 방지)
-                session.history = []; 
-                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText));
+                // [수정] history를 비우지 않으므로, 이제 CAT에서도 '이전'을 누르면 히스토리를 타고 뒤로 갈 수 있음
+                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText, false));
             }
         }
     }
@@ -574,13 +558,12 @@ function showCancelConfirm(session, replier) {
 function handleCancelConfirm(msg, session, replier) {
     if (msg === "예" || msg === "1" || msg === "확인") { 
         SessionManager.reset(session); 
-        return replier.reply(UI.renderMenu(session)); // 중단 후 끝이 아니라 메뉴판 출력
+        return replier.reply(UI.renderMenu(session)); 
     } else if (msg === "아니오" || msg === "2") {
-        // 복구 시 데이터 복원
         session.screen = session.preCancelScreen;
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-            // 픽창 복구 시 UI 중첩 방지용 전용 렌더러
-            return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp));
+            // [수정] 마지막 인자에 true를 전달하여 UI.make(복구 모드)로 실행되게 함
+            return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp, true));
         }
         return replier.reply(UI.make(session.preCancelTitle || session.lastTitle, session.preCancelContent, session.preCancelHelp, false));
     }
