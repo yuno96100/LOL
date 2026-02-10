@@ -196,29 +196,33 @@ var SessionManager = {
 
 // ━━━━━━━━ [4. 배틀 매니저 (전투 준비 완성형)] ━━━━━━━━
 var MatchingManager = {
-    // [보정] UI 중복 방지를 위해 UI.make와 UI.go를 상황에 맞게 사용
+    // [핵심] isRestore가 true이면 UI.go를 타지 않고 UI.make로 바로 출력하여 중복 방지
     renderDraftUI: function(session, content, help, isRestore) {
         var div = Utils.getFixedDivider();
         var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
-        var header = "전투를 준비하세요.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
+        var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
         
+        // 뒤로가기를 위한 현재 데이터 저장
         session.lastContent = content; 
         session.lastHelp = help;
 
-        // '아니오'로 복구할 때는 UI.make를 써서 헤더 중복을 막음
-        if (isRestore) return UI.make("전투 준비", header + content, help, false);
+        if (isRestore) {
+            // 복구 시에는 새로운 이력을 쌓지 않고 화면만 다시 그림
+            return UI.make("전투 준비", header + content, help, false);
+        }
+        // 일반 진입 시에는 이력을 쌓으며 이동
         return UI.go(session, session.screen, "전투 준비", header + content, help, true);
     },
 
     handleDraft: function(msg, session, replier) {
+        // [수정] 이전/취소 처리
         if (msg === "취소" || msg === "이전") {
             if (session.history && session.history.length > 0) {
                 var prev = session.history.pop();
                 session.screen = prev.screen;
-                // 이전으로 돌아갈 때는 일반 렌더링
                 return replier.reply(this.renderDraftUI(session, prev.content, prev.help, false));
             } else {
-                // 진짜 초기화면(히스토리 없음)일 때만 탈주창
+                // 더 이상 뒤로 갈 곳이 없는 '완전 초기화면'일 때만 탈주창 출력
                 return showCancelConfirm(session, replier);
             }
         }
@@ -231,16 +235,15 @@ var MatchingManager = {
             return LoadingManager.start(session, replier);
         }
         
-        // 1단계: 카테고리 선택
+        // 1단계 -> 2단계 이동 시 현재 상태를 히스토리에 저장
         if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
-            // 현재 화면(CAT)을 히스토리에 저장
             session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
             session.screen = "BATTLE_DRAFT_ROLE";
             var content = "📢 역할군을 선택하세요.\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
             return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요.", false));
         }
         
-        // 2단계: 역할군 선택
+        // 2단계 -> 3단계 이동 시 현재 상태를 히스토리에 저장
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -256,7 +259,7 @@ var MatchingManager = {
             }
         }
         
-        // 3단계: 유닛 선택 완료 (여기서 history를 비우지 않음!)
+        // 3단계 완료 시 (CAT으로 복귀하지만 히스토리는 유지하여 '이전' 가능하게 함)
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
@@ -265,7 +268,6 @@ var MatchingManager = {
             if (myUnits[idx]) {
                 session.battle.playerUnit = myUnits[idx];
                 session.screen = "BATTLE_DRAFT_CAT"; 
-                // [수정] history를 비우지 않으므로, 이제 CAT에서도 '이전'을 누르면 히스토리를 타고 뒤로 갈 수 있음
                 return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText, false));
             }
         }
@@ -562,7 +564,7 @@ function handleCancelConfirm(msg, session, replier) {
     } else if (msg === "아니오" || msg === "2") {
         session.screen = session.preCancelScreen;
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-            // [수정] 마지막 인자에 true를 전달하여 UI.make(복구 모드)로 실행되게 함
+            // [중요] 4번째 인자로 true를 보내서 UI 중복 생성을 막음
             return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp, true));
         }
         return replier.reply(UI.make(session.preCancelTitle || session.lastTitle, session.preCancelContent, session.preCancelHelp, false));
