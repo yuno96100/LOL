@@ -1,5 +1,5 @@
 /**
- * [main.js] v15.6.1 (최종 수정본)
+ * [main.js] v15.6.1 (최종 통합본)
  * - UI: 헤더 중복 출력 근본 해결 (UI.go 분리)
  * - FLOW: 단계별 '이전' 시 탈주창 대신 정상 뒤로가기 구현
  * - FULL: 모든 관리자 및 시스템 로직 무생략 포함
@@ -196,23 +196,19 @@ var SessionManager = {
 
 // ━━━━━━━━ [4. 배틀 매니저 (전투 준비 완성형)] ━━━━━━━━
 var MatchingManager = {
-    // [근본 해결] UI.go를 타지 않고 수동으로 데이터 세팅하여 중복 방지
     renderDraftUI: function(session, content, help) {
         var div = Utils.getFixedDivider();
         var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
         var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
-        
         session.lastTitle = "전투 준비";
         session.lastContent = content; 
         session.lastHelp = help;
-
-        // UI.make는 순수 틀만 생성하므로 헤더 중복이 불가능함
         return UI.make("전투 준비", header + content, help, false);
     },
 
     initDraft: function(session, replier) {
         session.battle = { playerUnit: null, aiUnit: null, selectedRole: null };
-        session.history = []; // 진입 시 히스토리 초기화
+        session.history = []; 
         session.screen = "BATTLE_DRAFT_CAT";
         return replier.reply(this.renderDraftUI(session, "1. 보유 캐릭터", "'준비완료' 입력 시 게임을 시작합니다."));
     },
@@ -236,7 +232,6 @@ var MatchingManager = {
             return LoadingManager.start(session, replier);
         }
         
-        // 1단계 -> 2단계
         if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
             session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
             session.screen = "BATTLE_DRAFT_ROLE";
@@ -244,7 +239,6 @@ var MatchingManager = {
             return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요."));
         }
         
-        // 2단계 -> 3단계
         if (session.screen === "BATTLE_DRAFT_ROLE") {
             var idx = parseInt(msg) - 1;
             if (RoleKeys[idx]) {
@@ -260,7 +254,6 @@ var MatchingManager = {
             }
         }
         
-        // 3단계 -> CAT 복귀 (히스토리 보존)
         if (session.screen === "BATTLE_DRAFT_UNIT") {
             var roleName = session.battle.selectedRole;
             var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
@@ -359,6 +352,10 @@ var UserManager = {
                 if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디", "로그인"));
                 if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "문의", "내용 입력", "전송"));
             }
+            if (session.screen === "GUEST_INQUIRY") {
+                Api.replyRoom(Config.AdminRoom, "📩 [게스트문의]: " + msg);
+                SessionManager.reset(session); return replier.reply(UI.make("성공", "문의 접수완료", "대기", true));
+            }
             if (session.screen === "JOIN_ID") {
                 if (msg.length > 10 || Database.data[msg]) return replier.reply(UI.make("오류", "중복/길이"));
                 session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비번 설정", "보안"));
@@ -388,9 +385,12 @@ var UserManager = {
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
+        if (session.screen === "USER_INQUIRY") {
+            Api.replyRoom(Config.AdminRoom, "📩 [유저문의] " + session.tempId + ": " + msg);
+            SessionManager.reset(session); return replier.reply(UI.make("성공", "운영진에게 전달됨", "대기", true));
+        }
+
         if (session.screen === "BATTLE_MAIN" && msg === "1") { MatchingManager.initDraft(session, replier); return; }
-        
-        // 픽창일 경우 핸들러에서 가로챔
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) return MatchingManager.handleDraft(msg, session, replier);
 
         if (session.screen === "PROFILE_VIEW") {
@@ -475,16 +475,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
-        // 1. 탈주/중단 확인창 최우선
         if (session.screen === "CANCEL_CONFIRM") return handleCancelConfirm(msg, session, replier);
 
-        // 2. '메뉴' 입력
         if (msg === "메뉴") {
             if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
             return showCancelConfirm(session, replier);
         }
 
-        // 3. 픽창 분류 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
         } else {
@@ -540,7 +537,6 @@ function handleCancelConfirm(msg, session, replier) {
     } else if (msg === "아니오" || msg === "2") {
         session.screen = session.preCancelScreen;
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-            // [수정] renderDraftUI는 이제 내부에서 UI.make만 하므로 중복 없음
             return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp));
         }
         return replier.reply(UI.make(session.preCancelTitle || session.lastTitle, session.preCancelContent, session.preCancelHelp, false));
