@@ -387,8 +387,8 @@ var UserManager = {
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
-        if (session.screen === "BATTLE_MAIN" && msg === "1") { BattleManager.initDraft(session, replier); return; }
-        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) return BattleManager.handleDraft(msg, session, replier);
+        if (session.screen === "BATTLE_MAIN" && msg === "1") { MatchingManager.initDraft(session, replier); return; }
+        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) return MatchingManager.handleDraft(msg, session, replier);
 
         if (session.screen === "PROFILE_VIEW") {
             if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "보유 포인트: "+(d.point||0)));
