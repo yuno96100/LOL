@@ -1,9 +1,9 @@
 /**
- * [main.js] v15.7.0
+ * [main.js] v15.7.1
+ * - FIX: Unterminated string literal 오류 수정
  * - UI: 보유 캐릭터 없을 때도 픽창 레이아웃(헤더) 고정 유지
- * - UI: 역할군 선택 시 "[역할군]" 이름만 표시 (문구 간소화)
- * - UI: 캐릭터 선택 시 상단 [선택 안함] -> [캐릭터명] 즉시 업데이트
- * - FIX: 에러 UI 및 문의 로직 포함
+ * - UI: 역할군 선택 시 "[역할군]" 이름만 표시
+ * - UI: 캐릭터 선택 시 상단 실시간 반영
  */
 
 // ━━━━━━━━ [1. 설정 및 시스템 데이터] ━━━━━━━━
@@ -196,20 +196,18 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 배틀 매니저 (픽창 UI 수정 핵심)] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저] ━━━━━━━━
 var MatchingManager = {
     renderDraftUI: function(session, bodyContent, help) {
         var div = Utils.getFixedDivider();
         var selectedName = (session.battle && session.battle.playerUnit) ? session.battle.playerUnit : "선택 안함";
         
-        // 고정 헤더: 어떤 단계에서도 픽창임을 알 수 있게 함
         var header = "전투를 준비하세요.\n상대방이 당신의 선택을 기다리고 있습니다.\n선택 캐릭터: [" + selectedName + "]\n" + div + "\n";
         
         session.lastTitle = "전투 준비";
         session.lastContent = bodyContent;
         session.lastHelp = help;
 
-        // UI.make를 통해 최종 출력 (헤더 + 바디 조합)
         return UI.make("전투 준비", header + bodyContent, help, false);
     },
 
@@ -258,15 +256,13 @@ var MatchingManager = {
                 session.battle.selectedRole = roleName;
                 session.screen = "BATTLE_DRAFT_UNIT";
 
-                // 수정포인트 1: 보유 캐릭터 없을 때도 헤더(선택 안함)가 포함된 픽창 UI 유지
                 if (myUnits.length === 0) {
-                    var content = "**[" + roleName + "]**\n\n⚠️ 보유 중인 캐릭터가 없습니다.";
-                    return replier.reply(this.renderDraftUI(session, content, "다른 역할군을 선택하세요."));
+                    var emptyText = "**[" + roleName + "]**\n\n⚠️ 보유 중인 캐릭터가 없습니다.";
+                    return replier.reply(this.renderDraftUI(session, emptyText, "다른 역할군을 선택하세요."));
                 }
                 
-                // 수정포인트 2: [역할군] 이름만 나오도록 간소화
-                var content = "**[" + roleName + "]**\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
-                return replier.reply(this.renderDraftUI(session, content, "캐릭터 번호를 입력하세요."));
+                var unitText = "**[" + roleName + "]**\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
+                return replier.reply(this.renderDraftUI(session, unitText, "캐릭터 번호를 입력하세요."));
             }
         }
         
@@ -278,7 +274,6 @@ var MatchingManager = {
             var idx = parseInt(msg) - 1;
             
             if (myUnits[idx]) {
-                // 수정포인트 3: 선택 시 상단 캐릭터 정보 업데이트 (renderDraftUI에서 자동 처리)
                 session.battle.playerUnit = myUnits[idx];
                 session.screen = "BATTLE_DRAFT_CAT"; 
                 return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (변경)", helpText));
