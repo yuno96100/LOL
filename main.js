@@ -559,126 +559,77 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [9. 메인 핸들러 및 부속 시스템] ━━━━━━━━
+// ━━━━━━━━ [9. 메인 핸들러] ━━━━━━━━
+Database.data = Database.load(); 
+SessionManager.load();         
 
-/**
- * 메인 응답 함수
- */
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var hash = String(imageDB.getProfileHash()); 
     var session = SessionManager.get(room, hash, isGroupChat); 
     
-    // [데이터 동기화]
-    Database.data = Database.load();
-
     try {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
-        // 1. 중단 확인 모드 (엄격한 예/아니오 판정)
-        if (session.screen === "CANCEL_CONFIRM") {
-            return handleCancelConfirm(msg, session, replier);
-        }
+        if (session.screen === "CANCEL_CONFIRM") return handleCancelConfirm(msg, session, replier);
 
-        // 2. '메뉴' 입력 시 처리
         if (msg === "메뉴") {
-            if (session.screen === "IDLE") {
-                return replier.reply(UI.renderMenu(session));
-            }
+            if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
             return showCancelConfirm(session, replier);
         }
 
-        // 3. 전투 드래프트 중 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
-        } 
-        
-        // 4. 일반 메뉴 핸들링
-        return handleGeneralMenu(msg, session, sender, replier);
+        } else {
+            return handleGeneralMenu(msg, session, sender, replier);
+        }
 
     } catch (e) {
         reportError(e, msg, session, sender, replier);
     }
 }
 
-/**
- * 일반 메뉴 핸들러
- */
 function handleGeneralMenu(msg, session, sender, replier) {
-    if (msg === "취소") {
-        return showCancelConfirm(session, replier);
-    }
-
-    if (msg === "이전") {
+    if (msg === "취소" || msg === "이전") {
         if (session.history && session.history.length > 0) {
-            var lastIdx = session.history.length - 1;
-            if (session.history[lastIdx].screen === session.screen) {
-                session.history.pop();
+            var prev = session.history.pop();
+            session.screen = prev.screen;
+            if (session.screen.indexOf("PROFILE") !== -1 || session.screen.indexOf("STAT") !== -1) {
+                return replier.reply(UI.go(session, session.screen, prev.title, prev.content, prev.help, true));
             }
-            if (session.history.length > 0) {
-                var prev = session.history.pop();
-                return replier.reply(UI.go(session, prev.screen, prev.title, prev.content, prev.help, true));
-            }
+            return replier.reply(UI.make(prev.title, prev.content, prev.help, false));
         }
-        SessionManager.reset(session);
         return replier.reply(UI.renderMenu(session));
     }
 
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
 
-    if (session.type === "ADMIN") {
-        AdminManager.handle(msg, session, replier);
-    } else if (session.type === "GROUP") {
-        GroupManager.handle(msg, session, replier);
-    } else {
-        UserManager.handle(msg, session, replier);
-    }
+    if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
+    else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
+    else UserManager.handle(msg, session, replier);
     
-    Database.save(Database.data);
     SessionManager.save();
 }
 
-/**
- * 중단 확인창 표시
- */
 function showCancelConfirm(session, replier) {
-    // 이전 상태 저장
     session.preCancelScreen = session.screen;
     session.preCancelTitle = session.lastTitle;
     session.preCancelContent = session.lastContent;
     session.preCancelHelp = session.lastHelp;
-    
-    // UI 생성 (예/아니오 강조)
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "진행 중인 작업을 중단하시겠습니까?\n\n1. 예 (메뉴로 이동)\n2. 아니오 (계속 진행)", "'예' 또는 '아니오'만 입력 가능", true));
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "메뉴로 돌아갈까요?", "'예'/'아니오'", true));
 }
 
-/**
- * 중단 확인창 입력 처리 (예/아니오 2가지 응답 제한)
- */
 function handleCancelConfirm(msg, session, replier) {
     if (msg === "예" || msg === "1" || msg === "확인") { 
-        // '예' 선택 시 세션 초기화 및 메인 메뉴 이동
         SessionManager.reset(session); 
         return replier.reply(UI.renderMenu(session)); 
-    } 
-    else if (msg === "아니오" || msg === "2" || msg === "취소") {
-        // '아니오' 선택 시 백업된 이전 화면으로 완벽 복구
+    } else {
         session.screen = session.preCancelScreen;
         return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
-    } 
-    else {
-        // 예/아니오 이외의 입력 시 경고 후 다시 질문
-        return replier.reply(UI.make("알림", "⚠️ 잘못된 입력입니다.\n'예' 또는 '아니오'로만 대답해주세요.\n\n1. 예 / 2. 아니오", "'예' 또는 '아니오' 입력", true));
     }
 }
 
-/**
- * 에러 리포트
- */
 function reportError(e, msg, session, sender, replier) {
     var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n💬 입력: " + msg + "\n🛠 내용: " + e.message;
-    replier.reply(UI.make("알림", "⚠️ 오류 발생", "Line: " + e.lineNumber, true));
-    if (Config.AdminRoom) {
-        Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류 로그", errLog, "Line: " + e.lineNumber, true));
-    }
-}
+    replier.reply(UI.make("알림", "오류 발생!", "에러: " + e.lineNumber, true));
+    if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류", errLog, "Line: " + e.lineNumber, true));
