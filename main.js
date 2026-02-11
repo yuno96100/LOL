@@ -562,13 +562,13 @@ var GroupManager = {
 // ━━━━━━━━ [9. 메인 핸들러] ━━━━━━━━
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
-    var hash = String(imageDB.getProfileHash()); 
-    var session = SessionManager.get(room, hash, isGroupChat); 
-    
-    // 기본적인 데이터 로드
-    Database.data = Database.load();
-
+    // 최상단에서 에러를 잡아야 답장을 보낼 수 있습니다.
     try {
+        var hash = String(imageDB.getProfileHash()); 
+        var session = SessionManager.get(room, hash, isGroupChat); 
+        
+        Database.data = Database.load();
+
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
@@ -589,9 +589,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         }
         
         // 4. 일반 로직 분기
-        return handleGeneralMenu(msg, session, sender, replier);
+        handleGeneralMenu(msg, session, sender, replier);
+
     } catch (e) {
-        reportError(e, msg, session, sender, replier);
+        // catch 블록이 response 전체를 감싸고 있어야 채팅방에 에러가 옵니다.
+        reportError(e, msg, sender, replier);
     }
 }
 
@@ -609,7 +611,6 @@ function handleGeneralMenu(msg, session, sender, replier) {
 
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
 
-    // 세션 타입별 핸들러 호출
     if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
     else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
     else UserManager.handle(msg, session, replier);
@@ -628,13 +629,13 @@ function handleCancelConfirm(msg, session, replier) {
         SessionManager.reset(session);
         return replier.reply(UI.renderMenu(session));
     }
-    // '예'가 아니면 이전 화면 정보를 꺼내서 복구
     var p = session.preCancel;
     session.screen = p.s;
     return replier.reply(UI.make(p.t, p.c, p.h, false));
 }
 
-function reportError(e, msg, session, sender, replier) {
-    var log = "📍위치: " + session.screen + "\n💬입력: " + msg + "\n🛠내용: " + e.message;
-    replier.reply(UI.make("오류", "문제가 발생했습니다.", "Line: " + e.lineNumber, true));
+function reportError(e, msg, sender, replier) {
+    // 여기서 replier.reply가 있어야 채팅방에 에러가 표시됩니다.
+    var log = "❌ 에러 발생\n" + "━━━━━━━━━━━━\n" + "내용: " + e.message + "\n위치: " + e.lineNumber + "라인\n입력: " + msg;
+    replier.reply(log);
 }
