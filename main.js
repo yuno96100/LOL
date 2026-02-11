@@ -10,8 +10,8 @@ var Config = {
     LINE_CHAR: "━", 
     WRAP_LIMIT: 18, 
     DIVIDER_LINE: 14,
-    NAV_LEFT: "  ",
-    NAV_RIGHT: " ",
+    NAV_LEFT: "  ", 
+    NAV_RIGHT: " ", 
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
 };
 
@@ -520,17 +520,19 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         // 2. 특수 상황 필터링 (로딩 중 등)
         if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
 
-        // 3. 권한별 매니저 분기
-        if (msg === "취소" || msg === "이전") {
+        // 3. 네비게이션 처리 (이전/취소)
+        if (msg === "취소" || msg === "이전" || msg === "⬅️이전") {
             return handleBackNavigation(session, replier);
         }
+        
+        if (msg === "❌취소") return showCancelConfirm(session, replier);
 
+        // 4. 권한별 매니저 분기
         if (session.type === "ADMIN") {
             AdminManager.handle(msg, session, replier);
         } else if (session.type === "GROUP") {
             GroupManager.handle(msg, session, replier);
         } else {
-            // 일반 유저 및 비로그인(GUEST)은 UserManager가 받아서 LoginManager로 토스함
             UserManager.handle(msg, session, replier);
         }
 
@@ -541,12 +543,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     }
 }
 
-// 네비게이션 처리 (이전/취소)
+// 네비게이션 처리 함수
 function handleBackNavigation(session, replier) {
     if (session.history && session.history.length > 0) {
         var prev = session.history.pop();
         session.screen = prev.screen;
-        // 프로필 등 특수 UI 재렌더링이 필요한 경우
+        // 프로필 관련 화면은 전용 렌더러 사용
         if (session.screen.indexOf("PROFILE") !== -1 || session.screen.indexOf("STAT") !== -1) {
             return replier.reply(UI.go(session, session.screen, prev.title, prev.content, prev.help, true));
         }
@@ -562,11 +564,11 @@ function showCancelConfirm(session, replier) {
     session.preCancelContent = session.lastContent;
     session.preCancelHelp = session.lastHelp;
 
-    var isBattle = session.screen.indexOf("BATTLE") !== -1;
+    var isBattle = (session.screen.indexOf("BATTLE") !== -1);
     var title = isBattle ? "⚠️ 탈주 확인" : "중단 확인";
     var body = isBattle ? "정말 전장을 이탈하시겠습니까?\n매칭 정보가 사라집니다." : "진행 중인 작업을 중단하고 메인 메뉴로 돌아갈까요?";
     
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "'예'/'아니오' 입력", true));
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "1. 예 / 2. 아니오", true));
 }
 
 function handleCancelConfirm(msg, session, replier) {
@@ -575,21 +577,21 @@ function handleCancelConfirm(msg, session, replier) {
         return replier.reply(UI.renderMenu(session)); 
     } else if (msg === "아니오" || msg === "2") {
         session.screen = session.preCancelScreen;
-        // 매칭 화면이었다면 전용 렌더러 사용
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp));
         }
-        return replier.reply(UI.make(session.preCancelTitle || session.lastTitle, session.preCancelContent, session.preCancelHelp, false));
+        return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
     }
 }
 
-// 에러 보고 시스템
+// 에러 보고 시스템 (괄호 및 문자열 연결 수정)
 function reportError(e, msg, session, sender, replier) {
-    var errLog = "📍 위치: " + (session.screen || "알 수 없음") + 
-                 "\n💬 입력: " + msg + 
-                 "\n👤 유저: " + (session.tempId || sender) + 
-                 "\n🛠 내용: " + e.message;
+    var loc = session.screen || "알 수 없음";
+    var user = session.tempId || sender;
+    var errLog = "📍 위치: " + loc + "\n💬 입력: " + msg + "\n👤 유저: " + user + "\n🛠 내용: " + e.message;
+    
     replier.reply(UI.make("알림", "오류가 발생했습니다.\n메뉴를 입력하여 복귀하세요.", "에러 코드: " + e.lineNumber, true));
+    
     if (Config.AdminRoom && Api.replyRoom) {
         Api.replyRoom(Config.AdminRoom, UI.make("🚨 시스템 오류", errLog, "Line: " + e.lineNumber, true));
     }
