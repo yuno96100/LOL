@@ -378,25 +378,32 @@ var UserManager = {
         }
 
         // 컬렉션 처리 (기존 로직 동일)
-        if (session.screen === "COL_MAIN") {
-            if (msg === "1") {
-                var titles = d.collection.titles || ["뉴비"];
-                var curTitle = d.title || "뉴비";
-                var txt = "📝 보유 칭호 목록\n(현재: " + curTitle + ")\n" + Utils.getFixedDivider() + "\n";
-                txt += titles.map(function(t, i){ return (i+1)+". "+t; }).join("\n");
-                return replier.reply(UI.go(session, "COL_TITLE_LIST", "칭호 변경", txt, "변경할 번호 입력"));
-            }
-            if (msg === "2") {
-                var chars = d.collection.characters || [];
-                var txt = "🛡️ 보유 챔피언: " + chars.length + "\n" + Utils.getFixedDivider() + "\n";
-                if (chars.length === 0) txt += "보유 캐릭터가 없습니다.";
-                else txt += chars.map(function(c, i){ 
-                    var s = UnitSpecs[c] || { hp: "-", atk: "-" };
-                    return (i+1)+". "+c+" (HP:"+s.hp+"/ATK:"+s.atk+")"; 
-                }).join("\n");
-                return replier.reply(UI.go(session, "COL_CHAR_LIST", "챔피언 목록", txt, "보유 현황"));
-            }
+       if (session.screen === "COL_MAIN") {
+    if (msg === "1") {
+        var titles = d.collection.titles || ["뉴비"];
+        var curTitle = d.title || "뉴비";
+        var txt = "📝 보유 칭호 목록\n(현재: " + curTitle + ")\n" + Utils.getFixedDivider() + "\n";
+        txt += titles.map(function(t, i){ return (i+1)+". "+t; }).join("\n");
+        return replier.reply(UI.go(session, "COL_TITLE_LIST", "칭호 변경", txt, "변경할 번호 입력"));
+    }
+    if (msg === "2") {
+        var chars = d.collection.characters || [];
+        var allUnitCount = Object.keys(UnitSpecs).length; // 전체 캐릭터 수 계산
+        
+        // 보유 현황 표기 수정: (보유캐릭터수/전체캐릭터수)
+        var txt = "🛡️ 보유 챔피언: (" + chars.length + "/" + allUnitCount + ")\n" + Utils.getFixedDivider() + "\n";
+        
+        if (chars.length === 0) {
+            txt += "보유 캐릭터가 없습니다.";
+        } else {
+            // 목록에서 스펙 제거, 이름만 표기
+            txt += chars.map(function(c, i){ 
+                return (i+1)+". "+c; 
+            }).join("\n");
         }
+        return replier.reply(UI.go(session, "COL_CHAR_LIST", "챔피언 목록", txt, "보유 현황"));
+    }
+}
 
         if (session.screen === "COL_TITLE_LIST") {
             var titles = d.collection.titles || ["뉴비"];
