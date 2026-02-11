@@ -559,83 +559,131 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [9. 메인 핸들러] ━━━━━━━━
+// ━━━━━━━━ [9. 메인 핸들러 및 통합 시스템] ━━━━━━━━
 
+/**
+ * 메인 응답 함수 (response)
+ * 최상단 try-catch를 통해 오타나 참조 에러를 강제로 잡아냅니다.
+ */
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
-    // 최상단에서 에러를 잡아야 답장을 보낼 수 있습니다.
     try {
-        var hash = String(imageDB.getProfileHash()); 
-        var session = SessionManager.get(room, hash, isGroupChat); 
+        // 1. 기본 유틸리티 및 마스터 체크
+        var hash = String(imageDB.getProfileHash());
         
+        // [업데이트 명령 전용] - 다른 로직보다 먼저 실행하여 안전 확보
+        if (msg === ".업데이트" && hash === MASTER_HASH) {
+            return updateBot(replier);
+        }
+
+        // 2. 세션 및 데이터 로드 (매 실행마다 동기화)
+        var session = SessionManager.get(room, hash, isGroupChat);
         Database.data = Database.load();
 
-        if (!msg || msg.indexOf(".업데이트") !== -1) return;
-        msg = msg.trim(); 
+        if (!msg) return;
+        msg = msg.trim();
 
-        // 1. 중단 확인 처리
+        // 3. 특수 상태 처리 (중단 확인창)
         if (session.screen === "CANCEL_CONFIRM") {
             return handleCancelConfirm(msg, session, replier);
         }
 
-        // 2. 메뉴 호출 처리
+        // 4. '메뉴' 예약어 처리
         if (msg === "메뉴") {
-            if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
+            if (session.screen === "IDLE") {
+                return replier.reply(UI.renderMenu(session));
+            }
             return showCancelConfirm(session, replier);
         }
 
-        // 3. 전투 중 입력 가로채기
+        // 5. 드래프트(픽창) 입력 가로채기
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
         }
-        
-        // 4. 일반 로직 분기
+
+        // 6. 일반 메뉴 핸들러로 분기
         handleGeneralMenu(msg, session, sender, replier);
 
     } catch (e) {
-        // catch 블록이 response 전체를 감싸고 있어야 채팅방에 에러가 옵니다.
-        reportError(e, msg, sender, replier);
+        // [중요] ReferenceError: "funct" is not defined 같은 에러를 여기서 잡음
+        var errorHeader = "🚨 [시스템 런타임 에러]\n";
+        var errorBody = "━━━━━━━━━━━━\n" +
+                        "ℹ️ 사유: " + e.message + "\n" +
+                        "📍 위치: " + e.lineNumber + " 라인\n" +
+                        "💬 입력: " + (msg || "없음");
+        
+        replier.reply(errorHeader + errorBody);
+        
+        // 관리자 방으로 상세 보고
+        if (Config && Config.AdminRoom) {
+            Api.replyRoom(Config.AdminRoom, errorHeader + errorBody + "\n🛠 파일: main.js");
+        }
     }
 }
 
+/**
+ * 일반 메뉴 및 매니저 할당 핸들러
+ */
 function handleGeneralMenu(msg, session, sender, replier) {
+    // 취소/이전 공통 처리
     if (msg === "취소") return showCancelConfirm(session, replier);
     
     if (msg === "이전") {
         if (session.history && session.history.length > 0) {
-            var prev = session.history.pop();
-            return replier.reply(UI.go(session, prev.screen, prev.title, prev.content, prev.help, true));
+            var lastIdx = session.history.length - 1;
+            if (session.history[lastIdx].screen === session.screen) {
+                session.history.pop();
+            }
+            if (session.history.length > 0) {
+                var prev = session.history.pop();
+                return replier.reply(UI.go(session, prev.screen, prev.title, prev.content, prev.help, true));
+            }
         }
         SessionManager.reset(session);
         return replier.reply(UI.renderMenu(session));
     }
 
+    // 유효하지 않은 세션 상태 차단
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
 
-    if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
-    else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
-    else UserManager.handle(msg, session, replier);
+    // 권한별 매니저 실행
+    if (session.type === "ADMIN") {
+        AdminManager.handle(msg, session, replier);
+    } else if (session.type === "GROUP") {
+        GroupManager.handle(msg, session, replier);
+    } else {
+        UserManager.handle(msg, session, replier);
+    }
     
+    // 상태 저장
     Database.save(Database.data);
     SessionManager.save();
 }
 
+/**
+ * 중단 확인창 로직
+ */
 function showCancelConfirm(session, replier) {
-    session.preCancel = { s: session.screen, t: session.lastTitle, c: session.lastContent, h: session.lastHelp };
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "메뉴로 이동할까요?", "'예' 입력 시 이동", true));
+    session.preCancelScreen = session.screen;
+    session.preCancelTitle = session.lastTitle;
+    session.preCancelContent = session.lastContent;
+    session.preCancelHelp = session.lastHelp;
+    
+    var title = "중단 확인";
+    var content = "진행 중인 작업을 중단하고 메뉴로 이동할까요?\n\n1. 예\n2. 아니오";
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, content, "'예' 또는 '아니오' 입력", true));
 }
 
+/**
+ * 중단 확인 입력 처리
+ */
 function handleCancelConfirm(msg, session, replier) {
-    if (msg === "예") {
+    if (msg === "예" || msg === "1" || msg === "확인") {
         SessionManager.reset(session);
         return replier.reply(UI.renderMenu(session));
+    } else if (msg === "아니오" || msg === "2") {
+        session.screen = session.preCancelScreen;
+        return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
+    } else {
+        return replier.reply("⚠️ '예' 또는 '아니오'로 입력해주세요.");
     }
-    var p = session.preCancel;
-    session.screen = p.s;
-    return replier.reply(UI.make(p.t, p.c, p.h, false));
-}
-
-function reportError(e, msg, sender, replier) {
-    // 여기서 replier.reply가 있어야 채팅방에 에러가 표시됩니다.
-    var log = "❌ 에러 발생\n" + "━━━━━━━━━━━━\n" + "내용: " + e.message + "\n위치: " + e.lineNumber + "라인\n입력: " + msg;
-    replier.reply(log);
 }
