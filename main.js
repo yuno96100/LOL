@@ -197,19 +197,19 @@ var Database = {
         FileStream.write(Config.DB_PATH, jsonStr); 
     },
 
-    // [복구 기능] 백업 파일로부터 데이터를 강제로 덮어씌움
-    restore: function() {
-        try {
-            var backupContent = FileStream.read(this.BACKUP_PATH);
-            if (backupContent) {
-                this.data = JSON.parse(backupContent);
-                // 백업본을 다시 메인 DB 파일로 물리적 복구
-                FileStream.write(Config.DB_PATH, backupContent);
-                return this.data;
-            }
-        } catch(e) {}
-        return {}; // 백업조차 없으면 빈 객체 반환
-    },
+   // Database 객체 내부의 restore 함수를 이렇게 바꾸면 더 정확합니다.
+restore: function() {
+    try {
+        var backupContent = FileStream.read(this.BACKUP_PATH);
+        if (backupContent && backupContent.length > 10) {
+            this.data = JSON.parse(backupContent);
+            // 물리 파일도 즉시 복구
+            FileStream.write(Config.DB_PATH, backupContent);
+            return true; // 성공 시 true 반환
+        }
+    } catch(e) {}
+    return false; // 실패 시 false 반환
+},
 
     getInitData: function(pw) { 
         return { pw: pw, gold: 1000, level: 1, exp: 0, lp: 0, win: 0, lose: 0, title: "뉴비", point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, inventory: { "RESET_TICKET": 0 }, collection: { titles: ["뉴비"], characters: ["가렌"] } }; 
@@ -351,27 +351,22 @@ var AdminManager = {
                 return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 관리", this.getUserList(), "상세보기: 해당 유저의 ID 입력"));
             }
             if (msg === "3" || msg === "데이터 복구") {
-                // 데이터 복구 진입 확인창
-                var content = "⚠️ [주의] 현재 데이터를 최신 백업본(.bak)으로 덮어씌웁니다.\n복구된 데이터는 되돌릴 수 없습니다.\n\n1. 즉시 복구 실행\n2. 취소 (메뉴로)";
-                return replier.reply(UI.go(session, "ADMIN_RESTORE", "데이터 복구", content, "진행하려면 '1'을 입력하세요."));
-            }
-        }
+    var content = "⚠️ [주의] 현재 데이터를 최신 백업본(.bak)으로 덮어씌웁니다.\n\n1. 즉시 복구 실행\n2. 취소";
+    return replier.reply(UI.go(session, "ADMIN_RESTORE", "데이터 복구", content, "진행하려면 '1'을 입력하세요."));
+}
 
-        // [ADMIN_RESTORE] 데이터 복구 실행 로직
-        if (session.screen === "ADMIN_RESTORE") {
-            if (msg === "1" || msg === "복구" || msg === "즉시 복구 실행") {
-                var success = Database.restore(); // Database 객체에 정의된 restore 함수 호출
-                if (success) {
-                    SessionManager.reset(session); // 데이터가 바뀌었으므로 세션 초기화
-                    return replier.reply(UI.make("알림", "✅ 데이터 복구가 성공적으로 완료되었습니다.", "안전한 적용을 위해 메인 메뉴로 이동합니다.", true));
-                } else {
-                    return replier.reply(UI.make("알림", "❌ 복구 실패: 백업 파일(.bak)이 존재하지 않거나 읽을 수 없습니다.", "이전 화면으로 가려면 '이전' 입력", true));
-                }
-            }
-            if (msg === "2" || msg === "취소") {
-                return replier.reply(UI.renderMenu(session));
-            }
+// ADMIN_RESTORE 세션 처리부
+if (session.screen === "ADMIN_RESTORE") {
+    if (msg === "1") {
+        var success = Database.restore(); // 여기서 true/false를 받음
+        if (success) {
+            SessionManager.reset(session);
+            return replier.reply(UI.make("알림", "✅ 데이터 복구가 완료되었습니다.", "메뉴로 이동합니다.", true));
+        } else {
+            return replier.reply(UI.make("알림", "❌ 복구 실패: 백업본이 없습니다.", "이전: '이전' 입력", true));
         }
+    }
+}
 
         // [ADMIN_USER_LIST] 유저 상세 보기 진입 처리
         if (session.screen === "ADMIN_USER_LIST") {
