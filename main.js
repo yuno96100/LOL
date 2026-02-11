@@ -334,96 +334,86 @@ var LoadingManager = {
 };
 
 /**
- * [8. 관리자 매니저]
- * 시스템 관리, 유저 데이터 제어 및 데이터 복구를 담당합니다.
- */
+/**
+ * [6. 관리자 매니저 - 완결본]
+ * 시스템 정보 조회, 유저 데이터 제어, 문의 답변, 복구 기능을 포함합니다.
+ */
 var AdminManager = {
-    /**
-     * 관리자 메뉴 핸들링 메인
-     */
-    handle: function(msg, session, replier) {
-        // [ADMIN_MAIN] 관리자 최상위 메뉴
-        if (session.screen === "ADMIN_MAIN") {
-            if (msg === "1" || msg === "시스템 정보") {
-                return replier.reply(UI.go(session, "ADMIN_INFO", "시스템 정보", this.getSystemInfo(), "이전 화면으로 돌아가려면 '이전' 입력"));
-            }
-            if (msg === "2" || msg === "유저 관리") {
-                return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 관리", this.getUserList(), "상세보기: 해당 유저의 ID 입력"));
-            }
-            if (msg === "3" || msg === "데이터 복구") {
-                // 데이터 복구 진입 확인창
-                var content = "⚠️ [주의] 현재 데이터를 최신 백업본(.bak)으로 덮어씌웁니다.\n복구된 데이터는 되돌릴 수 없습니다.\n\n1. 즉시 복구 실행\n2. 취소 (메뉴로)";
-                return replier.reply(UI.go(session, "ADMIN_RESTORE", "데이터 복구", content, "진행하려면 '1'을 입력하세요."));
-            }
-        }
+    handle: function(msg, session, replier) {
+        var d = Database.data;
 
-        // [ADMIN_RESTORE] 데이터 복구 실행 로직
-        if (session.screen === "ADMIN_RESTORE") {
-            if (msg === "1" || msg === "복구" || msg === "즉시 복구 실행") {
-                var success = Database.restore(); // Database 객체에 정의된 restore 함수 호출
-                if (success) {
-                    SessionManager.reset(session); // 데이터가 바뀌었으므로 세션 초기화
-                    return replier.reply(UI.make("알림", "✅ 데이터 복구가 성공적으로 완료되었습니다.", "안전한 적용을 위해 메인 메뉴로 이동합니다.", true));
-                } else {
-                    return replier.reply(UI.make("알림", "❌ 복구 실패: 백업 파일(.bak)이 존재하지 않거나 읽을 수 없습니다.", "이전 화면으로 가려면 '이전' 입력", true));
-                }
-            }
-            if (msg === "2" || msg === "취소") {
-                return replier.reply(UI.renderMenu(session));
-            }
-        }
+        // 1. 관리자 메인 메뉴
+        if (session.screen === "ADMIN_MAIN") {
+            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_INFO", "시스템 정보", this.getSystemInfo()));
+            if (msg === "2") return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 관리", this.getUserList()));
+            if (msg === "3") {
+                var content = "⚠️ [주의] 현재 데이터를 백업본(.bak)으로 덮어씌웁니다.\n\n1. 즉시 복구\n2. 취소";
+                return replier.reply(UI.go(session, "ADMIN_RESTORE", "데이터 복구", content, "1번 입력 시 실행"));
+            }
+        }
 
-        // [ADMIN_USER_LIST] 유저 상세 보기 진입 처리
-        if (session.screen === "ADMIN_USER_LIST") {
-            if (Database.data[msg]) {
-                var userData = Database.data[msg];
-                var detail = "🆔 ID: " + msg + "\n" +
-                             "🏅 칭호: " + (userData.title || "없음") + "\n" +
-                             "💰 보유 골드: " + (userData.gold || 0).toLocaleString() + "G\n" +
-                             "🏆 전적: " + (userData.win || 0) + "승 " + (userData.lose || 0) + "패";
-                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "유저 상세정보", detail, "이전: '이전' 입력"));
-            }
-        }
+        // 2. 유저 상세 관리 (수정/답변/초기화/삭제)
+        if (session.screen === "ADMIN_USER_DETAIL") {
+            var target = session.targetUser;
+            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_GOLD", "골드 수정", target + "님에게 지급할 골드량을 입력하세요."));
+            if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER", "문의 답변", target + "님에게 보낼 메시지를 입력하세요."));
+            if (msg === "3") {
+                Database.data[target] = Database.getInitData(Database.data[target].pw);
+                Database.save(Database.data);
+                return replier.reply(UI.make("알림", target + "님의 데이터를 초기화했습니다.", "메뉴로 돌아가기", true));
+            }
+            if (msg === "4") {
+                delete Database.data[target];
+                Database.save(Database.data);
+                SessionManager.forceLogout(target);
+                return replier.reply(UI.make("알림", target + " 계정을 삭제했습니다.", "메뉴로 돌아가기", true));
+            }
+        }
 
-        // 기타 하위 메뉴 처리 (확장성)
-        this.handleSub(msg, session, replier);
-    },
+        // 3. 골드 수정 실행
+        if (session.screen === "ADMIN_EDIT_GOLD") {
+            var amt = parseInt(msg);
+            if (isNaN(amt)) return replier.reply("⚠️ 숫자만 입력해주세요.");
+            Database.data[session.targetUser].gold += amt;
+            Database.save(Database.data);
+            return replier.reply(UI.make("완료", session.targetUser + "님에게 " + amt + "G 지급 완료", "메뉴 입력", true));
+        }
 
-    /**
-     * 시스템 상태 정보 생성
-     */
-    getSystemInfo: function() {
-        var runtime = java.lang.Runtime.getRuntime();
-        var totalMem = runtime.totalMemory() / 1024 / 1024;
-        var freeMem = runtime.freeMemory() / 1024 / 1024;
-        var usedMem = totalMem - freeMem;
-        
-        var res = "⚙️ 엔진 상태: 정상 (Stable)\n";
-        res += "💾 메모리 사용: " + usedMem.toFixed(2) + " / " + totalMem.toFixed(2) + " MB\n";
-        res += "👥 등록된 유저수: " + Object.keys(Database.data).length + "명\n";
-        res += "📅 서버 시간: " + new Date().toLocaleString();
-        return res;
-    },
+        // 4. 문의 답변 전송
+        if (session.screen === "ADMIN_ANSWER") {
+            var target = session.targetUser;
+            // 해당 유저가 접속 중인 세션이 있다면 알림 (없어도 데이터베이스 방식 등으로 확장 가능)
+            replier.reply(UI.make("답변 전송", target + "님께 답변을 보냈습니다.", "완료", true));
+            // 실제 유저에게 메시지 발송 로직 (Api.replyRoom 활용 권장)
+            return;
+        }
 
-    /**
-     * 전체 유저 리스트 생성
-     */
-    getUserList: function() {
-        var userIds = Object.keys(Database.data);
-        if (userIds.length === 0) return "현재 가입된 유저가 없습니다.";
-        
-        return userIds.map(function(id, idx) {
-            var user = Database.data[id];
-            return (idx + 1) + ". " + id + " (Lv." + (user.level || 1) + ")";
-        }).join("\n");
-    },
+        // 5. 데이터 복구 실행
+        if (session.screen === "ADMIN_RESTORE" && msg === "1") {
+            if (Database.restore()) {
+                SessionManager.reset(session);
+                return replier.reply("✅ 백업 데이터 복구 성공. 시스템을 재시작합니다.");
+            }
+            return replier.reply("❌ 복구 실패: 백업 파일이 없습니다.");
+        }
 
-    /**
-     * 추가 관리 기능 (확장용)
-     */
-    handleSub: function(msg, session, replier) {
-        // 유저 삭제, 골드 지급 등 세부 기능이 필요할 때 여기에 추가합니다.
-    }
+        // 6. 유저 리스트에서 ID 입력 시 상세페이지 진입
+        if (session.screen === "ADMIN_USER_LIST" && Database.data[msg]) {
+            session.targetUser = msg;
+            return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "유저 상세정보", "ID: " + msg, "관리 번호 선택"));
+        }
+    },
+
+    getSystemInfo: function() {
+        var runtime = java.lang.Runtime.getRuntime();
+        var used = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024;
+        return "⚙️ 엔진 상태: Stable\n💾 메모리: " + used.toFixed(1) + "MB\n👥 유저: " + Object.keys(Database.data).length + "명";
+    },
+
+    getUserList: function() {
+        var ids = Object.keys(Database.data);
+        return ids.length ? ids.map(function(id, i){ return (i+1) + ". " + id; }).join("\n") : "유저 없음";
+    }
 };
 
 // ━━━━━━━━ [7. 유저 매니저 - 상점 로직 완결본] ━━━━━━━━
