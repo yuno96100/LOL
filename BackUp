@@ -191,11 +191,25 @@ var SessionManager = {
         return s;
     },
     reset: function(session) { 
-        session.screen = "IDLE"; session.history = []; session.userListCache = []; 
-        session.targetUser = null; session.editType = null; session.battle = null;
+        session.screen = "IDLE"; 
+        session.history = []; 
+        session.userListCache = []; 
+        session.targetUser = null; 
+        session.editType = null; 
+        session.battle = null;
+        // 데이터가 없는 경우 아이디를 비회원으로 강제 고정
+        if (!session.data) session.tempId = "비회원";
     },
     forceLogout: function(userId) {
-        for (var key in this.sessions) { if (this.sessions[key].tempId === userId) { this.sessions[key].data = null; this.sessions[key].tempId = "비회원"; this.reset(this.sessions[key]); } }
+        for (var key in this.sessions) { 
+            if (this.sessions[key].tempId === userId) { 
+                this.sessions[key].data = null; 
+                this.sessions[key].tempId = "비회원"; 
+                this.sessions[key].type = "DIRECT"; // 권한 초기화
+                this.sessions[key].screen = "IDLE"; // 화면 상태 초기화
+                this.reset(this.sessions[key]); 
+            } 
+        }
         this.save();
     }
 };
@@ -388,8 +402,13 @@ var UserManager = {
             if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전", "1. AI 대결", "전투"));
             if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 챔피언 상점\n2. 소모품 상점", "쇼핑"));
             if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의하기", "문의 내용을 입력해주세요.", "전송"));
-            if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
-        }
+            if (msg === "6") { 
+    SessionManager.forceLogout(session.tempId); // 모든 세션 데이터 파괴
+    session.data = null; // 현재 세션 즉시 반영
+    session.tempId = "비회원";
+    SessionManager.reset(session);
+    return replier.reply(UI.renderMenu(session)); // 즉시 로그인/가입 메뉴 출력
+}
 
         if (session.screen === "USER_INQUIRY") {
             if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 유저 문의 (" + session.tempId + ")", "내용: " + msg, "유저 관리에서 답변 가능", true));
@@ -506,13 +525,21 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
+        // 1. 중단 확인 모드일 때 처리
         if (session.screen === "CANCEL_CONFIRM") return handleCancelConfirm(msg, session, replier);
 
+        // 2. '메뉴' 입력 시 처리
         if (msg === "메뉴") {
-            if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
+            // 로그인 데이터가 없거나 이미 IDLE 상태면 즉시 초기 메뉴 출력
+            if (!session.data || session.tempId === "비회원" || session.screen === "IDLE") {
+                SessionManager.reset(session);
+                return replier.reply(UI.renderMenu(session));
+            }
+            // 그 외(진행 중인 작업 있음)에는 중단 확인창 띄움
             return showCancelConfirm(session, replier);
         }
 
+        // 3. 배틀 드래프트 등 특수 화면 우선 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
         } else {
