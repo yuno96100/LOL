@@ -559,96 +559,152 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [9. 메인 핸들러 및 통합 시스템] ━━━━━━━━
+// ━━━━━━━━ [9. 메인 핸들러] ━━━━━━━━
+
+Database.data = Database.load(); 
+
+SessionManager.load();         
+
+
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
+
+    var hash = String(imageDB.getProfileHash()); 
+
+    var session = SessionManager.get(room, hash, isGroupChat); 
+
+    
+
     try {
-        // 1. 마스터 해시 및 기본 설정 확인
-        var hash = String(imageDB.getProfileHash());
-        
-        // 2. 업데이트 명령 우선 처리
-        if (msg === ".업데이트" && hash === MASTER_HASH) {
-            return updateBot(replier);
-        }
 
-        // 3. 세션 및 데이터 로드
-        var session = SessionManager.get(room, hash, isGroupChat);
-        Database.data = Database.load();
+        if (!msg || msg.indexOf(".업데이트") !== -1) return;
 
-        if (!msg) return;
-        msg = msg.trim();
+        msg = msg.trim(); 
 
-        // 4. 특수 상태 (중단 확인) 처리
-        if (session.screen === "CANCEL_CONFIRM") {
-            return handleCancelConfirm(msg, session, replier);
-        }
 
-        // 5. 메뉴 및 취소/이전 공통 처리
+
+        if (session.screen === "CANCEL_CONFIRM") return handleCancelConfirm(msg, session, replier);
+
+
+
         if (msg === "메뉴") {
+
             if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
+
             return showCancelConfirm(session, replier);
+
         }
 
-        if (msg === "취소") return showCancelConfirm(session, replier);
-        
-        if (msg === "이전") {
-            if (session.history && session.history.length > 0) {
-                var prev = session.history.pop();
-                return replier.reply(UI.go(session, prev.screen, prev.title, prev.content, prev.help, true));
-            }
-            SessionManager.reset(session);
-            return replier.reply(UI.renderMenu(session));
-        }
 
-        // 6. 픽창(드래프트) 처리
+
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+
             return MatchingManager.handleDraft(msg, session, replier);
+
+        } else {
+
+            return handleGeneralMenu(msg, session, sender, replier);
+
         }
 
-        // 7. 일반 메뉴 로직 분기
-        if (session.screen !== "IDLE" && session.screen !== "BATTLE_LOADING") {
-            if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
-            else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
-            else UserManager.handle(msg, session, replier);
-            
-            Database.save(Database.data);
-            SessionManager.save();
-        }
+
 
     } catch (e) {
-        // 모든 에러를 가시화
-        var errorReport = "🚨 [에러 리포트]\n" +
-                          "━━━━━━━━━━━━\n" +
-                          "📄 사유: " + e.message + "\n" +
-                          "📍 라인: " + e.lineNumber + "\n" +
-                          "🛠 파일: main.js";
-        replier.reply(errorReport);
+
+        reportError(e, msg, session, sender, replier);
+
     }
+
 }
 
-/**
- * 중단 확인창 함수
- */
-function showCancelConfirm(session, replier) {
-    session.preCancelScreen = session.screen;
-    session.preCancelTitle = session.lastTitle;
-    session.preCancelContent = session.lastContent;
-    session.preCancelHelp = session.lastHelp;
-    
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "진행 중인 작업을 중단할까요?\n\n1. 예\n2. 아니오", "'예' 또는 '아니오' 입력", true));
-}
 
-/**
- * 중단 확인 입력 처리 함수
- */
-function handleCancelConfirm(msg, session, replier) {
-    if (msg === "예" || msg === "1" || msg === "확인") {
-        SessionManager.reset(session);
+
+function handleGeneralMenu(msg, session, sender, replier) {
+
+    if (msg === "취소" || msg === "이전") {
+
+        if (session.history && session.history.length > 0) {
+
+            var prev = session.history.pop();
+
+            session.screen = prev.screen;
+
+            if (session.screen.indexOf("PROFILE") !== -1 || session.screen.indexOf("STAT") !== -1) {
+
+                return replier.reply(UI.go(session, session.screen, prev.title, prev.content, prev.help, true));
+
+            }
+
+            return replier.reply(UI.make(prev.title, prev.content, prev.help, false));
+
+        }
+
         return replier.reply(UI.renderMenu(session));
-    } else if (msg === "아니오" || msg === "2") {
-        session.screen = session.preCancelScreen;
-        return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
-    } else {
-        return replier.reply("⚠️ '예' 또는 '아니오'로 대답해주세요.");
+
     }
+
+
+
+    if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
+
+
+
+    if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
+
+    else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
+
+    else UserManager.handle(msg, session, replier);
+
+    
+
+    SessionManager.save();
+
+}
+
+
+
+function showCancelConfirm(session, replier) {
+
+    session.preCancelScreen = session.screen;
+
+    session.preCancelTitle = session.lastTitle;
+
+    session.preCancelContent = session.lastContent;
+
+    session.preCancelHelp = session.lastHelp;
+
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "메뉴로 돌아갈까요?", "'예'/'아니오'", true));
+
+}
+
+
+
+function handleCancelConfirm(msg, session, replier) {
+
+    if (msg === "예" || msg === "1" || msg === "확인") { 
+
+        SessionManager.reset(session); 
+
+        return replier.reply(UI.renderMenu(session)); 
+
+    } else {
+
+        session.screen = session.preCancelScreen;
+
+        return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
+
+    }
+
+}
+
+
+
+function reportError(e, msg, session, sender, replier) {
+
+    var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n💬 입력: " + msg + "\n🛠 내용: " + e.message;
+
+    replier.reply(UI.make("알림", "오류 발생!", "에러: " + e.lineNumber, true));
+
+    if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류", errLog, "Line: " + e.lineNumber, true));
+
 }
