@@ -366,61 +366,51 @@ var UserManager = {
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         var d = session.data;
 
+        // 비로그인 상태 (회원가입, 로그인, 문의 처리)
         if (!d) {
             if (session.screen === "GUEST_MAIN") {
                 if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디(10자)", "가입"));
                 if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디", "로그인"));
                 if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "문의", "문의 내용을 입력해주세요.", "전송"));
             }
+
             if (session.screen === "JOIN_ID") {
-                if (msg.length > 10 || Database.data[msg]) return replier.reply(UI.make("오류", "중복/길이"));
-                session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비번 설정", "보안"));
+                if (msg.length > 10 || Database.data[msg]) return replier.reply(UI.make("오류", "중복된 아이디거나 길이가 너무 깁니다."));
+                session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호를 설정하세요.", "보안"));
             }
+
             if (session.screen === "JOIN_PW") {
-                Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
-                session.data = Database.data[session.tempId]; SessionManager.reset(session);
+                Database.data[session.tempId] = Database.getInitData(msg); 
+                Database.save(Database.data);
+                session.data = Database.data[session.tempId]; 
+                SessionManager.reset(session);
                 return replier.reply(UI.make("성공", "가입 성공!", "메뉴를 입력하세요.", true));
             }
+
+            // [로그인 아이디 입력 단계]
             if (session.screen === "LOGIN_ID") { 
-    // 아이디 존재 여부를 여기서 체크하지 않고 일단 tempId에 저장 후 비번 단계로 이동
-    session.tempId = msg; 
-    return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
-}
+                // 1. 입력받은 아이디가 데이터베이스에 있는지 즉시 확인
+                if (!Database.data[msg]) {
+                    // 아이디가 없는 경우 비밀번호 단계로 가지 않고 여기서 즉시 중단
+                    return replier.reply(UI.make("실패", "존재하지 않는 아이디입니다.", "아이디를 다시 확인하거나 회원가입을 해주세요."));
+                }
+                // 2. 아이디가 존재한다면 임시 저장 후 비밀번호 입력 단계로 이동
+                session.tempId = msg; 
+                return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
+            }
 
-if (session.screen === "LOGIN_ID") { 
-    // 입력받은 아이디를 임시 저장하고 비밀번호 입력 화면으로 전환
-    session.tempId = msg; 
-    return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
-}
+            // [로그인 비밀번호 입력 단계]
+            if (session.screen === "LOGIN_PW") {
+                var userData = Database.data[session.tempId];
+                if (userData.pw === msg) {
+                    session.data = userData; 
+                    SessionManager.reset(session);
+                    return replier.reply(UI.make("성공", "성공적으로 로그인되었습니다.", "메뉴를 입력하여 시작하세요.", true));
+                } else {
+                    return replier.reply(UI.make("실패", "비밀번호가 일치하지 않습니다.", "다시 입력해주세요."));
+                }
+            }
 
-if (session.screen === "LOGIN_ID") { 
-    // 1. 입력받은 아이디가 데이터베이스에 있는지 즉시 확인
-    if (!Database.data[msg]) {
-        // 아이디가 없는 경우 비밀번호 단계로 가지 않고 여기서 중단
-        return replier.reply(UI.make("실패", "존재하지 않는 아이디입니다.", "아이디를 다시 확인하거나 회원가입을 해주세요."));
-    }
-
-    // 2. 아이디가 존재한다면 임시 저장 후 비밀번호 입력 단계로 이동
-    session.tempId = msg; 
-    return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
-}
-
-if (session.screen === "LOGIN_PW") {
-    var userData = Database.data[session.tempId];
-    
-    // (이미 LOGIN_ID에서 아이디 체크를 했으므로 여기서는 비밀번호만 확인)
-    if (userData.pw === msg) {
-        // [로그인 성공]
-        session.data = userData; 
-        session.tempId = session.tempId; 
-        SessionManager.reset(session); 
-        
-        return replier.reply(UI.make("성공", "성공적으로 로그인되었습니다.", "메뉴를 입력하여 시작하세요.", true));
-    } else {
-        // [비밀번호 실패]
-        return replier.reply(UI.make("실패", "비밀번호가 일치하지 않습니다.", "다시 입력해주세요."));
-    }
-}
             if (session.screen === "GUEST_INQUIRY") {
                 if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 게스트 문의", "내용: " + msg, "회신 불가", true));
                 SessionManager.reset(session); return replier.reply(UI.make("문의 완료", "전달되었습니다.", "감사합니다.", true));
@@ -428,6 +418,7 @@ if (session.screen === "LOGIN_PW") {
             return;
         }
 
+        // 로그인 상태 (메인 메뉴 처리)
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
             if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 챔피언", "조회"));
@@ -435,12 +426,13 @@ if (session.screen === "LOGIN_PW") {
             if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "상점", "1. 챔피언 상점\n2. 소모품 상점", "쇼핑"));
             if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의하기", "문의 내용을 입력해주세요.", "전송"));
             if (msg === "6") { 
-    SessionManager.forceLogout(session.tempId); // 모든 세션 데이터 파괴
-    session.data = null; // 현재 세션 즉시 반영
-    session.tempId = "비회원";
-    SessionManager.reset(session);
-    return replier.reply(UI.renderMenu(session)); // 즉시 로그인/가입 메뉴 출력
-}
+                SessionManager.forceLogout(session.tempId);
+                session.data = null;
+                session.tempId = "비회원";
+                SessionManager.reset(session);
+                return replier.reply(UI.renderMenu(session));
+            }
+        }
 
         if (session.screen === "USER_INQUIRY") {
             if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 유저 문의 (" + session.tempId + ")", "내용: " + msg, "유저 관리에서 답변 가능", true));
