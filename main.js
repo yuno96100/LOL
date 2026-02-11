@@ -346,18 +346,17 @@ var AdminManager = {
     }
 };
 
-// ━━━━━━━━ [7. 유저 매니저 (재로그인 유도 버전)] ━━━━━━━━
+// ━━━━━━━━ [7. 유저 매니저 (비밀번호 오류 해결 버전)] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
-        // [데이터 동기화] 로그인된 상태에서만 데이터를 연결함
-        if (session.tempId && Database.data[session.tempId] && session.isLoggedIn) {
+        // [데이터 동기화] 세션에 데이터가 없어도 tempId가 있고 로그인 상태면 DB에서 로드
+        if (!session.data && session.tempId && Database.data[session.tempId] && session.isLoggedIn) {
             session.data = Database.data[session.tempId];
         }
         var d = session.data;
 
-        // 1. 비로그인 상태 로직 (회원가입/로그인/문의)
+        // 1. 비로그인 상태 로직
         if (!d) {
-            // [GUEST_MAIN] 초기 화면
             if (session.screen === "GUEST_MAIN") {
                 if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "사용할 아이디를 입력하세요.", "가입"));
                 if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디를 입력하세요.", "로그인"));
@@ -373,13 +372,12 @@ var UserManager = {
                 return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호를 설정하세요.", "보안"));
             }
 
-            // [JOIN_PW] 가입 비번 입력 (★가입 후 초기화면으로 이동)
+            // [JOIN_PW] 가입 비번 입력 (저장 시 문자열 강제 변환)
             if (session.screen === "JOIN_PW") {
-                // DB 저장 (비번을 문자열로 강제 저장)
+                // pw를 String(msg)로 감싸서 숫자로만 구성되어도 문자열로 저장되게 함
                 Database.data[session.tempId] = Database.getInitData(String(msg)); 
                 Database.save(Database.data);
                 
-                // 가입 후 세션을 완전히 초기화하여 '로그인' 메뉴로 유도
                 SessionManager.reset(session);
                 session.tempId = "비회원"; 
                 return replier.reply(UI.make("성공", "회원가입이 완료되었습니다!", "이제 '로그인' 메뉴에서 접속해주세요.", true));
@@ -390,22 +388,23 @@ var UserManager = {
                 if (!Database.data[msg]) {
                     return replier.reply(UI.make("실패", "존재하지 않는 아이디입니다.", "아이디를 다시 확인해주세요."));
                 }
-                session.tempId = msg; // 로그인 시도할 아이디 저장
+                session.tempId = msg; 
                 return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
             }
 
-            // [LOGIN_PW] 비번 체크 (★비교 로직 정밀화)
+            // [LOGIN_PW] 비번 체크 (★형변환 비교 로직 핵심)
             if (session.screen === "LOGIN_PW") {
                 var userData = Database.data[session.tempId];
                 
-                // 입력값(msg)과 저장된 비번(userData.pw)을 둘 다 문자열로 치환하여 비교
-                if (userData && String(userData.pw) === String(msg)) {
+                // [해결책] 저장된 비번과 입력받은 비번을 모두 문자열(String)로 변환 후 trim(공백제거)하여 비교
+                if (userData && String(userData.pw).trim() === String(msg).trim()) {
                     session.data = userData; 
-                    session.isLoggedIn = true; // 로그인 성공 플래그
+                    session.isLoggedIn = true; 
                     SessionManager.reset(session);
-                    return replier.reply(UI.make("성공", "로그인되었습니다.", "메뉴를 선택하여 시작하세요.", true));
+                    // 로그인 성공 후 즉시 메인 메뉴 렌더링
+                    return replier.reply(UI.renderMenu(session));
                 } else {
-                    return replier.reply(UI.make("실패", "비밀번호가 일치하지 않습니다.", "다시 입력해주세요."));
+                    return replier.reply(UI.make("실패", "비밀번호가 일치하지 않습니다.", "다시 정확히 입력해주세요."));
                 }
             }
 
