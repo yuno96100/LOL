@@ -366,19 +366,23 @@ var UserManager = {
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         var d = session.data;
 
-        // 비로그인 상태 (회원가입, 로그인, 문의 처리)
+        // 1. 비로그인 상태 로직 (회원가입/로그인/문의)
         if (!d) {
+            // [GUEST_MAIN] 초기 화면
             if (session.screen === "GUEST_MAIN") {
                 if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디(10자)", "가입"));
                 if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디", "로그인"));
                 if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "문의", "문의 내용을 입력해주세요.", "전송"));
             }
 
+            // [JOIN_ID] 가입 아이디 입력
             if (session.screen === "JOIN_ID") {
                 if (msg.length > 10 || Database.data[msg]) return replier.reply(UI.make("오류", "중복된 아이디거나 길이가 너무 깁니다."));
-                session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호를 설정하세요.", "보안"));
+                session.tempId = msg; 
+                return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호를 설정하세요.", "보안"));
             }
 
+            // [JOIN_PW] 가입 비번 입력
             if (session.screen === "JOIN_PW") {
                 Database.data[session.tempId] = Database.getInitData(msg); 
                 Database.save(Database.data);
@@ -387,21 +391,22 @@ var UserManager = {
                 return replier.reply(UI.make("성공", "가입 성공!", "메뉴를 입력하세요.", true));
             }
 
-            // [로그인 아이디 입력 단계]
+            // [LOGIN_ID] ★여기가 핵심입니다★
             if (session.screen === "LOGIN_ID") { 
-                // 1. 입력받은 아이디가 데이터베이스에 있는지 즉시 확인
+                // DB에 해당 아이디가 있는지 먼저 확인
                 if (!Database.data[msg]) {
-                    // 아이디가 없는 경우 비밀번호 단계로 가지 않고 여기서 즉시 중단
-                    return replier.reply(UI.make("실패", "존재하지 않는 아이디입니다.", "아이디를 다시 확인하거나 회원가입을 해주세요."));
+                    // 아이디가 없으면 비번창으로 안 보내고 여기서 리턴
+                    return replier.reply(UI.make("실패", "존재하지 않는 아이디입니다.", "아이디를 확인해주세요."));
                 }
-                // 2. 아이디가 존재한다면 임시 저장 후 비밀번호 입력 단계로 이동
+                // 아이디가 있을 때만 비번창으로 보냄
                 session.tempId = msg; 
                 return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
             }
 
-            // [로그인 비밀번호 입력 단계]
+            // [LOGIN_PW] 비번 검증
             if (session.screen === "LOGIN_PW") {
                 var userData = Database.data[session.tempId];
+                // 앞 단계에서 아이디 체크를 했으므로 userData는 무조건 존재함
                 if (userData.pw === msg) {
                     session.data = userData; 
                     SessionManager.reset(session);
@@ -413,7 +418,8 @@ var UserManager = {
 
             if (session.screen === "GUEST_INQUIRY") {
                 if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 게스트 문의", "내용: " + msg, "회신 불가", true));
-                SessionManager.reset(session); return replier.reply(UI.make("문의 완료", "전달되었습니다.", "감사합니다.", true));
+                SessionManager.reset(session); 
+                return replier.reply(UI.make("문의 완료", "전달되었습니다.", "감사합니다.", true));
             }
             return;
         }
