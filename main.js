@@ -145,14 +145,56 @@ var UI = {
     }
 };
 
-// ━━━━━━━━ [3. DB 및 세션 관리] ━━━━━━━━
+// ━━━━━━━━ [3. DB 및 세션 관리 - 백업/복구 통합본] ━━━━━━━━
 var Database = {
     data: {},
-    load: function() { try { return JSON.parse(FileStream.read(Config.DB_PATH)); } catch(e) { return {}; } },
-    save: function(d) { this.data = d; FileStream.write(Config.DB_PATH, JSON.stringify(d, null, 4)); },
-    getInitData: function(pw) { 
-        return { pw: pw, gold: 1000, level: 1, exp: 0, lp: 0, win: 0, lose: 0, title: "뉴비", point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, inventory: { "RESET_TICKET": 0 }, collection: { titles: ["뉴비"], characters: [] } }; 
+    // 파일 경로 설정 (기존 Config 활용)
+    BACKUP_PATH: Config.DB_PATH + ".bak",
+
+    load: function() { 
+        try { 
+            var content = FileStream.read(Config.DB_PATH);
+            if (!content) throw new Error("파일 비어있음");
+            return JSON.parse(content); 
+        } catch(e) { 
+            // 메인 파일 로드 실패 시 백업본 로드 시도
+            return this.restore(); 
+        } 
     },
+
+    save: function(d) { 
+        this.data = d; 
+        var jsonStr = JSON.stringify(d, null, 4);
+        
+        // [자동 백업] 현재 정상 데이터를 저장하기 전, 기존 파일을 백업본으로 복사
+        try {
+            var currentFile = FileStream.read(Config.DB_PATH);
+            if (currentFile && currentFile.length > 10) { // 최소한의 데이터가 있을 때만 백업
+                FileStream.write(this.BACKUP_PATH, currentFile);
+            }
+        } catch(e) {}
+
+        FileStream.write(Config.DB_PATH, jsonStr); 
+    },
+
+    // [복구 기능] 백업 파일로부터 데이터를 강제로 덮어씌움
+    restore: function() {
+        try {
+            var backupContent = FileStream.read(this.BACKUP_PATH);
+            if (backupContent) {
+                this.data = JSON.parse(backupContent);
+                // 백업본을 다시 메인 DB 파일로 물리적 복구
+                FileStream.write(Config.DB_PATH, backupContent);
+                return this.data;
+            }
+        } catch(e) {}
+        return {}; // 백업조차 없으면 빈 객체 반환
+    },
+
+    getInitData: function(pw) { 
+        return { pw: pw, gold: 1000, level: 1, exp: 0, lp: 0, win: 0, lose: 0, title: "뉴비", point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, inventory: { "RESET_TICKET": 0 }, collection: { titles: ["뉴비"], characters: ["가렌"] } }; 
+    },
+
     addExp: function(userId, amount) {
         var d = this.data[userId];
         if (!d || d.level >= MAX_LEVEL) return;
@@ -275,6 +317,7 @@ var LoadingManager = {
 var AdminManager = {
     handle: function(msg, session, replier) {
         var screen = session.screen;
+        // 관리자 메인 메뉴 처리
         if (screen === "ADMIN_MAIN") {
             if (msg === "1") {
                 var rt = java.lang.Runtime.getRuntime();
@@ -286,7 +329,18 @@ var AdminManager = {
                 var list = session.userListCache.map(function(id, i){ return (i+1)+". "+id; }).join("\n");
                 return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 관리", list, "번호 입력"));
             }
+            // 신규 추가: 데이터 전체 복구 (백업본 롤백)
+            if (msg === "3") {
+                var restoredData = Database.restore();
+                if (Object.keys(restoredData).length > 0) {
+                    Database.save(restoredData);
+                    return replier.reply(UI.make("성공", "✅ 데이터가 백업 시점으로 복구되었습니다.", "관리자 권한 실행됨", true));
+                } else {
+                    return replier.reply(UI.make("오류", "❌ 복구 가능한 백업 파일이 없습니다."));
+                }
+            }
         }
+        // 유저 리스트에서 특정 유저 선택
         if (screen === "ADMIN_USER_LIST") {
             var idx = parseInt(msg) - 1;
             if (session.userListCache[idx]) {
@@ -294,35 +348,48 @@ var AdminManager = {
                 return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "기능을 선택하세요.", "조회 중"));
             }
         }
+        // 유저 상세 관리 메뉴
         if (screen === "ADMIN_USER_DETAIL") {
             if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
             if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 하기", "["+session.targetUser+"] 답변 입력", "내용 입력"));
             if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "[" + session.targetUser + "] 초기화 하시겠습니까?", "'확인' 입력"));
             if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "[" + session.targetUser + "] 삭제 하시겠습니까?", "'삭제확인' 입력"));
         }
+        // 운영진 답변 전송
         if (screen === "ADMIN_ANSWER_INPUT") {
             Api.replyRoom(session.targetUser, UI.make("운영진 답변", msg, "시스템 메시지", true));
             SessionManager.reset(session); return replier.reply(UI.make("성공", "전송완료", "대기", true));
         }
+        // 유저 정보 수정 항목 선택
         if (screen === "ADMIN_EDIT_MENU") {
             var types = ["gold", "lp", "level"];
-            if (types[parseInt(msg)-1]) { session.editType = types[parseInt(msg)-1]; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "값 수정", "새로운 수치를 입력하세요.", "숫자 입력")); }
+            if (types[parseInt(msg)-1]) { 
+                session.editType = types[parseInt(msg)-1]; 
+                return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "값 수정", "새로운 수치를 입력하세요.", "숫자 입력")); 
+            }
         }
+        // 수치 수정 입력 처리
         if (screen === "ADMIN_EDIT_INPUT") {
-            var val = parseInt(msg); if (isNaN(val) || val < 1) return replier.reply(UI.make("오류", "1 이상의 숫자"));
-            Database.data[session.targetUser][session.editType] = val; Database.save(Database.data);
-            SessionManager.reset(session); return replier.reply(UI.make("수정 완료", "정보가 업데이트되었습니다.", "대기", true));
+            var val = parseInt(msg); 
+            if (isNaN(val) || val < 1) return replier.reply(UI.make("오류", "1 이상의 숫자만 입력 가능합니다."));
+            Database.data[session.targetUser][session.editType] = val; 
+            Database.save(Database.data);
+            SessionManager.reset(session); return replier.reply(UI.make("수정 완료", "정보가 성공적으로 업데이트되었습니다.", "대기", true));
         }
+        // 유저 초기화 확인
         if (screen === "ADMIN_RESET_CONFIRM" && msg === "확인") {
-            Database.data[session.targetUser] = Database.getInitData("1234"); Database.save(Database.data);
+            Database.data[session.targetUser] = Database.getInitData("1234"); 
+            Database.save(Database.data);
             SessionManager.reset(session); return replier.reply(UI.make("초기화 완료", "기본 데이터로 리셋되었습니다.", "대기", true));
         }
+        // 유저 삭제 확인
         if (screen === "ADMIN_DELETE_CONFIRM" && msg === "삭제확인") {
-            delete Database.data[session.targetUser]; Database.save(Database.data);
+            delete Database.data[session.targetUser]; 
+            Database.save(Database.data);
             SessionManager.reset(session); return replier.reply(UI.make("삭제 완료", "계정이 영구 삭제되었습니다.", "대기", true));
         }
     }
-};
+};;
 
 // ━━━━━━━━ [7. 유저 매니저 - 상점 로직 완결본] ━━━━━━━━
 var UserManager = {
@@ -492,22 +559,28 @@ var GroupManager = {
     }
 };
 
-// ━━━━━━━━ [9. 메인 핸들러] ━━━━━━━━
+// ━━━━━━━━ [9. 메인 핸들러 및 부속 시스템] ━━━━━━━━
 
+/**
+ * 메인 응답 함수
+ */
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var hash = String(imageDB.getProfileHash()); 
     var session = SessionManager.get(room, hash, isGroupChat); 
     
+    // [데이터 동기화]
+    Database.data = Database.load();
+
     try {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
-        // 1. 중단 확인 모드일 때 최우선 처리
+        // 1. 중단 확인 모드 (엄격한 예/아니오 판정)
         if (session.screen === "CANCEL_CONFIRM") {
             return handleCancelConfirm(msg, session, replier);
         }
 
-        // 2. '메뉴' 입력 시 처리 (중단 확인 후 이동)
+        // 2. '메뉴' 입력 시 처리
         if (msg === "메뉴") {
             if (session.screen === "IDLE") {
                 return replier.reply(UI.renderMenu(session));
@@ -515,12 +588,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return showCancelConfirm(session, replier);
         }
 
-        // 3. 전투 드래프트 중일 때는 전용 핸들러가 처리
+        // 3. 전투 드래프트 중 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
         } 
         
-        // 4. 일반적인 메뉴 및 시스템 핸들링
+        // 4. 일반 메뉴 핸들링
         return handleGeneralMenu(msg, session, sender, replier);
 
     } catch (e) {
@@ -528,37 +601,31 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     }
 }
 
+/**
+ * 일반 메뉴 핸들러
+ */
 function handleGeneralMenu(msg, session, sender, replier) {
-    // '취소' 입력 시 중단 확인창
     if (msg === "취소") {
         return showCancelConfirm(session, replier);
     }
 
-    // '이전' 입력 시 히스토리 기반 뒤로가기
     if (msg === "이전") {
         if (session.history && session.history.length > 0) {
-            // 현재 화면과 직전 기록이 동일한 경우 중복 제거
             var lastIdx = session.history.length - 1;
             if (session.history[lastIdx].screen === session.screen) {
                 session.history.pop();
             }
-            
-            // 안전하게 스택에서 마지막 기록 추출
             if (session.history.length > 0) {
                 var prev = session.history.pop();
-                // skipHistory를 true로 설정하여 이전으로 가면서 히스토리가 또 쌓이지 않게 방어
                 return replier.reply(UI.go(session, prev.screen, prev.title, prev.content, prev.help, true));
             }
         }
-        // 돌아갈 곳이 없으면 메인 메뉴로 리셋
         SessionManager.reset(session);
         return replier.reply(UI.renderMenu(session));
     }
 
-    // 로딩 중이거나 유휴 상태일 때는 입력을 무시
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
 
-    // 세션 타입에 따른 개별 매니저 호출
     if (session.type === "ADMIN") {
         AdminManager.handle(msg, session, replier);
     } else if (session.type === "GROUP") {
@@ -567,34 +634,51 @@ function handleGeneralMenu(msg, session, sender, replier) {
         UserManager.handle(msg, session, replier);
     }
     
-    // 데이터 및 세션 상태 즉시 저장
+    Database.save(Database.data);
     SessionManager.save();
 }
 
+/**
+ * 중단 확인창 표시
+ */
 function showCancelConfirm(session, replier) {
-    // 현재 상태를 임시 저장하여 '아니오' 클릭 시 복구할 수 있게 함
+    // 이전 상태 저장
     session.preCancelScreen = session.screen;
     session.preCancelTitle = session.lastTitle;
     session.preCancelContent = session.lastContent;
     session.preCancelHelp = session.lastHelp;
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "메뉴로 돌아갈까요?", "'예'/'아니오'", true));
+    
+    // UI 생성 (예/아니오 강조)
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "진행 중인 작업을 중단하시겠습니까?\n\n1. 예 (메뉴로 이동)\n2. 아니오 (계속 진행)", "'예' 또는 '아니오'만 입력 가능", true));
 }
 
+/**
+ * 중단 확인창 입력 처리 (예/아니오 2가지 응답 제한)
+ */
 function handleCancelConfirm(msg, session, replier) {
     if (msg === "예" || msg === "1" || msg === "확인") { 
+        // '예' 선택 시 세션 초기화 및 메인 메뉴 이동
         SessionManager.reset(session); 
         return replier.reply(UI.renderMenu(session)); 
-    } else {
-        // '아니오' 등을 선택할 경우 이전 화면 상태로 복구
+    } 
+    else if (msg === "아니오" || msg === "2" || msg === "취소") {
+        // '아니오' 선택 시 백업된 이전 화면으로 완벽 복구
         session.screen = session.preCancelScreen;
         return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
+    } 
+    else {
+        // 예/아니오 이외의 입력 시 경고 후 다시 질문
+        return replier.reply(UI.make("알림", "⚠️ 잘못된 입력입니다.\n'예' 또는 '아니오'로만 대답해주세요.\n\n1. 예 / 2. 아니오", "'예' 또는 '아니오' 입력", true));
     }
 }
 
+/**
+ * 에러 리포트
+ */
 function reportError(e, msg, session, sender, replier) {
     var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n💬 입력: " + msg + "\n🛠 내용: " + e.message;
-    replier.reply(UI.make("알림", "오류 발생!", "에러: " + e.lineNumber, true));
+    replier.reply(UI.make("알림", "⚠️ 오류 발생", "Line: " + e.lineNumber, true));
     if (Config.AdminRoom) {
-        Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류", errLog, "Line: " + e.lineNumber, true));
+        Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류 로그", errLog, "Line: " + e.lineNumber, true));
     }
 }
