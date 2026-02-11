@@ -93,6 +93,7 @@ var UI = {
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
     },
+
     renderProfile: function(id, data, help, content, isRoot, session) {
         if (!data) return "데이터 로드 오류";
         var lp = data.lp || 0, tier = getTierInfo(lp);
@@ -115,32 +116,51 @@ var UI = {
         } else if (session && (session.screen === "STAT_UP_MENU" || session.screen === "STAT_UP_INPUT")) {
             res += "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화\n" + div + "\n";
         }
+        
         if (content) res += Utils.wrapText(content.trim()) + "\n" + div + "\n"; 
         if (help) res += "💡 " + Utils.wrapText(help);
         if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
         return res;
     },
+
     go: function(session, screen, title, content, help, skipHistory) {
         var rootScreens = ["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "GROUP_MAIN"];
         var isRoot = (rootScreens.indexOf(screen) !== -1);
+        
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
+        
         if (!skipHistory && session.screen && session.screen !== "IDLE" && session.screen !== screen) {
             if (!session.history) session.history = [];
             session.history.push({ screen: session.screen, title: session.lastTitle, content: session.lastContent, help: session.lastHelp });
         }
-        session.screen = screen; session.lastTitle = title;
-        session.lastContent = content || ""; session.lastHelp = help || "";
+        
+        session.screen = screen; 
+        session.lastTitle = title;
+        session.lastContent = content || ""; 
+        session.lastHelp = help || "";
+        
+        // 프로필 관련 화면이거나 유저 관리 화면일 때 전용 렌더러 호출
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL") {
             var tid = session.targetUser || session.tempId;
             return UI.renderProfile(tid, Database.data[tid], help, content, isRoot, session);
         }
+        
         return this.make(title, content, help, isRoot);
     },
+
     renderMenu: function(session) {
         session.history = []; 
-        if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호 입력");
+        
+        // [수정] 관리자 메뉴에 3. 데이터 복구 추가
+        if (session.type === "ADMIN") {
+            var adminMenu = "1. 시스템 정보\n2. 유저 관리\n3. 데이터 복구";
+            return this.go(session, "ADMIN_MAIN", "관리자 메뉴", adminMenu, "번호를 입력하세요.");
+        }
+        
         if (session.type === "GROUP") return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인\n2. 티어 랭킹", "번호 입력");
+        
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 문의하기", "번호 선택");
+        
         return this.go(session, "USER_MAIN", "메인 메뉴", "1. 프로필\n2. 컬렉션\n3. 대전\n4. 상점\n5. 문의하기\n6. 로그아웃", "번호 입력");
     }
 };
