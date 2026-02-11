@@ -340,7 +340,6 @@ var UserManager = {
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         var d = session.data;
 
-        // --- 게스트(비회원) 로직 ---
         if (!d) {
             if (session.screen === "GUEST_MAIN") {
                 if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디(10자)", "가입"));
@@ -364,15 +363,13 @@ var UserManager = {
                 }
                 return replier.reply(UI.make("실패", "비번 오류"));
             }
-            // 게스트 문의 처리
             if (session.screen === "GUEST_INQUIRY") {
-                if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 게스트 문의", "내용: " + msg, "회신 불가(비회원)", true));
-                SessionManager.reset(session); return replier.reply(UI.make("문의 완료", "운영진에게 전달되었습니다.", "감사합니다.", true));
+                if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 게스트 문의", "내용: " + msg, "회신 불가", true));
+                SessionManager.reset(session); return replier.reply(UI.make("문의 완료", "전달되었습니다.", "감사합니다.", true));
             }
             return;
         }
 
-        // --- 유저 전용 로직 ---
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
             if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 챔피언", "조회"));
@@ -382,13 +379,11 @@ var UserManager = {
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
-        // --- 유저 문의 처리 ---
         if (session.screen === "USER_INQUIRY") {
-            if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 유저 문의 (" + session.tempId + ")", "내용: " + msg, "유저 관리 메뉴에서 답변 가능", true));
-            SessionManager.reset(session); return replier.reply(UI.make("문의 완료", "운영진에게 전달되었습니다.", "메뉴 입력", true));
+            if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 유저 문의 (" + session.tempId + ")", "내용: " + msg, "유저 관리에서 답변 가능", true));
+            SessionManager.reset(session); return replier.reply(UI.make("문의 완료", "전달되었습니다.", "메뉴 입력", true));
         }
 
-        // --- 컬렉션 상세 로직 ---
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
                 var titles = d.collection.titles || ["뉴비"];
@@ -414,27 +409,36 @@ var UserManager = {
             var idx = parseInt(msg)-1;
             if (titles[idx]) {
                 d.title = titles[idx]; Database.save(Database.data); SessionManager.reset(session);
-                return replier.reply(UI.make("성공", "칭호가 [" + d.title + "](으)로 변경됨", "메뉴 입력", true));
+                return replier.reply(UI.make("성공", "칭호 변경 완료!", "메뉴 입력", true));
             }
         }
 
-        // --- 대전 매칭 로직 ---
         if (session.screen === "BATTLE_MAIN" && msg === "1") { MatchingManager.initDraft(session, replier); return; }
         if (session.screen.indexOf("BATTLE_DRAFT") !== -1) return MatchingManager.handleDraft(msg, session, replier);
 
-        // --- 프로필/능력치 로직 ---
         if (session.screen === "PROFILE_VIEW") {
-            if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "보유 포인트: "+(d.point||0)));
-            if (msg === "2") {
-                var c = (d.inventory && d.inventory["RESET_TICKET"]) || 0;
-                return replier.reply(UI.go(session, "STAT_RESET_CONFIRM", "초기화 확인", "초기화권을 사용하시겠습니까?\n보유수량: "+c, "'사용' 입력"));
-            }
+            if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "포인트: "+(d.point||0)));
         }
 
-        // --- 상점 로직 ---
+        if (session.screen === "STAT_UP_MENU") {
+            var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
+            var idx = parseInt(msg)-1;
+            if (keys[idx]) {
+                session.selectedStat = keys[idx]; session.selectedStatName = names[idx];
+                return replier.reply(UI.go(session, "STAT_UP_INPUT", names[idx] + " 강화", "강화할 수치 입력\n(남은 포인트: " + (d.point||0) + "P)", "숫자 입력"));
+            }
+        }
+        if (session.screen === "STAT_UP_INPUT") {
+            var amt = parseInt(msg);
+            if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자"));
+            if (amt > (d.point || 0)) return replier.reply(UI.make("실패", "포인트 부족"));
+            d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
+            replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt, "성공", true));
+            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", true));
+        }
+
         if (session.screen === "SHOP_MAIN") {
-            if (msg === "1") return replier.reply(UI.go(session, "SHOP_ROLES", "역할군 선택", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "번호 선택"));
-            if (msg === "2") return replier.reply(UI.go(session, "SHOP_ITEM_BUY", "소모품 상점", "1. 능력치 초기화권 (10000G)", "번호 선택"));
+            if (msg === "1") return replier.reply(UI.go(session, "SHOP_ROLES", "역할군", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "번호 선택"));
         }
         if (session.screen === "SHOP_ROLES") {
             var rI = parseInt(msg)-1;
@@ -450,30 +454,11 @@ var UserManager = {
         if (session.screen === "SHOP_BUY_ACTION") {
             var uI = parseInt(msg)-1; var us = SystemData.roles[session.selectedRole].units;
             if (us[uI]) {
-                if (d.collection.characters.indexOf(us[uI]) !== -1) return replier.reply(UI.make("알림", "이미 보유 중인 챔피언입니다."));
-                if (d.gold < 500) return replier.reply(UI.make("실패", "골드가 부족합니다."));
+                if (d.collection.characters.indexOf(us[uI]) !== -1) return replier.reply(UI.make("알림", "보유 중입니다."));
+                if (d.gold < 500) return replier.reply(UI.make("실패", "골드 부족"));
                 d.gold -= 500; d.collection.characters.push(us[uI]); Database.save(Database.data);
-                SessionManager.reset(session); return replier.reply(UI.make("구매 성공", "🎉 영입 완료: " + us[uI], "메뉴 입력", true));
+                SessionManager.reset(session); return replier.reply(UI.make("구매 성공", us[uI] + " 영입 완료!", "메뉴 입력", true));
             }
-        }
-
-        // --- 능력치 강화 세부 ---
-        if (session.screen === "STAT_UP_MENU") {
-            var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
-            var idx = parseInt(msg)-1;
-            if (keys[idx]) {
-                session.selectedStat = keys[idx]; session.selectedStatName = names[idx];
-                return replier.reply(UI.go(session, "STAT_UP_INPUT", names[idx] + " 강화", "강화할 수치를 입력하세요.\n(보유 포인트: " + (d.point||0) + "P)", "숫자 입력"));
-            }
-        }
-        if (session.screen === "STAT_UP_INPUT") {
-            var amt = parseInt(msg);
-            if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "1 이상의 숫자"));
-            if (amt > (d.point || 0)) return replier.reply(UI.make("실패", "포인트 부족"));
-            d.stats[session.selectedStat] += amt; d.point -= amt; Database.save(Database.data);
-            replier.reply(UI.make("✨ 강화 성공", session.selectedStatName + " +" + amt, "성공", true));
-            session.history = [{ screen: "USER_MAIN", title: "메인 메뉴", content: session.lastContent, help: "번호 입력" }];
-            return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", true));
         }
     }
 };
@@ -491,7 +476,7 @@ var GroupManager = {
                     var u = rank[i], t = getTierInfo(u.lp), m = (i===0)?"🥇":(i===1)?"🥈":(i===2)?"🥉":(i+1)+".";
                     txt += m+" "+u.id+" ("+t.icon+u.lp+" LP)\n";
                 }
-                return replier.reply(UI.go(session, "GROUP_RANKING", "전체 티어 랭킹", txt, "실시간 순위"));
+                return replier.reply(UI.go(session, "GROUP_RANKING", "티어 랭킹", txt, "실시간"));
             }
         }
     }
@@ -527,8 +512,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
     }
 }
 
-// ━━━━━━━━ [10. 분류된 세부 핸들러] ━━━━━━━━
-
 function handleGeneralMenu(msg, session, sender, replier) {
     if (msg === "취소" || msg === "이전") {
         if (session.history && session.history.length > 0) {
@@ -556,31 +539,21 @@ function showCancelConfirm(session, replier) {
     session.preCancelTitle = session.lastTitle;
     session.preCancelContent = session.lastContent;
     session.preCancelHelp = session.lastHelp;
-
-    var isBattle = session.screen.indexOf("BATTLE") !== -1;
-    var title = isBattle ? "⚠️ 탈주 확인" : "중단 확인";
-    var body = isBattle ? "정말 전장을 이탈하시겠습니까?\n매칭이 취소됩니다." : "현재 작업을 중단하고 메인 메뉴로 돌아갈까요?";
-    
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", title, body, "'예'/'아니오' 입력", true));
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "메뉴로 돌아갈까요?", "'예'/'아니오'", true));
 }
 
 function handleCancelConfirm(msg, session, replier) {
     if (msg === "예" || msg === "1" || msg === "확인") { 
         SessionManager.reset(session); 
         return replier.reply(UI.renderMenu(session)); 
-    } else if (msg === "아니오" || msg === "2") {
+    } else {
         session.screen = session.preCancelScreen;
-        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) {
-            return replier.reply(MatchingManager.renderDraftUI(session, session.preCancelContent, session.preCancelHelp));
-        }
         return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
     }
 }
 
 function reportError(e, msg, session, sender, replier) {
-    var errLog = "📍 위치: " + (session.screen || "알 수 없음") + 
-                 "\n💬 입력: " + msg + 
-                 "\n🛠 내용: " + e.message;
-    replier.reply(UI.make("알림", "오류 발생! 메뉴를 입력하여 복귀하세요.", "에러: " + e.lineNumber, true));
-    if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("🚨 시스템 오류", errLog, "Line: " + e.lineNumber, true));
+    var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n💬 입력: " + msg + "\n🛠 내용: " + e.message;
+    replier.reply(UI.make("알림", "오류 발생!", "에러: " + e.lineNumber, true));
+    if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류", errLog, "Line: " + e.lineNumber, true));
 }
