@@ -17,8 +17,8 @@ var Config = {
     LINE_CHAR: "━", 
     WRAP_LIMIT: 18, 
     DIVIDER_LINE: 14,
-    NAV_LEFT: "  ", 
-    NAV_RIGHT: " ", 
+    NAV_LEFT: "  ",
+    NAV_RIGHT: " ",
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"]
 };
 
