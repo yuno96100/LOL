@@ -393,16 +393,22 @@ if (session.screen === "LOGIN_ID") {
     return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
 }
 
+if (session.screen === "LOGIN_ID") { 
+    // 1. 입력받은 아이디가 데이터베이스에 있는지 즉시 확인
+    if (!Database.data[msg]) {
+        // 아이디가 없는 경우 비밀번호 단계로 가지 않고 여기서 중단
+        return replier.reply(UI.make("실패", "존재하지 않는 아이디입니다.", "아이디를 다시 확인하거나 회원가입을 해주세요."));
+    }
+
+    // 2. 아이디가 존재한다면 임시 저장 후 비밀번호 입력 단계로 이동
+    session.tempId = msg; 
+    return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증")); 
+}
+
 if (session.screen === "LOGIN_PW") {
     var userData = Database.data[session.tempId];
     
-    // 1. 먼저 아이디가 데이터베이스에 존재하는지 체크
-    if (!userData) {
-        // 아이디가 없는 경우
-        return replier.reply(UI.make("실패", "존재하지 않는 아이디입니다.", "아이디를 다시 확인해주세요."));
-    }
-    
-    // 2. 아이디가 존재한다면 비밀번호가 일치하는지 체크
+    // (이미 LOGIN_ID에서 아이디 체크를 했으므로 여기서는 비밀번호만 확인)
     if (userData.pw === msg) {
         // [로그인 성공]
         session.data = userData; 
@@ -411,7 +417,7 @@ if (session.screen === "LOGIN_PW") {
         
         return replier.reply(UI.make("성공", "성공적으로 로그인되었습니다.", "메뉴를 입력하여 시작하세요.", true));
     } else {
-        // [비밀번호 틀림]
+        // [비밀번호 실패]
         return replier.reply(UI.make("실패", "비밀번호가 일치하지 않습니다.", "다시 입력해주세요."));
     }
 }
