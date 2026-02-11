@@ -560,76 +560,81 @@ var GroupManager = {
 };
 
 // ━━━━━━━━ [9. 메인 핸들러] ━━━━━━━━
-Database.data = Database.load(); 
-SessionManager.load();         
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var hash = String(imageDB.getProfileHash()); 
     var session = SessionManager.get(room, hash, isGroupChat); 
     
+    // 기본적인 데이터 로드
+    Database.data = Database.load();
+
     try {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
-        if (session.screen === "CANCEL_CONFIRM") return handleCancelConfirm(msg, session, replier);
+        // 1. 중단 확인 처리
+        if (session.screen === "CANCEL_CONFIRM") {
+            return handleCancelConfirm(msg, session, replier);
+        }
 
+        // 2. 메뉴 호출 처리
         if (msg === "메뉴") {
             if (session.screen === "IDLE") return replier.reply(UI.renderMenu(session));
             return showCancelConfirm(session, replier);
         }
 
+        // 3. 전투 중 입력 가로채기
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
-        } else {
-            return handleGeneralMenu(msg, session, sender, replier);
         }
-
+        
+        // 4. 일반 로직 분기
+        return handleGeneralMenu(msg, session, sender, replier);
     } catch (e) {
         reportError(e, msg, session, sender, replier);
     }
 }
 
 function handleGeneralMenu(msg, session, sender, replier) {
-    if (msg === "취소" || msg === "이전") {
+    if (msg === "취소") return showCancelConfirm(session, replier);
+    
+    if (msg === "이전") {
         if (session.history && session.history.length > 0) {
             var prev = session.history.pop();
-            session.screen = prev.screen;
-            if (session.screen.indexOf("PROFILE") !== -1 || session.screen.indexOf("STAT") !== -1) {
-                return replier.reply(UI.go(session, session.screen, prev.title, prev.content, prev.help, true));
-            }
-            return replier.reply(UI.make(prev.title, prev.content, prev.help, false));
+            return replier.reply(UI.go(session, prev.screen, prev.title, prev.content, prev.help, true));
         }
+        SessionManager.reset(session);
         return replier.reply(UI.renderMenu(session));
     }
 
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
 
+    // 세션 타입별 핸들러 호출
     if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
     else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
     else UserManager.handle(msg, session, replier);
     
+    Database.save(Database.data);
     SessionManager.save();
 }
 
 function showCancelConfirm(session, replier) {
-    session.preCancelScreen = session.screen;
-    session.preCancelTitle = session.lastTitle;
-    session.preCancelContent = session.lastContent;
-    session.preCancelHelp = session.lastHelp;
-    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "메뉴로 돌아갈까요?", "'예'/'아니오'", true));
+    session.preCancel = { s: session.screen, t: session.lastTitle, c: session.lastContent, h: session.lastHelp };
+    return replier.reply(UI.go(session, "CANCEL_CONFIRM", "중단 확인", "메뉴로 이동할까요?", "'예' 입력 시 이동", true));
 }
 
 function handleCancelConfirm(msg, session, replier) {
-    if (msg === "예" || msg === "1" || msg === "확인") { 
-        SessionManager.reset(session); 
-        return replier.reply(UI.renderMenu(session)); 
-    } else {
-        session.screen = session.preCancelScreen;
-        return replier.reply(UI.make(session.preCancelTitle, session.preCancelContent, session.preCancelHelp, false));
+    if (msg === "예") {
+        SessionManager.reset(session);
+        return replier.reply(UI.renderMenu(session));
     }
+    // '예'가 아니면 이전 화면 정보를 꺼내서 복구
+    var p = session.preCancel;
+    session.screen = p.s;
+    return replier.reply(UI.make(p.t, p.c, p.h, false));
 }
 
 function reportError(e, msg, session, sender, replier) {
-    var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n💬 입력: " + msg + "\n🛠 내용: " + e.message;
-    replier.reply(UI.make("알림", "오류 발생!", "에러: " + e.lineNumber, true));
-    if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류", errLog, "Line: " + e.lineNumber, true));
+    var log = "📍위치: " + session.screen + "\n💬입력: " + msg + "\n🛠내용: " + e.message;
+    replier.reply(UI.make("오류", "문제가 발생했습니다.", "Line: " + e.lineNumber, true));
+}
