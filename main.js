@@ -188,7 +188,7 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [4. 배틀 매니저] ━━━━━━━━
+// ━━━━━━━━ [4. 배틀 매니저 - 역할군 제거 완결본] ━━━━━━━━
 var MatchingManager = {
     renderDraftUI: function(session, content, help) {
         var div = Utils.getFixedDivider();
@@ -201,62 +201,52 @@ var MatchingManager = {
     },
 
     initDraft: function(session, replier) {
-        session.battle = { playerUnit: null, aiUnit: null, selectedRole: null };
+        var d = Database.data[session.tempId];
+        var myUnits = d.collection.characters || [];
+        
+        // 배틀 데이터 초기화 (역할군 관련 변수 삭제)
+        session.battle = { playerUnit: null, aiUnit: null };
         session.history = []; 
-        session.screen = "BATTLE_DRAFT_CAT";
-        return replier.reply(this.renderDraftUI(session, "1. 보유 캐릭터", "'준비완료' 입력 시 게임을 시작합니다."));
+        
+        if (myUnits.length === 0) {
+            return replier.reply(UI.make("알림", "⚠️ 보유한 캐릭터가 없습니다.\n상점에서 먼저 구매해주세요."));
+        }
+
+        // 역할군 선택 단계를 건너뛰고 바로 캐릭터 선택 화면으로 설정
+        session.screen = "BATTLE_DRAFT_UNIT";
+        var content = "📢 출전할 캐릭터를 선택하세요.\n" + myUnits.map(function(u, i){ 
+            var s = UnitSpecs[u] || {hp:'-', atk:'-'};
+            return (i+1)+". "+u+" (HP:"+s.hp+"/ATK:"+s.atk+")"; 
+        }).join("\n");
+
+        return replier.reply(this.renderDraftUI(session, content, "번호 입력 또는 '준비완료'"));
     },
 
     handleDraft: function(msg, session, replier) {
+        // 취소/이전 시 메인 메뉴로 리셋
         if (msg === "취소" || msg === "이전") {
-            if (session.history && session.history.length > 0) {
-                var prev = session.history.pop();
-                session.screen = prev.screen;
-                return replier.reply(this.renderDraftUI(session, prev.content, prev.help));
-            } else {
-                return showCancelConfirm(session, replier);
-            }
+            SessionManager.reset(session);
+            return replier.reply(UI.renderMenu(session));
         }
 
         var d = Database.data[session.tempId];
-        var helpText = "'준비완료' 입력 시 게임을 시작합니다.";
+        var myUnits = d.collection.characters || [];
 
+        // 게임 시작 로직
         if (msg === "준비완료") {
             if (!session.battle.playerUnit) return replier.reply(UI.make("알림", "⚠️ 캐릭터를 선택하지 않았습니다."));
             return LoadingManager.start(session, replier);
         }
         
-        if (session.screen === "BATTLE_DRAFT_CAT" && msg === "1") {
-            session.history.push({ screen: "BATTLE_DRAFT_CAT", content: "1. 보유 캐릭터", help: helpText });
-            session.screen = "BATTLE_DRAFT_ROLE";
-            var content = "📢 역할군을 선택하세요.\n" + RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n");
-            return replier.reply(this.renderDraftUI(session, content, "역할군 번호를 입력하세요."));
-        }
-        
-        if (session.screen === "BATTLE_DRAFT_ROLE") {
-            var idx = parseInt(msg) - 1;
-            if (RoleKeys[idx]) {
-                var roleName = RoleKeys[idx];
-                var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
-                if (myUnits.length === 0) return replier.reply(UI.make("알림", "[" + roleName + "] 보유 캐릭터가 없습니다."));
-                
-                session.history.push({ screen: "BATTLE_DRAFT_ROLE", content: session.lastContent, help: session.lastHelp });
-                session.battle.selectedRole = roleName;
-                session.screen = "BATTLE_DRAFT_UNIT";
-                var content = "📢 [" + roleName + "] 캐릭터를 선택하세요.\n" + myUnits.map(function(u, i){ return (i+1)+". "+u; }).join("\n");
-                return replier.reply(this.renderDraftUI(session, content, "캐릭터 번호를 입력하세요."));
-            }
-        }
-        
+        // 캐릭터 선택 처리
         if (session.screen === "BATTLE_DRAFT_UNIT") {
-            var roleName = session.battle.selectedRole;
-            var myUnits = SystemData.roles[roleName].units.filter(function(u){ return d.collection.characters.indexOf(u) !== -1; });
             var idx = parseInt(msg) - 1;
-            
             if (myUnits[idx]) {
                 session.battle.playerUnit = myUnits[idx];
-                session.screen = "BATTLE_DRAFT_CAT"; 
-                return replier.reply(this.renderDraftUI(session, "✅ [" + myUnits[idx] + "] 선택 완료!\n\n1. 보유 캐릭터 (다시 선택)", helpText));
+                var content = "✅ [" + myUnits[idx] + "] 선택 완료!\n\n다른 번호를 입력하면 변경됩니다.\n준비가 끝났다면 '준비완료'를 입력하세요.";
+                return replier.reply(this.renderDraftUI(session, content, "'준비완료' 입력 시 시작"));
+            } else {
+                return replier.reply(UI.make("알림", "올바른 번호를 입력해주세요."));
             }
         }
     }
@@ -334,12 +324,13 @@ var AdminManager = {
     }
 };
 
-// ━━━━━━━━ [7. 유저 매니저] ━━━━━━━━
+// ━━━━━━━━ [7. 유저 매니저 - 상점 로직 완결본] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
         if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         var d = session.data;
 
+        // 회원가입 및 로그인 로직 (변화 없음)
         if (!d) {
             if (session.screen === "GUEST_MAIN") {
                 if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디(10자)", "가입"));
@@ -370,6 +361,7 @@ var UserManager = {
             return;
         }
 
+        // 메인 메뉴 처리
         if (session.screen === "USER_MAIN") {
             if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회"));
             if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 챔피언", "조회"));
@@ -379,11 +371,13 @@ var UserManager = {
             if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃", "종료", true)); }
         }
 
+        // 문의하기 처리
         if (session.screen === "USER_INQUIRY") {
             if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 유저 문의 (" + session.tempId + ")", "내용: " + msg, "유저 관리에서 답변 가능", true));
             SessionManager.reset(session); return replier.reply(UI.make("문의 완료", "전달되었습니다.", "메뉴 입력", true));
         }
 
+        // 컬렉션 처리 (기존 로직 동일)
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
                 var titles = d.collection.titles || ["뉴비"];
@@ -413,13 +407,10 @@ var UserManager = {
             }
         }
 
-        if (session.screen === "BATTLE_MAIN" && msg === "1") { MatchingManager.initDraft(session, replier); return; }
-        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) return MatchingManager.handleDraft(msg, session, replier);
-
+        // 스탯 강화 처리 (기존 로직 동일)
         if (session.screen === "PROFILE_VIEW") {
             if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "항목 번호 입력", "포인트: "+(d.point||0)));
         }
-
         if (session.screen === "STAT_UP_MENU") {
             var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
             var idx = parseInt(msg)-1;
@@ -437,29 +428,41 @@ var UserManager = {
             return replier.reply(UI.go(session, "PROFILE_VIEW", session.tempId, "", "조회", true));
         }
 
+        // [상점 개선] 역할군 선택 없이 전체 캐릭터 리스트 출력
         if (session.screen === "SHOP_MAIN") {
-            if (msg === "1") return replier.reply(UI.go(session, "SHOP_ROLES", "역할군", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "번호 선택"));
-        }
-        if (session.screen === "SHOP_ROLES") {
-            var rI = parseInt(msg)-1;
-            if (RoleKeys[rI]) {
-                session.selectedRole = RoleKeys[rI];
-                var uL = SystemData.roles[session.selectedRole].units.map(function(u, i){
-                    var o = d.collection.characters.indexOf(u) !== -1;
-                    return (i+1)+". "+u+(o?" [보유]":" (500G)");
+            if (msg === "1") {
+                var allUnits = Object.keys(UnitSpecs);
+                var list = "🛒 챔피언 판매 목록\n" + Utils.getFixedDivider() + "\n";
+                list += allUnits.map(function(u, i) {
+                    var owned = d.collection.characters.indexOf(u) !== -1;
+                    return (i+1)+". "+u+(owned ? " [보유]" : " (500G)");
                 }).join("\n");
-                return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole, uL, "구매할 번호 입력"));
+                
+                session.shopListCache = allUnits; // 선택을 위해 목록 저장
+                return replier.reply(UI.go(session, "SHOP_BUY_ACTION", "챔피언 상점", list, "구매할 번호 입력"));
             }
+            if (msg === "2") return replier.reply(UI.make("알림", "소모품 상점은 아직 준비 중입니다."));
         }
+
         if (session.screen === "SHOP_BUY_ACTION") {
-            var uI = parseInt(msg)-1; var us = SystemData.roles[session.selectedRole].units;
-            if (us[uI]) {
-                if (d.collection.characters.indexOf(us[uI]) !== -1) return replier.reply(UI.make("알림", "보유 중입니다."));
-                if (d.gold < 500) return replier.reply(UI.make("실패", "골드 부족"));
-                d.gold -= 500; d.collection.characters.push(us[uI]); Database.save(Database.data);
-                SessionManager.reset(session); return replier.reply(UI.make("구매 성공", us[uI] + " 영입 완료!", "메뉴 입력", true));
+            var units = session.shopListCache;
+            var idx = parseInt(msg)-1;
+            if (units && units[idx]) {
+                var target = units[idx];
+                if (d.collection.characters.indexOf(target) !== -1) return replier.reply(UI.make("알림", "이미 보유 중인 캐릭터입니다."));
+                if (d.gold < 500) return replier.reply(UI.make("실패", "골드가 부족합니다!"));
+                
+                d.gold -= 500;
+                d.collection.characters.push(target);
+                Database.save(Database.data);
+                SessionManager.reset(session);
+                return replier.reply(UI.make("구매 성공", target + " 영입 완료!", "메뉴를 입력하세요.", true));
             }
         }
+
+        // 대전 진입 처리
+        if (session.screen === "BATTLE_MAIN" && msg === "1") { MatchingManager.initDraft(session, replier); return; }
+        if (session.screen.indexOf("BATTLE_DRAFT") !== -1) return MatchingManager.handleDraft(msg, session, replier);
     }
 };
 
