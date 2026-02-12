@@ -73,11 +73,10 @@ var UI = {
         var scr = session.screen;
         
         if (!data) return this.make("알림", "유저 데이터를 찾을 수 없습니다", "메뉴로 이동", false);
-        if (!data.collection) data.collection = { titles: ["뉴비"], champions: [] };
 
         var title = "정보", head = "", body = "";
 
-        // [프로필/스탯/관리자 상세 화면 공통 헤더]
+        // [프로필/스탯/관리자 상세 화면 헤더 레이아웃]
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
@@ -85,10 +84,20 @@ var UI = {
             var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
             var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
             
-            head = "👤 계정: " + id + "\n🏅 칭호: [" + data.title + "]\n" +
-                   "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" + div + "\n" +
-                   "🏆 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n" +
-                   "🎯정확:" + st.acc + " | ⚡반응:" + st.ref + "\n🧘침착:" + st.com + " | 🧠직관:" + st.int + "\n✨포인트: " + (data.point || 0) + " P";
+            // [요청 반영] 전적과 스탯 사이에 레벨/경험치 배치
+            head = "👤 계정: " + id + "\n" +
+                   "🏅 칭호: [" + data.title + "]\n" +
+                   div + "\n" +
+                   "🏆 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                   "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
+                   div + "\n" +
+                   "🆙 레벨: Lv." + data.level + "\n" +
+                   "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                   div + "\n" +
+                   "🎯정확:" + st.acc + " | ⚡반응:" + st.ref + "\n" +
+                   "🧘침착:" + st.com + " | 🧠직관:" + st.int + "\n" +
+                   "✨포인트: " + (data.point || 0) + " P";
             
             if (scr === "PROFILE_VIEW") body = "1. 능력치 강화";
             else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
@@ -96,13 +105,13 @@ var UI = {
         }
         else if (scr.indexOf("SHOP") !== -1) {
             title = "상점";
-            var ownedCount = (data.collection.champions) ? data.collection.champions.length : 0;
+            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
             head = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n📦 보유 챔피언: " + ownedCount + " / " + SystemData.champions.length;
             if (scr === "SHOP_MAIN") body = "1. 챔피언 영입";
         }
         else if (scr.indexOf("COL") !== -1) {
             title = "컬렉션";
-            var ownedCount = (data.collection.champions) ? data.collection.champions.length : 0;
+            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
             head = "🏅 현재 칭호: [" + data.title + "]\n🏆 수집율: " + Math.floor((ownedCount / SystemData.champions.length) * 100) + "%";
             if (scr === "COL_MAIN") body = "1. 보유 칭호\n2. 보유 챔피언";
         }
@@ -110,7 +119,7 @@ var UI = {
         var fullContent = head + (body ? "\n" + div + "\n" + body : "") + (content ? "\n" + div + "\n" + content : "");
         return this.make(title, fullContent, help, false);
     },
-
+    
     go: function(session, screen, title, content, help) {
         session.screen = screen;
         var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL"];
