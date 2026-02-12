@@ -211,35 +211,54 @@ var AdminManager = {
 // ━━━━━━━━ [5. 매니저: 개인톡(User) 시스템] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
+        // 이전/취소 명령어는 메인 핸들러에서 가로채므로 여기서는 데이터 동기화만 체크
+        if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
         var d = session.data;
+
         if (!d) {
             switch(session.screen) {
-                case "GUEST_MAIN": 
-                    if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "아이디를 입력하세요. (최대 10자)", "가입"));
+                case "GUEST_MAIN":
+                    if (msg === "1") return replier.reply(UI.go(session, "JOIN_ID", "회원가입", "사용할 아이디를 입력하세요.\n(최대 10자)", "가입"));
                     if (msg === "2") return replier.reply(UI.go(session, "LOGIN_ID", "인증", "아이디를 입력하세요.", "로그인"));
-                    if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "비회원 문의", "관리자에게 보낼 내용을 입력하세요.", "내용 입력"));
+                    if (msg === "3") return replier.reply(UI.go(session, "GUEST_INQUIRY", "문의", "내용을 입력하세요.", "전송"));
                     break;
-                case "GUEST_INQUIRY":
-                    Api.replyRoom(Config.AdminRoom, UI.make("비회원 문의", "방: " + session.room + "\n내용: " + msg, "회신 불가", true));
-                    SessionManager.reset(session); return replier.reply(UI.make("완료", "문의가 전송되었습니다.", "메뉴 복귀", true));
-                case "JOIN_ID": 
-                    // [핵심] 아이디(닉네임) 길이 10자 제한 로직
-                    if (msg.length > 10) return replier.reply(UI.make("오류", "아이디는 10글자까지만\n가능합니다. ("+msg.length+"자 입력함)", "재입력"));
-                    if (Database.data[msg]) return replier.reply(UI.make("오류", "이미 존재하는 ID", "재입력"));
-                    session.tempId = msg; return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호 설정", "보안"));
-                case "JOIN_PW": 
-                    Database.data[session.tempId] = Database.getInitData(msg); Database.save(Database.data);
+
+                case "JOIN_ID":
+                    // 아이디 10자 제한 및 중복 체크
+                    if (msg.length > 10) return replier.reply(UI.make("오류", "아이디는 10자 이내여야 합니다.\n(현재: " + msg.length + "자)", "재입력"));
+                    if (Database.data[msg]) return replier.reply(UI.make("오류", "이미 존재하는 아이디입니다.", "다른 아이디 입력"));
+                    
+                    session.tempId = msg; 
+                    return replier.reply(UI.go(session, "JOIN_PW", "회원가입", "비밀번호를 설정하세요.", "보안"));
+
+                case "JOIN_PW":
+                    // 데이터 생성 및 세션 동기화
+                    Database.data[session.tempId] = Database.getInitData(msg); 
+                    Database.save(Database.data);
+                    
+                    // 가입 성공 즉시 세션에 데이터 주입하여 로그인 상태로 변경
                     session.data = Database.data[session.tempId];
-                    replier.reply(UI.make("성공", "가입 성공!\n환영합니다, " + session.tempId + "님.", "로그인 완료", true));
-                    SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
-                case "LOGIN_ID": session.tempId = msg; return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호 입력", "인증"));
-                case "LOGIN_PW": 
+                    
+                    // 관리자 알림
+                    var joinLog = "🆕 [신규 가입]\nID: " + session.tempId + "\n시간: " + new Date().toLocaleString();
+                    Api.replyRoom(Config.AdminRoom, joinLog);
+
+                    SessionManager.reset(session);
+                    replier.reply(UI.make("성공", "가입을 환영합니다!\n" + session.tempId + "님으로 로그인되었습니다.", "환영합니다", true));
+                    return replier.reply(UI.renderMenu(session));
+
+                case "LOGIN_ID": 
+                    session.tempId = msg; 
+                    return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "인증"));
+
+                case "LOGIN_PW":
                     if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) {
-                        session.data = Database.data[session.tempId];
-                        replier.reply(UI.make("성공", "반갑습니다, " + session.tempId + "님!", "메뉴 로드", true));
-                        SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
+                        session.data = Database.data[session.tempId]; // 로그인 동기화
+                        SessionManager.reset(session);
+                        replier.reply(UI.make("성공", "로그인 성공!\n" + session.tempId + "님 반갑습니다.", "메뉴 로드", true));
+                        return replier.reply(UI.renderMenu(session));
                     }
-                    return replier.reply(UI.make("실패", "인증 정보 오류", "재시도"));
+                    return replier.reply(UI.make("실패", "아이디 또는 비밀번호가\n일치하지 않습니다.", "재시도"));
             }
             return;
         }
@@ -313,47 +332,62 @@ var UserManager = {
 };
 
 // ━━━━━━━━ [6. 단체방/메인 응답 핸들러] ━━━━━━━━
-Database.data = Database.load(); SessionManager.load();         
+Database.data = Database.load(); 
+SessionManager.load();          
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
-        if (!msg) return; 
+        if (!msg || msg.indexOf(".업데이트") !== -1) return;
         var hash = String(imageDB.getProfileHash()); 
         var session = SessionManager.get(room, hash, isGroupChat); 
         msg = msg.trim(); 
-        
-        if (msg === "메뉴" || msg === "취소") {
-            if (isGroupChat) {
-                for (var k in SessionManager.sessions) {
-                    var s = SessionManager.sessions[k];
-                    if (s.type === "DIRECT" && s.tempId === sender && s.data) {
-                        session.data = s.data; session.tempId = s.tempId; break;
-                    }
-                }
+
+        // 대기 화면 정의 (이 상태에서는 '취소'가 작동하지 않고 '메뉴'만 작동)
+        var standbyScreens = ["IDLE", "USER_MAIN", "GUEST_MAIN", "ADMIN_MAIN", "GROUP_MAIN"];
+        var isStandby = standbyScreens.indexOf(session.screen) !== -1;
+
+        // 1. [메뉴] 명령어: 대기 상태에서만 작동
+        if (msg === "메뉴") {
+            if (isStandby) {
+                return replier.reply(UI.renderMenu(session));
             }
-            SessionManager.reset(session); return replier.reply(UI.renderMenu(session)); 
+            return; // 진행 중일 때는 메뉴 명령어 무시 (취소를 유도)
         }
 
+        // 2. [취소] 명령어: 작업 진행 중일 때만 작동 (즉시 취소 문구 출력)
+        if (msg === "취소") {
+            if (!isStandby) {
+                replier.reply(UI.make("작업 취소", "⏹ 진행 중이던 작업이 취소되었습니다.", "메인 메뉴로 돌아갑니다."));
+                SessionManager.reset(session); 
+                return replier.reply(UI.renderMenu(session));
+            }
+            return; // 이미 대기 상태면 무시
+        }
+
+        // 3. [이전] 명령어
         if (msg === "이전" && session.history && session.history.length > 0) {
-            var p = session.history.pop(); session.screen = p.screen; session.lastTitle = p.title;
-            return replier.reply(UI.renderMenu(session));
-        }
-
-        // 단톡방 세션 동기화
-        if (isGroupChat && room === Config.GroupRoom) {
-            for (var key in SessionManager.sessions) {
-                var target = SessionManager.sessions[key];
-                if (target.type === "DIRECT" && target.tempId === sender && target.data) {
-                    session.data = target.data; session.tempId = target.tempId; break;
-                }
+            var p = session.history.pop();
+            session.screen = p.screen; session.lastTitle = p.title; 
+            session.lastContent = p.content; session.lastHelp = p.help;
+            var root = (standbyScreens.indexOf(p.screen) !== -1);
+            
+            if (p.screen.indexOf("PROFILE") !== -1 || p.screen.indexOf("STAT") !== -1 || p.screen === "ADMIN_USER_DETAIL") {
+                return replier.reply(UI.renderProfile(session.targetUser || session.tempId, Database.data[session.targetUser || session.tempId], p.help, p.content, root, session));
             }
+            return replier.reply(UI.make(p.title, p.content, p.help, root));
         }
 
         if (session.screen === "IDLE") return;
-        if (session.type === "ADMIN" && hash === Config.AdminHash) return AdminManager.handle(msg, session, replier);
-        UserManager.handle(msg, session, replier);
+
+        // 4. 각 권한별 핸들러 호출
+        if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
+        else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
+        else UserManager.handle(msg, session, replier);
+        
         SessionManager.save();
-    } catch (e) { 
-        Api.replyRoom(Config.AdminRoom, "오류: " + e.message + " (L:" + e.lineNumber + ")"); 
+
+    } catch (e) {
+        replier.reply(UI.make("⚠️ 오류", "시스템 런타임 에러", "'메뉴' 입력", true));
+        Api.replyRoom(Config.AdminRoom, "에러: " + e.message + " (L:" + e.lineNumber + ")");
     }
 }
