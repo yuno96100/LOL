@@ -362,24 +362,24 @@ var UserManager = {
                 return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "비밀번호 입력")); 
             }
 if (session.screen === "LOGIN_PW") {
-                var userData = Database.data[session.tempId];
-                if (userData && String(userData.pw).trim() === String(msg).trim()) {
-                    // 1. 세션 정보 업데이트
-                    session.data = userData; 
-                    session.isLoggedIn = true; 
-                    SessionManager.save(); 
-                    
-                    // 2. 로그인 성공 알림 발송 (첫 번째 메시지)
-                    replier.reply(UI.make("인증 성공", "🔓 [" + session.tempId + "]님, 본인 인증에 성공하였습니다.", "잠시 후 메인 메뉴가 출력됩니다..."));
-                    
-                    // 3. 약간의 지연 후 메인 메뉴 발송 (두 번째 메시지)
-                    // java.lang.Thread.sleep(800); // 필요 시 아주 짧은 대기 시간을 줄 수 있습니다.
-                    
-                    return replier.reply(UI.renderMenu(session));
-                } else {
-                    return replier.reply(UI.make("인증 실패", "❌ 비밀번호가 일치하지 않습니다.", "다시 입력하시거나 '메뉴'를 입력해 처음으로 돌아가세요."));
-                }
+            var userData = Database.data[session.tempId];
+            if (userData && String(userData.pw).trim() === String(msg).trim()) {
+                // 1. 데이터 및 세션 확정
+                session.data = userData; 
+                session.isLoggedIn = true; 
+                session.screen = "USER_MAIN"; // 상태를 메인으로 즉시 변경
+                SessionManager.save(); 
+
+                // 2. [첫 번째 메시지] 성공 알림창 출력
+                replier.reply(UI.make("인증 성공", "🔓 [" + session.tempId + "]님, 본인 인증에 성공하였습니다!", "잠시 후 메인 메뉴가 나타납니다."));
+                
+                // 3. [두 번째 메시지] 메인 메뉴 즉시 출력
+                // 별도의 '메뉴' 입력 없이도 바로 메인 메뉴판을 띄워줍니다.
+                return replier.reply(UI.renderMenu(session));
+            } else {
+                return replier.reply(UI.make("인증 실패", "❌ 비밀번호가 일치하지 않습니다.", "다시 입력하시거나 '메뉴'를 입력하세요."));
             }
+        }
             if (session.screen === "GUEST_INQUIRY") {
                 if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("📩 게스트 문의", "내용: " + msg, "회신 불가"));
                 return replier.reply(UI.make("문의 완료", "전달되었습니다.", "검토 예정"));
