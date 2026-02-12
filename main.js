@@ -15,7 +15,7 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 14, // 요청하신 14개로 수정
-    WRAP_LIMIT: 18, // 요청하신 18자 줄바꿈 한도
+    WRAP_LIMIT: 16, // 요청하신 18자 줄바꿈 한도
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"],
     TIMEOUT: 300000 
 };
