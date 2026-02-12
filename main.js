@@ -503,35 +503,58 @@ var GroupManager = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Database.data = Database.load(); 
-SessionManager.load();         
+SessionManager.load();          
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     var hash = String(imageDB.getProfileHash()); 
     var session = SessionManager.get(room, hash, isGroupChat); 
+    
     try {
+        // 메시지가 없거나 업데이트 명령인 경우 무시
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
+        
+        // 입력값 양끝 공백 제거
         msg = msg.trim(); 
-        if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
+
+        // 대전 드래프트 화면인 경우 매칭 매니저가 우선 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
-        } else {
+        } 
+        // 그 외 모든 일반적인 상황은 제네럴 핸들러에서 처리
+        else {
             return handleGeneralMenu(msg, session, sender, replier);
         }
     } catch (e) {
+        // 예외 발생 시 에러 리포트 실행
         reportError(e, msg, session, sender, replier);
     }
 }
 
 function handleGeneralMenu(msg, session, sender, replier) {
+    // 로딩 중이거나 대기 상태일 때는 입력을 무시하여 꼬임 방지
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
-    if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
-    else if (session.type === "GROUP") GroupManager.handle(msg, session, replier);
-    else UserManager.handle(msg, session, replier);
+    
+    // 권한(세션 타입)에 따라 각 매니저에게 핸들링 위임
+    if (session.type === "ADMIN") {
+        AdminManager.handle(msg, session, replier);
+    } else if (session.type === "GROUP") {
+        GroupManager.handle(msg, session, replier);
+    } else {
+        UserManager.handle(msg, session, replier);
+    }
+    
+    // 모든 처리가 끝난 후 바뀐 세션 상태를 저장
     SessionManager.save();
 }
 
 function reportError(e, msg, session, sender, replier) {
     var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n💬 입력: " + msg + "\n🛠 내용: " + e.message;
-    replier.reply(UI.make("알림", "오류 발생!", "에러 확인 필요"));
-    if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, UI.make("🚨 오류", errLog, "Line: " + e.lineNumber));
+    
+    // 유저에게 오류 알림
+    replier.reply(UI.make("알림", "시스템 오류가 발생했습니다.", "잠시 후 다시 시도해주세요."));
+    
+    // 관리자 방으로 상세 에러 로그 전송
+    if (Config.AdminRoom) {
+        Api.replyRoom(Config.AdminRoom, UI.make("🚨 시스템 런타임 오류", errLog, "Line: " + e.lineNumber));
+    }
 }
