@@ -326,7 +326,8 @@ var LoginManager = {
                 return replier.reply(UI.renderMenu(session));
             case "LOGIN_ID":
                 session.tempId = msg;
-                return replier.reply(UI.go(session, "인증", "본인 확인", "비밀번호 입력", "보안 인증"));
+                // [수정] "인증" 대신 "LOGIN_PW"로 일치시켜야 다음 switch문에서 인식합니다.
+                return replier.reply(UI.go(session, "LOGIN_PW", "본인 확인", "비밀번호 입력", "보안 인증"));
             case "LOGIN_PW":
                 if (Database.data[session.tempId] && Database.data[session.tempId].pw === msg) {
                     session.data = Database.data[session.tempId];
