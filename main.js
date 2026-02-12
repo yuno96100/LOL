@@ -1,8 +1,8 @@
 /**
  * [main.js] v0.0.19
- * 1. 문의 관리: 문의 내역 없을 시 예외 문구 출력 및 메뉴 숨김
- * 2. UI 최적화: 관리자 상세 조회 시 불필요한 상세 안내 문구 제거
- * 3. 안정성: 모든 매니저 로직 간의 상태 동기화 유지
+ * 1. 문의 관리: 문의 유무에 따른 동적 UI (없을 시 안내문구만 출력)
+ * 2. UI 최적화: 상세 내용 문구 제거 및 프로필/관리자 상세 UI 일치화
+ * 3. 플래그 시스템: 세션 기반 hasInquiryFlag 도입으로 상태 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
@@ -75,6 +75,7 @@ var UI = {
 
         var title = "정보", head = "", body = "";
 
+        // 이미지 프로필 레이아웃 반영
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL" || scr === "ADMIN_INQUIRY_VIEW") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
@@ -85,7 +86,7 @@ var UI = {
             head = "👤 계정: " + id + "\n" +
                    "🏅 칭호: [" + data.title + "]\n" +
                    div + "\n" +
-                   "🏆 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
                    "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
                    "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
                    div + "\n" +
@@ -104,13 +105,13 @@ var UI = {
             }
             else if (scr === "ADMIN_INQUIRY_VIEW") {
                 title = "문의 내역";
-                // 문의가 있을 때만 답변 버튼 출력, 없을 시 안내 문구만 출력
+                // 문의 존재 여부에 따른 동적 출력
                 if (session.hasInquiryFlag) {
-                    body = "✉️ 새로운 문의가 접수되어 있습니다.";
+                    body = "✉️ 접수된 문의가 있습니다.";
                     content = "1. 답변 작성하기";
                 } else {
                     body = "📭 접수된 문의 내역이 없습니다.";
-                    content = ""; 
+                    content = ""; // 답변 메뉴 숨김
                 }
             }
         }
@@ -333,16 +334,18 @@ var AdminManager = {
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
                 if (msg === "2") {
-                    // 문의 진입 전 상태 체크
-                    var hasInq = data && (data.inquiryCount > 0);
-                    session.hasInquiryFlag = hasInq; // 플래그 기록
+                    // 문의 내역 진입 전 실제 데이터 확인 및 플래그 설정
+                    var currentInq = (data && data.inquiryCount > 0);
+                    session.hasInquiryFlag = currentInq;
+                    // 진입 시 알림(🔔) 제거
                     if(data) { data.inquiryCount = 0; Database.save(Database.data); }
-                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", hasInq ? "답변 여부 선택" : "내역 없음"));
+                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", currentInq ? "답변 여부 선택" : "내역 없음"));
                 }
                 if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "해당 계정을 초기화하시겠습니까?", "'확인' 입력 시 실행"));
                 if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "해당 계정을 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
                 break;
             case "ADMIN_INQUIRY_VIEW":
+                // 플래그가 true(문의 있음)일 때만 1번 선택 시 답변창 이동
                 if (msg === "1" && session.hasInquiryFlag) {
                     return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저에게 보낼 내용 입력", "내용 입력 후 전송"));
                 }
