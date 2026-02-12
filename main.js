@@ -137,8 +137,22 @@ var UI = {
 // ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
 var Database = {
     data: {},
-    load: function() { try { return JSON.parse(FileStream.read(Config.DB_PATH)); } catch(e) { return {}; } },
-    save: function(d) { this.data = d; FileStream.write(Config.DB_PATH, JSON.stringify(d, null, 4)); },
+    load: function() { 
+        try { 
+            var file = FileStream.read(Config.DB_PATH);
+            if (file == null) return {}; 
+            var parsed = JSON.parse(file);
+            // 데이터 로드 성공 시 관리자 방에 알림 (테스트용)
+            // Api.replyRoom(Config.AdminRoom, "✅ 데이터 로드 성공: " + Object.keys(parsed).length + "명");
+            return parsed;
+        } catch(e) { 
+            return {}; 
+        } 
+    },
+    save: function(d) { 
+        this.data = d; 
+        FileStream.write(Config.DB_PATH, JSON.stringify(d, null, 4)); 
+    },
     getInitData: function(pw) { 
         return { pw: pw, gold: 1000, level: 1, exp: 0, lp: 0, win: 0, lose: 0, title: "뉴비", point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, collection: { titles: ["뉴비"], champions: [] }, inquiryCount: 0 }; 
     },
@@ -416,7 +430,12 @@ var UserManager = {
 };
 
 // ━━━━━━━━ [9. 메인 응답 핸들러] ━━━━━━━━
-Database.data = Database.load(); SessionManager.load();
+try {
+    Database.data = Database.load(); 
+    SessionManager.load();
+} catch(e) {
+    // 로드 실패 시 관리자 방에 즉시 알림
+    // Api.replyRoom(Config.AdminRoom, "🚨 초기화 오류: " + e.message);
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
