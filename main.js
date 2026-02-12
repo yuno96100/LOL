@@ -72,19 +72,23 @@ var UI = {
         var div = Utils.getFixedDivider();
         var scr = session.screen;
         
+      renderCategoryUI: function(session, help, content) {
+        var id = session.targetUser || session.tempId;
+        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
+        var div = Utils.getFixedDivider();
+        var scr = session.screen;
+        
         if (!data) return this.make("알림", "유저 데이터를 찾을 수 없습니다", "메뉴로 이동", false);
 
         var title = "정보", head = "", body = "";
 
-        // [프로필/스탯/관리자 상세 화면 헤더 레이아웃]
-        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
+        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL" || scr === "ADMIN_INQUIRY_VIEW") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
             var win = data.win || 0, lose = data.lose || 0, total = win + lose;
             var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
             var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
             
-            // [요청 반영] 전적과 스탯 사이에 레벨/경험치 배치
             head = "👤 계정: " + id + "\n" +
                    "🏅 칭호: [" + data.title + "]\n" +
                    div + "\n" +
@@ -101,7 +105,15 @@ var UI = {
             
             if (scr === "PROFILE_VIEW") body = "1. 능력치 강화";
             else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
-            else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 답변 전송\n3. 초기화\n4. 계정 삭제";
+            else if (scr === "ADMIN_USER_DETAIL") {
+                var alarm = (data.inquiryCount > 0) ? " [🔔" + data.inquiryCount + "]" : "";
+                body = "1. 정보 수정\n2. 문의 내역" + alarm + "\n3. 초기화\n4. 계정 삭제";
+            }
+            else if (scr === "ADMIN_INQUIRY_VIEW") {
+                title = "문의 내역";
+                // 실제 DB에 문의 내용을 저장하는 구조가 아닐 경우, 알림 제거를 우선 처리합니다.
+                body = "✉️ 미확인 문의: " + (data.inquiryCount || 0) + "건\n\n1. 답변 작성하기\n(확인 시 알림이 사라집니다)";
+            }
         }
         else if (scr.indexOf("SHOP") !== -1) {
             title = "상점";
@@ -307,6 +319,7 @@ var UserActions = {
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
+        var data = Database.data[session.targetUser];
         switch(session.screen) {
             case "ADMIN_MAIN":
                 if (msg === "1") return AdminActions.showSysInfo(session, replier);
@@ -321,9 +334,16 @@ var AdminManager = {
                 break;
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
-                if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저 답변 내용 입력", "전송 대기"));
+                if (msg === "2") {
+                    // [변경] 문의를 읽는 시점에 알림 초기화
+                    if(data) { data.inquiryCount = 0; Database.save(Database.data); }
+                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", "답변 여부 선택"));
+                }
                 if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "해당 계정을 초기화하시겠습니까?", "'확인' 입력 시 실행"));
                 if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "해당 계정을 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
+                break;
+            case "ADMIN_INQUIRY_VIEW":
+                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저에게 보낼 내용 입력", "내용 입력 후 전송"));
                 break;
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
             case "ADMIN_EDIT_MENU":
