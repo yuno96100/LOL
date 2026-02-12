@@ -175,53 +175,66 @@ var AdminActions = {
         var used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
         replier.reply(UI.go(session, "ADMIN_SYS_INFO", "시스템 정보", "📟 메모리: " + used + "MB\n👥 유저: " + Object.keys(Database.data).length + "명\n🛡️ 버전: " + Config.Version, "조회 완료"));
     },
+    
     showUserList: function(session, replier) {
         session.userListCache = Object.keys(Database.data);
         var list = session.userListCache.map(function(id, i){ 
-            var badge = (Database.data[id].inquiryCount > 0) ? " [🔔문의]" : "";
+            var badge = (Database.data[id].inquiryCount > 0) ? " [🔔" + Database.data[id].inquiryCount + "]" : "";
             return (i+1) + ". " + id + badge; 
         }).join("\n");
         replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", list, "관리할 유저 선택"));
     },
+
+    // [개선] 문의 상세 확인
     showInquiryDetail: function(session, replier) {
         var d = Database.data[session.targetUser];
-        var lastMsg = d.lastInquiry || "내역 없음";
-        replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "문의 내역 확인", "최근 문의:\n" + lastMsg, "답변 내용을 입력하면 전송됩니다"));
+        var lastMsg = d.lastInquiry || "접수된 문의 내역이 없습니다.";
+        replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "문의 내역 확인", "💬 최근 문의 내용:\n" + lastMsg, "이곳에 답변을 입력하면 전송됩니다."));
     },
 
+    // [개선] 답변 전송 및 알림 초기화
     submitAnswer: function(msg, session, replier) {
         var targetRoom = SessionManager.findUserRoom(session.targetUser);
-        Api.replyRoom(targetRoom, UI.make("운영진 회신", "문의에 대한 답변입니다\n\n" + msg, "소환사의 협곡 드림", true));
-        // 답변 완료 시 알림 수치 초기화
+        Api.replyRoom(targetRoom, UI.make("운영진 회신", "문의하신 내용에 대한 답변입니다.\n\n" + msg, "소환사의 협곡 팀", true));
+        
+        // 답변 완료 시 알림 수치 및 배지 초기화
         if(Database.data[session.targetUser]) { 
             Database.data[session.targetUser].inquiryCount = 0; 
             Database.save(Database.data); 
         }
+        
         SessionManager.reset(session);
-        replier.reply(UI.go(session, "SUCCESS_IDLE", "전송 완료", "알림이 해제되었습니다", "메인 복귀"));
+        replier.reply(UI.go(session, "SUCCESS_IDLE", "전송 완료", "알림이 해제되었습니다.", "메인으로 복귀"));
     },
 
     editUserData: function(msg, session, replier) {
         var val = parseInt(msg);
-        if (isNaN(val)) return replier.reply(UI.make("오류", "숫자만 입력 가능", "다시 입력"));
-        Database.data[session.targetUser][session.editType] = val; Database.save(Database.data);
-        SessionManager.reset(session); replier.reply(UI.go(session, "SUCCESS_IDLE", "수정 완료", "데이터가 반영되었습니다", "메인 복귀"));
-    }
-};
+        if (isNaN(val)) return replier.reply(UI.make("오류", "숫자만 입력 가능합니다.", "다시 입력"));
+        Database.data[session.targetUser][session.editType] = val; 
+        Database.save(Database.data);
+        SessionManager.reset(session); 
+        replier.reply(UI.go(session, "SUCCESS_IDLE", "수정 완료", "데이터가 정상 반영되었습니다.", "메인으로 복귀"));
+    },
+
     resetConfirm: function(msg, session, replier) {
         if (msg === "확인") {
             var pw = Database.data[session.targetUser].pw;
-            Database.data[session.targetUser] = Database.getInitData(pw); Database.save(Database.data);
-            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "데이터가 초기화되었습니다", "관리자 조치", true));
-            SessionManager.reset(session); replier.reply(UI.go(session, "SUCCESS_IDLE", "초기화 완료", "성공했습니다", "메인 복귀"));
+            Database.data[session.targetUser] = Database.getInitData(pw); 
+            Database.save(Database.data);
+            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "데이터가 초기화되었습니다.", "관리자 조치", true));
+            SessionManager.reset(session); 
+            replier.reply(UI.go(session, "SUCCESS_IDLE", "초기화 완료", "성공했습니다.", "메인으로 복귀"));
         }
     },
+
     deleteConfirm: function(msg, session, replier) {
         if (msg === "삭제확인") {
-            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "계정이 삭제되었습니다", "관리자 조치", true));
-            delete Database.data[session.targetUser]; Database.save(Database.data);
-            SessionManager.forceLogout(session.targetUser); SessionManager.reset(session);
-            replier.reply(UI.go(session, "SUCCESS_IDLE", "삭제 완료", "영구 삭제되었습니다", "메인 복귀"));
+            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "계정이 삭제되었습니다.", "관리자 조치", true));
+            delete Database.data[session.targetUser]; 
+            Database.save(Database.data);
+            SessionManager.forceLogout(session.targetUser); 
+            SessionManager.reset(session);
+            replier.reply(UI.go(session, "SUCCESS_IDLE", "삭제 완료", "영구 삭제되었습니다.", "메인으로 복귀"));
         }
     }
 };
