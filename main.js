@@ -1,14 +1,14 @@
 /**
- * [main.js] v0.0.09_Fixed_Navigation
- * 1. 자동 줄바꿈 엔진: Utils.wrapText (16자 한도)
- * 2. 레이아웃 고정: 구분선 14개 (FIXED_LINE)
- * 3. 내비게이션 최적화: '이전' 시 상위 카테고리 이동 적용
- * 4. 텍스트 정제: 문장 끝 마침표 제거
+ * [main.js] v0.0.10_Full_NoRoles
+ * 1. 역할군 기능 완전 삭제: 상점 진입 시 전체 챔피언 목록 즉시 출력
+ * 2. 내비게이션 최적화: '이전' 입력 시 직전 기록이 아닌 상위 카테고리로 강제 이동
+ * 3. 텍스트 정제: 모든 시스템 메시지 마침표(.) 제거
+ * 4. 자동 줄바꿈: 16자 한도 적용 및 구분선 14개 고정
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
-    Version: "v0.0.09",
+    Version: "v0.0.10",
     Prefix: ".",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
@@ -23,7 +23,7 @@ var Config = {
 
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
-    getNav: function() { return " " + Config.NAV_ITEMS.join("  ") + " "; },
+    getNav: function() { return " " + Config.NAV_ITEMS.join("    ") + " "; },
     
     wrapText: function(str) {
         if (!str) return "";
@@ -52,17 +52,12 @@ var TierData = [
 ];
 
 var SystemData = {
-    roles: {
-        "탱커": { icon: "🛡️", champions: ["알리스타", "말파이트", "레오나"] },
-        "전사": { icon: "⚔️", champions: ["가렌", "다리우스", "잭스"] },
-        "암살자": { icon: "🗡️", champions: ["제드", "카타리나", "탈론"] },
-        "마법사": { icon: "🔮", champions: ["럭스", "아리", "빅토르"] },
-        "원거리딜러": { icon: "🏹", champions: ["애쉬", "베인", "카이사"] },
-        "서포터": { icon: "✨", champions: ["소라카", "유미", "쓰레쉬"] }
-    }
+    champions: [
+        "알리스타", "말파이트", "레오나", "가렌", "다리우스", "잭스", 
+        "제드", "카타리나", "탈론", "럭스", "아리", "빅토르", 
+        "애쉬", "베인", "카이사", "소라카", "유미", "쓰레쉬"
+    ]
 };
-
-var RoleKeys = Object.keys(SystemData.roles);
 
 function getTierInfo(lp) {
     lp = lp || 0;
@@ -250,21 +245,14 @@ var UserActions = {
     handleShop: function(msg, session, replier) {
         var d = session.data;
         if (session.screen === "SHOP_MAIN" && msg === "1") {
-            return replier.reply(UI.go(session, "SHOP_ROLES", "카테고리", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "카테고리를 선택해 주십시오"));
-        }
-        if (session.screen === "SHOP_ROLES") {
-            var rIdx = parseInt(msg) - 1;
-            if (RoleKeys[rIdx]) {
-                session.selectedRole = RoleKeys[rIdx];
-                var uList = SystemData.roles[session.selectedRole].champions.map(function(u, i) {
-                    var owned = d.collection.champions.indexOf(u) !== -1;
-                    return (i+1) + ". " + u + (owned ? " [보유]" : " (500G)");
-                }).join("\n");
-                return replier.reply(UI.go(session, "SHOP_BUY_ACTION", session.selectedRole + " 상점", uList, "구매할 번호를 입력해 주십시오"));
-            }
+            var uList = SystemData.champions.map(function(u, i) {
+                var owned = d.collection.champions.indexOf(u) !== -1;
+                return (i+1) + ". " + u + (owned ? " [보유]" : " (500G)");
+            }).join("\n");
+            return replier.reply(UI.go(session, "SHOP_BUY_ACTION", "챔피언 영입", uList, "구매할 번호를 입력해 주십시오"));
         }
         if (session.screen === "SHOP_BUY_ACTION") {
-            var units = SystemData.roles[session.selectedRole].champions, uIdx = parseInt(msg) - 1;
+            var units = SystemData.champions, uIdx = parseInt(msg) - 1;
             if (units[uIdx]) {
                 var target = units[uIdx];
                 if (d.collection.champions.indexOf(target) !== -1) return replier.reply(UI.make("구매 불가", "이미 보유 중인 챔피언입니다", "다른 대상을 선택해 주십시오"));
@@ -374,7 +362,7 @@ var UserManager = {
                 break;
             case "USER_INQUIRY": return UserActions.handleInquiry(msg, session, replier);
             case "COL_MAIN": case "COL_TITLE_ACTION": return UserActions.showCollection(msg, session, replier);
-            case "SHOP_MAIN": case "SHOP_ROLES": case "SHOP_BUY_ACTION": return UserActions.handleShop(msg, session, replier);
+            case "SHOP_MAIN": case "SHOP_BUY_ACTION": return UserActions.handleShop(msg, session, replier);
             case "BATTLE_MAIN": case "BATTLE_AI_SEARCH": case "BATTLE_PREP": return UserActions.handleBattle(msg, session, replier);
         }
     }
@@ -398,30 +386,22 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session)); 
         }
 
-        // [상위 카테고리 이동형 '이전' 로직]
         if (msg === "이전") {
             var curr = session.screen;
-            // 게스트 관련
             if (curr.indexOf("JOIN_") !== -1 || curr.indexOf("LOGIN_") !== -1 || curr === "GUEST_INQUIRY") {
                 return replier.reply(UI.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "메뉴를 선택해 주십시오"));
             }
-            // 유저 컬렉션/상점/대전
             if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") {
                 return replier.reply(UI.go(session, "COL_MAIN", "컬렉션", "1. 보유 칭호\n2. 보유 챔피언", "항목을 선택해 주십시오"));
             }
-            if (curr === "SHOP_ROLES") return replier.reply(UI.renderMenu(session));
-            if (curr === "SHOP_BUY_ACTION") {
-                return replier.reply(UI.go(session, "SHOP_ROLES", "카테고리", RoleKeys.map(function(r, i){ return (i+1)+". "+r; }).join("\n"), "카테고리를 선택해 주십시오"));
-            }
+            if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.renderMenu(session));
             if (curr.indexOf("BATTLE_") !== -1) {
                 return replier.reply(UI.go(session, "BATTLE_MAIN", "대전 모드", "1. AI 대전 시작", "모드를 선택해 주십시오"));
             }
-            // 관리자 관련
             if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
             if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) {
                 return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser, "1. 정보 수정\n2. 답변 전송\n3. 초기화\n4. 계정 삭제", "수행할 작업을 선택해 주십시오"));
             }
-            // 기본값
             SessionManager.reset(session);
             return replier.reply(UI.renderMenu(session));
         }
