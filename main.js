@@ -66,45 +66,44 @@ var UI = {
     },
 
     renderCategoryUI: function(session, help, content) {
-        // [수정] targetUser가 있으면 우선적으로 Database.data에서 찾음
-        var id = session.targetUser || session.tempId;
-        var data = Database.data[id]; // 이 부분이 핵심입니다. 세션의 data보다 DB 원본을 먼저 참조하게 함
-        
         var div = Utils.getFixedDivider();
         var scr = session.screen;
         
-        // 데이터가 없는 경우를 위한 방어 코드
+        // 1. 대상 데이터 결정 (관리자면 targetUser, 아니면 본인 데이터)
+        var targetId = (session.type === "ADMIN" && session.targetUser) ? session.targetUser : session.tempId;
+        var data = Database.data[targetId];
+
+        // 2. 데이터가 진짜로 없을 경우 (예외 처리)
         if (!data) {
-            return this.make("알림", id + " 님의 데이터를 불러올 수 없습니다.\n(현재 로드된 유저: " + Object.keys(Database.data).length + "명)", "이전으로 이동", false);
+            // 현재 DB에 있는 유저 목록을 살짝 보여주어 디버깅 도움
+            var dbKeys = Object.keys(Database.data).join(", ");
+            return this.make("데이터 오류", 
+                "대상: [" + targetId + "]\n데이터를 찾을 수 없습니다.\n\n현재 DB 유저: [" + dbKeys + "]", 
+                "관리자 메뉴에서 유저를 다시 선택해주세요.", false);
         }
 
+        // 3. 컬렉션 데이터 안전 장치
         if (!data.collection) data.collection = { titles: ["뉴비"], champions: [] };
+        if (!data.collection.champions) data.collection.champions = [];
 
         var title = "정보", head = "", body = "";
 
-        // [프로필 / 관리자 유저 조회 공통 UI]
-        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr.indexOf("DETAIL") !== -1 || scr.indexOf("ADMIN_USER") !== -1) {
-            title = (session.targetUser) ? id + " 님의 정보" : "내 프로필";
+        // [프로필/관리 상세 화면]
+        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr.indexOf("ADMIN_USER_DETAIL") !== -1) {
+            title = (session.type === "ADMIN") ? "[관리] " + targetId : "프로필";
             var tier = getTierInfo(data.lp);
-            var win = data.win || 0, lose = data.lose || 0;
-            var winRate = (win + lose) === 0 ? 0 : Math.floor((win / (win + lose)) * 100);
+            var win = data.win || 0, lose = data.lose || 0, total = win + lose;
+            var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
             var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
             
-            // 유저명 하단 경험치 배치
-            head = "👤 계정: " + id + "\n" +
-                   "📈 XP: " + data.exp + " / " + (data.level * 100) + " (Lv." + data.level + ")\n" +
-                   "🏅 칭호: [" + data.title + "]\n" + div + "\n" +
-                   "🏆 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                   "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n" +
-                   "🎯정확:" + st.acc + " | ⚡반응:" + st.ref + "\n🧘침착:" + st.com + " | 🧠직관:" + st.int + "\n✨포인트: " + (data.point || 0) + " P";
+            head = "👤 계정: " + targetId + "\n🏅 칭호: [" + (data.title || "없음") + "]\n" + div + "\n" +
+                   "🏆 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n💰 골드: " + (data.gold || 0).toLocaleString() + " G\n⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n" +
+                   "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" + div + "\n" +
+                   "🎯정확:" + st.acc + " | ⚡반응:" + st.ref + "\n🧘침착:" + st.com + " | 🧠직관:" + st.int;
             
             if (scr === "PROFILE_VIEW") body = "1. 능력치 강화";
             else if (scr === "STAT_UP_MENU") body = "1. 정확 2. 반응 3. 침착 4. 직관";
-            else if (scr === "ADMIN_USER_DETAIL") {
-                var qBadge = (data.inquiryCount > 0) ? " [🔔" + data.inquiryCount + "]" : "";
-                body = "1. 정보 수정\n2. 문의 내역" + qBadge + "\n3. 데이터 초기화\n4. 계정 삭제";
-            }
+            else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 답변 작성\n3. 초기화\n4. 계정 삭제";
         }
         else if (scr.indexOf("SHOP") !== -1) {
             title = "상점";
