@@ -1,14 +1,6 @@
-/**
- * [main.js] v0.0.17
- * 1. 경험치 배치 수정: 유저 정보 하단으로 이동
- * 2. 챔피언 목록 번호화: 보유 챔피언 리스트 가독성 강화
- * 3. 관리자 상세조회 동기화: 유저 프로필 UI와 동일한 헤더 적용
- * 4. 구조 유지: 섹션 1~9 및 매니저 핸들링 구조 100% 유지
- */
-
-// ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
+// [1. 설정 및 상수] - 이전과 동일
 var Config = {
-    Version: "v0.0.17",
+    Version: "v0.0.18",
     Prefix: ".",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
@@ -56,7 +48,7 @@ function getTierInfo(lp) {
     return { name: "아이언", icon: "⚫" };
 }
 
-// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
+// [2. 모듈: UI 엔진]
 var UI = {
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
@@ -67,12 +59,6 @@ var UI = {
     },
 
     renderCategoryUI: function(session, help, content) {
-        var id = session.targetUser || session.tempId;
-        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-        var div = Utils.getFixedDivider();
-        var scr = session.screen;
-        
-      renderCategoryUI: function(session, help, content) {
         var id = session.targetUser || session.tempId;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
         var div = Utils.getFixedDivider();
@@ -111,8 +97,7 @@ var UI = {
             }
             else if (scr === "ADMIN_INQUIRY_VIEW") {
                 title = "문의 내역";
-                // 실제 DB에 문의 내용을 저장하는 구조가 아닐 경우, 알림 제거를 우선 처리합니다.
-                body = "✉️ 미확인 문의: " + (data.inquiryCount || 0) + "건\n\n1. 답변 작성하기\n(확인 시 알림이 사라집니다)";
+                body = "✉️ 미확인 문의 존재\n(상세 내용은 관리자 채팅방 확인)\n\n1. 답변 작성하기";
             }
         }
         else if (scr.indexOf("SHOP") !== -1) {
@@ -134,7 +119,7 @@ var UI = {
     
     go: function(session, screen, title, content, help) {
         session.screen = screen;
-        var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL"];
+        var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_VIEW"];
         for (var i=0; i<fixedScreens.length; i++) {
             if (screen.indexOf(fixedScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
         }
