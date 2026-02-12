@@ -361,20 +361,23 @@ var UserManager = {
                 session.tempId = msg; 
                 return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "비밀번호 입력")); 
             }
-           if (session.screen === "LOGIN_PW") {
+if (session.screen === "LOGIN_PW") {
                 var userData = Database.data[session.tempId];
-                // .trim()을 사용하여 입력 시 발생할 수 있는 줄바꿈이나 공백 제거
                 if (userData && String(userData.pw).trim() === String(msg).trim()) {
+                    // 1. 세션 정보 업데이트
                     session.data = userData; 
                     session.isLoggedIn = true; 
-                    session.screen = "USER_MAIN"; // 즉시 화면 상태 변경
-                    
-                    // 세션 강제 저장 및 세션 매니저 업데이트
                     SessionManager.save(); 
                     
-                    return replier.reply(UI.make("성공", "🔓 [" + session.tempId + "]님 환영합니다!", "'메뉴'를 입력하여 시작하세요."));
+                    // 2. 로그인 성공 알림 발송 (첫 번째 메시지)
+                    replier.reply(UI.make("인증 성공", "🔓 [" + session.tempId + "]님, 본인 인증에 성공하였습니다.", "잠시 후 메인 메뉴가 출력됩니다..."));
+                    
+                    // 3. 약간의 지연 후 메인 메뉴 발송 (두 번째 메시지)
+                    // java.lang.Thread.sleep(800); // 필요 시 아주 짧은 대기 시간을 줄 수 있습니다.
+                    
+                    return replier.reply(UI.renderMenu(session));
                 } else {
-                    return replier.reply(UI.make("실패", "❌ 비밀번호가 일치하지 않습니다.", "다시 입력하거나 처음부터 시작하려면 '메뉴' 입력"));
+                    return replier.reply(UI.make("인증 실패", "❌ 비밀번호가 일치하지 않습니다.", "다시 입력하시거나 '메뉴'를 입력해 처음으로 돌아가세요."));
                 }
             }
             if (session.screen === "GUEST_INQUIRY") {
