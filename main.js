@@ -1,6 +1,13 @@
+/**
+ * [main.js] v0.0.19
+ * 1. 문의 관리 개편: 유저별 문의 목록 창 신설
+ * 2. 상세 조회: 괄호 문구 제거 및 UI 정돈
+ * 3. 흐름: 상세정보 -> 문의 목록 -> 문의 선택 -> 답변 작성
+ */
+
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
-    Version: "v0.0.18",
+    Version: "v0.0.19",
     Prefix: ".",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
@@ -68,8 +75,7 @@ var UI = {
 
         var title = "정보", head = "", body = "";
 
-        // [동기화] 프로필, 스탯강화, 관리자 상세, 문의 확인 UI 통합
-        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL" || scr === "ADMIN_INQUIRY_VIEW") {
+        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL" || scr === "ADMIN_INQUIRY_LIST") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
             var win = data.win || 0, lose = data.lose || 0, total = win + lose;
@@ -96,9 +102,10 @@ var UI = {
                 var alarm = (data.inquiryCount > 0) ? " [🔔" + data.inquiryCount + "]" : "";
                 body = "1. 정보 수정\n2. 문의 내역" + alarm + "\n3. 초기화\n4. 계정 삭제";
             }
-            else if (scr === "ADMIN_INQUIRY_VIEW") {
-                title = "문의 내역";
-                body = "✉️ 미확인 문의 존재\n(상세 내용은 관리방 메시지 확인)\n\n1. 답변 작성하기";
+            else if (scr === "ADMIN_INQUIRY_LIST") {
+                title = "문의 목록";
+                // 괄호 문구 삭제 및 깔끔한 안내
+                body = "✉️ 미확인 문의 존재\n번호를 선택하여 답변을 작성하세요";
             }
         }
         else if (scr.indexOf("SHOP") !== -1) {
@@ -120,7 +127,7 @@ var UI = {
     
     go: function(session, screen, title, content, help) {
         session.screen = screen;
-        var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_VIEW"];
+        var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "LIST"];
         for (var i=0; i<fixedScreens.length; i++) {
             if (screen.indexOf(fixedScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
         }
@@ -183,6 +190,13 @@ var AdminActions = {
             return (i+1) + ". " + id + badge; 
         }).join("\n");
         replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", list, "관리할 유저 선택"));
+    },
+    // [신규] 유저의 문의 목록창 생성
+    showUserInquiryList: function(session, replier) {
+        var data = Database.data[session.targetUser];
+        // 실제 운영 환경에선 문의 배열을 따로 저장하겠지만, 현재는 가상의 목록으로 처리 (로직 확장 가능)
+        var list = "1. 미확인 문의 내역 (최신)\n2. 이전 답변 내역";
+        replier.reply(UI.go(session, "ADMIN_INQUIRY_LIST", "문의 목록", list, "답변할 항목 번호 선택"));
     },
     submitAnswer: function(msg, session, replier) {
         var targetRoom = SessionManager.findUserRoom(session.targetUser);
@@ -320,15 +334,16 @@ var AdminManager = {
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
                 if (msg === "2") {
-                    // [변경] 문의 진입 시 즉시 알림 초기화 및 상세 페이지 이동
+                    // 알림 🔔 제거 후 리스트 페이지로 이동
                     if(data) { data.inquiryCount = 0; Database.save(Database.data); }
-                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", "답변 여부 선택"));
+                    return AdminActions.showUserInquiryList(session, replier);
                 }
                 if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "해당 계정을 초기화하시겠습니까?", "'확인' 입력 시 실행"));
                 if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "해당 계정을 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
                 break;
-            case "ADMIN_INQUIRY_VIEW":
+            case "ADMIN_INQUIRY_LIST":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저에게 보낼 내용 입력", "내용 입력 후 전송"));
+                if (msg === "2") return replier.reply(UI.make("알림", "과거 내역이 존재하지 않습니다", "목록으로 복귀", false));
                 break;
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
             case "ADMIN_EDIT_MENU":
@@ -409,7 +424,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
             if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
             if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
-            if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr === "ADMIN_INQUIRY_VIEW" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
+            if (curr === "ADMIN_INQUIRY_LIST") return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
+            if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) return AdminActions.showUserInquiryList(session, replier);
             SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
         }
 
