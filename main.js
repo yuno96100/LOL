@@ -63,48 +63,24 @@ var SystemData = {
 
 var RoleKeys = Object.keys(SystemData.roles);
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// [ 2. 유틸리티 및 UI엔진 ]
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-var Utils = {
-    getFixedDivider: function() { return Array(Config.DIVIDER_LINE + 1).join(Config.LINE_CHAR); },
-    wrapText: function(str) {
-        if (!str) return "";
-        var lines = str.split('\n'), result = [], limit = Config.WRAP_LIMIT;
-        for (var i = 0; i < lines.length; i++) {
-            var words = lines[i].split(' '), currentLine = "";
-            for (var j = 0; j < words.length; j++) {
-                var word = words[j];
-                if (word.length > limit) {
-                    if (currentLine.length > 0) { result.push(currentLine.trim()); currentLine = ""; }
-                    var start = 0;
-                    while (start < word.length) { result.push(word.substring(start, start + limit)); start += limit; }
-                    continue;
-                }
-                if ((currentLine + word).length > limit) { result.push(currentLine.trim()); currentLine = word + " "; }
-                else { currentLine += word + " "; }
-            }
-            if (currentLine.trim().length > 0) result.push(currentLine.trim());
-        }
-        return result.join('\n');
-    }
-};
-
-function getTierInfo(lp) {
-    lp = lp || 0;
-    for (var i = 0; i < TierData.length; i++) {
-        if (lp >= TierData[i].minLp) return { name: TierData[i].name, icon: TierData[i].icon };
-    }
-    return { name: "아이언", icon: "⚫" };
-}
-
 var UI = {
-    make: function(title, content, help) {
+    // 프레임 생성: [헤더] + [컨텐츠] + [네비게이션] + [도움말]
+    make: function(title, content, help, session) {
         var div = Utils.getFixedDivider();
-        return "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content) + "\n" + div + "\n💡 " + Utils.wrapText(help);
+        var res = "『 " + title + " 』\n" + div + "\n";
+        res += Utils.wrapText(content) + "\n" + div + "\n";
+        
+        // 메인 화면들이 아닐 때만 하단 네비게이션 바 노출
+        var mainScreens = ["IDLE", "GUEST_MAIN", "USER_MAIN", "ADMIN_MAIN"];
+        if (session && mainScreens.indexOf(session.screen) === -1) {
+            res += "↩️ '이전' | 🏠 '취소' (메인으로)\n" + div + "\n";
+        }
+        
+        res += "💡 " + Utils.wrapText(help);
+        return res;
     },
 
+    // 프로필 및 능력치 강화 전용 렌더러
     renderProfile: function(id, data, help, content, session) {
         if (!data) return "데이터 로드 오류";
         var lp = data.lp || 0, tier = getTierInfo(lp);
@@ -119,37 +95,52 @@ var UI = {
         var s1 = "👤 계정: " + id + "\n🏅 칭호: [" + (data.title || "뉴비") + "]";
         var s2 = "🏆 티어: " + tier.icon + " " + tier.name + " (" + lp + " LP)\n🆙 레벨: " + lvLabel + "\n📊 경험: " + expBar + " EXP\n💰 골드: " + (data.gold || 0).toLocaleString() + " G";
         var s3 = "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + div + "\n🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n✨ 포인트: " + (data.point || 0) + " P";
+        
         var res = "『 " + id + " 』\n" + div + "\n" + s1 + "\n" + div + "\n" + s2 + "\n" + div + "\n" + s3 + "\n" + div + "\n";
         
-        if (session && (session.screen === "ADMIN_USER_DETAIL" || session.screen === "PROFILE_VIEW")) {
-            if (session.type === "ADMIN") res += "1. 정보 수정\n2. 답변 하기\n3. 데이터 초기화\n4. 계정 삭제\n" + div + "\n";
-            else res += "1. 능력치 강화\n2. 능력치 초기화\n" + div + "\n";
-        } else if (session && (session.screen === "STAT_UP_MENU" || session.screen === "STAT_UP_INPUT")) {
+        // 화면 상태에 따른 선택지 분기
+        if (session.screen === "ADMIN_USER_DETAIL" || session.screen === "PROFILE_VIEW") {
+            if (session.type === "ADMIN") res += "1. 정보 수정\n2. 답변 하기\n3. 데이터 초기화\n4. 계정 삭제\n";
+            else res += "1. 능력치 강화\n2. 능력치 초기화\n";
+            res += div + "\n";
+        } else if (session.screen === "STAT_UP_MENU" || session.screen === "STAT_UP_INPUT") {
             res += "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화\n" + div + "\n";
         }
         
-        if (content) res += Utils.wrapText(content.trim()) + "\n" + div + "\n"; 
+        if (content) res += Utils.wrapText(content.trim()) + "\n" + div + "\n";
+
+        // 네비게이션 바 추가 (프로필 화면도 메인이 아니면 표시)
+        var mainScreens = ["IDLE", "GUEST_MAIN", "USER_MAIN", "ADMIN_MAIN"];
+        if (mainScreens.indexOf(session.screen) === -1) {
+            res += "↩️ '이전' | 🏠 '취소' (메인으로)\n" + div + "\n";
+        }
+
         if (help) res += "💡 " + Utils.wrapText(help);
         return res;
     },
 
+    // 화면 이동 처리
     go: function(session, screen, title, content, help) {
-        if (session.tempId && Database.data[session.tempId]) session.data = Database.data[session.tempId];
+        if (session.screen !== screen) {
+            session.prevScreen = session.screen; // 이전 화면 기록
+        }
         session.screen = screen; 
         session.lastTitle = title;
         session.lastContent = content || ""; 
         session.lastHelp = help || "";
+        
         if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL") {
             var tid = session.targetUser || session.tempId;
             return UI.renderProfile(tid, Database.data[tid], help, content, session);
         }
-        return this.make(title, content, help);
+        return this.make(title, content, help, session);
     },
 
+    // 메인 메뉴 렌더링 (취소/명령어 시 복귀 지점)
     renderMenu: function(session) {
         if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 관리", "번호 입력");
         if (session.type === "GROUP") return this.go(session, "GROUP_MAIN", "단톡방 메뉴", "1. 내 정보 확인\n2. 티어 랭킹", "번호 입력");
-        if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 문의하기", "번호 선택");
+        if (!session.isLoggedIn) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 문의하기", "번호 선택");
         return this.go(session, "USER_MAIN", "메인 메뉴", "1. 프로필\n2. 컬렉션\n3. 대전\n4. 상점\n5. 문의하기\n6. 로그아웃", "번호 입력");
     }
 };
@@ -496,57 +487,62 @@ var GroupManager = {
 // [ 9. 메인 핸들러 ]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// 스크립트 시작 시 DB와 세션 데이터를 메모리에 로드합니다.
 Database.data = Database.load(); 
 SessionManager.load();          
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
-    // 유저 고유 식별을 위한 해시 추출
     var hash = String(imageDB.getProfileHash()); 
-    // 세션 객체 가져오기 (방 정보, 해시, 단톡 여부 전달)
     var session = SessionManager.get(room, hash, isGroupChat); 
     
     try {
-        // 메시지가 없거나 업데이트 명령인 경우 처리 중단
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
-        
-        // 입력값의 앞뒤 공백 제거
         msg = msg.trim(); 
 
-        // 1. [조건부 메뉴 허용] 특정 대기 상태에서만 "메뉴" 명령어를 작동시킵니다.
-        // 허용 목록: 초기상태(IDLE), 메인메뉴(USER_MAIN), 게스트메뉴(GUEST_MAIN), 관리자메뉴(ADMIN_MAIN)
+        // 대기 상태 리스트 정의
         var standbyScreens = ["IDLE", "USER_MAIN", "GUEST_MAIN", "ADMIN_MAIN"];
-        
+        var isStandby = standbyScreens.indexOf(session.screen) !== -1;
+
+        // 1. [메뉴] 명령어: 오직 대기 상태에서만 작동
         if (msg === "메뉴") {
-            if (standbyScreens.indexOf(session.screen) !== -1) {
+            if (isStandby) {
                 return replier.reply(UI.renderMenu(session));
             } else {
-                // 대기 상태가 아닐 때(예: 비밀번호 입력 중, 대전 중)는 메뉴 기능을 무시합니다.
-                return; 
+                // 대기 상태가 아니면(입력 중, 대전 중 등) 무시
+                return;
             }
         }
 
-        // 2. 대전 드래프트 화면 처리
-        // 드래프트 관련 화면(BATTLE_DRAFT_...)에 있을 때는 매칭 매니저가 전담합니다.
+        // 2. [이전/취소] 명령어: 대기 상태가 아닐 때만 작동
+        if (msg === "이전" || msg === "취소") {
+            if (!isStandby) {
+                // 취소 시 세션 상태를 메인으로 초기화하고 메뉴 출력
+                return replier.reply(UI.renderMenu(session));
+            } else {
+                // 이미 메인이면 명령어 무시
+                return;
+            }
+        }
+
+        // 3. 대전 드래프트 화면 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
             return MatchingManager.handleDraft(msg, session, replier);
         } 
         
-        // 3. 그 외 일반적인 모든 상황 처리
+        // 4. 그 외 일반적인 모든 상황 처리
         else {
             return handleGeneralMenu(msg, session, sender, replier);
         }
     } catch (e) {
-        // 코드 실행 중 에러 발생 시 리포트 함수 호출
         reportError(e, msg, session, sender, replier);
     }
 }
 
 function handleGeneralMenu(msg, session, sender, replier) {
-    // 로딩 화면이나 비활성화 상태에서는 입력을 처리하지 않습니다.
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
     
-    // 유저의 권한 타입에 따라 해당 매니저에게 처리를 넘깁니다.
+    // 이미 위(response)에서 이전/취소를 처리했으므로 여기서는 통과
+    if (msg === "이전" || msg === "취소") return;
+
     if (session.type === "ADMIN") {
         AdminManager.handle(msg, session, replier);
     } else if (session.type === "GROUP") {
@@ -555,18 +551,12 @@ function handleGeneralMenu(msg, session, sender, replier) {
         UserManager.handle(msg, session, replier);
     }
     
-    // 처리가 끝난 후 변경된 세션 상태를 저장합니다.
     SessionManager.save();
 }
 
 function reportError(e, msg, session, sender, replier) {
-    // 에러 발생 위치와 내용 정리
     var errLog = "📍 위치: " + (session.screen || "알 수 없음") + "\n💬 입력: " + msg + "\n🛠 내용: " + e.message;
-    
-    // 유저에게 알림 전송
     replier.reply(UI.make("알림", "시스템 오류가 발생했습니다.", "잠시 후 다시 시도해주세요."));
-    
-    // 관리자 전용 방이 설정되어 있다면 상세 에러 로그 전송
     if (Config.AdminRoom) {
         Api.replyRoom(Config.AdminRoom, UI.make("🚨 시스템 런타임 오류", errLog, "Line: " + e.lineNumber));
     }
