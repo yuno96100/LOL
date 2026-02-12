@@ -229,15 +229,22 @@ var UserActions = {
         }
         SessionManager.reset(session); replier.reply(UI.make("접수 성공", "문의 내용이 전달되었습니다", "감사합니다", true));
     },
+
     showCollection: function(msg, session, replier) {
         var d = session.data;
+        // [안전장치] 컬렉션 데이터 누락 방지
+        if (!d.collection) d.collection = { titles: ["뉴비"], champions: [] };
+        if (!d.collection.champions) d.collection.champions = [];
+
         if (session.screen === "COL_MAIN") {
             if (msg === "1") {
                 var tList = d.collection.titles.map(function(t, i) { return (i+1) + ". " + (t === d.title ? "✅" : "") + t; }).join("\n");
                 return replier.reply(UI.go(session, "COL_TITLE_ACTION", "", tList, "장착할 번호 입력"));
             }
             if (msg === "2") {
-                var cList = (d.collection.champions.length > 0) ? d.collection.champions.join("\n") : "보유 챔피언 없음";
+                // [해결] 240행 오류 방지: 존재 여부 확인 후 length 참조
+                var champs = d.collection.champions;
+                var cList = (champs && champs.length > 0) ? champs.join("\n") : "보유 챔피언 없음";
                 return replier.reply(UI.go(session, "COL_CHAR_VIEW", "", cList, "목록 확인"));
             }
         }
@@ -249,17 +256,33 @@ var UserActions = {
             }
         }
     },
+
     handleShop: function(msg, session, replier) {
         var d = session.data;
-        if (session.screen === "SHOP_MAIN" && msg === "1") return replier.reply(UI.go(session, "SHOP_BUY_ACTION", "", "", "구매할 번호 입력"));
+        if (!d.collection) d.collection = { titles: ["뉴비"], champions: [] };
+        if (!d.collection.champions) d.collection.champions = [];
+
+        if (session.screen === "SHOP_MAIN" && msg === "1") {
+            // [요구사항] 상점 진입 시 현재 존재하는 캐릭터들의 이름을 항목으로 표기
+            var shopList = SystemData.champions.map(function(name, i) {
+                var isOwned = d.collection.champions.indexOf(name) !== -1 ? " [보유중]" : "";
+                return (i+1) + ". " + name + isOwned;
+            }).join("\n");
+            return replier.reply(UI.go(session, "SHOP_BUY_ACTION", "챔피언 구매", shopList, "구매할 번호 입력 (500G)"));
+        }
+        
         if (session.screen === "SHOP_BUY_ACTION") {
             var uIdx = parseInt(msg) - 1;
             if (SystemData.champions[uIdx]) {
                 var target = SystemData.champions[uIdx];
                 if (d.collection.champions.indexOf(target) !== -1) return replier.reply(UI.make("구매 불가", "이미 보유 중입니다", "다른 대상 선택"));
                 if (d.gold < 500) return replier.reply(UI.make("잔액 부족", "골드가 부족합니다", "현재: " + d.gold + "G"));
-                d.gold -= 500; d.collection.champions.push(target); Database.save(Database.data); SessionManager.reset(session);
-                return replier.reply(UI.make("구매 성공", "[" + target + "]을(를) 영입하였습니다", "잔액: "+d.gold+"G", true));
+                
+                d.gold -= 500;
+                d.collection.champions.push(target);
+                Database.save(Database.data);
+                SessionManager.reset(session);
+                return replier.reply(UI.make("구매 성공", "[" + target + "]을(를) 구매하였습니다", "잔액: "+d.gold+"G", true));
             }
         }
     },
