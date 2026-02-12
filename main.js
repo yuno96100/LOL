@@ -66,15 +66,25 @@ var UI = {
     },
 
     // v0.0.11의 renderProfile을 전 카테고리 대응형으로 확장
-    renderCategoryUI: function(session, help, content) {
+   renderCategoryUI: function(session, help, content) {
         var id = session.targetUser || session.tempId;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
         var div = Utils.getFixedDivider();
         var scr = session.screen;
         
+        // [안전 장치] 데이터가 없는 경우 예외 처리
+        if (!data) {
+            return this.make("알림", "유저 데이터를 찾을 수 없습니다\n다시 로그인해 주십시오", "메뉴로 이동", false);
+        }
+
+        // [안전 장치] 컬렉션 데이터가 없는 경우 초기화
+        if (!data.collection) {
+            data.collection = { titles: ["뉴비"], champions: [] };
+        }
+
         var title = "정보", head = "", body = "";
 
-        // [프로필/스탯/관리자 상세 화면 고정부]
+        // [프로필/스탯 화면]
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr.indexOf("DETAIL") !== -1) {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
@@ -91,16 +101,18 @@ var UI = {
             else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
             else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 답변 전송\n3. 초기화\n4. 계정 삭제";
         }
-        // [상점 화면 고정부]
+        // [상점 화면] - 97행 부근 에러 방지
         else if (scr.indexOf("SHOP") !== -1) {
             title = "상점";
-            head = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n📦 보유 챔피언: " + data.collection.champions.length + " / " + SystemData.champions.length;
+            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
+            head = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n📦 보유 챔피언: " + ownedCount + " / " + SystemData.champions.length;
             if (scr === "SHOP_MAIN") body = "1. 챔피언 영입";
         }
-        // [컬렉션 화면 고정부]
+        // [컬렉션 화면] - 103행 부근 에러 방지
         else if (scr.indexOf("COL") !== -1) {
             title = "컬렉션";
-            head = "🏅 현재 칭호: [" + data.title + "]\n🏆 수집율: " + Math.floor((data.collection.champions.length / SystemData.champions.length) * 100) + "%";
+            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
+            head = "🏅 현재 칭호: [" + data.title + "]\n🏆 수집율: " + Math.floor((ownedCount / SystemData.champions.length) * 100) + "%";
             if (scr === "COL_MAIN") body = "1. 보유 칭호\n2. 보유 챔피언";
         }
 
