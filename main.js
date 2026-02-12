@@ -349,31 +349,37 @@ var UserActions = {
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
-        // [수정] 스크린 상태를 기준으로 switch문을 먼저 태웁니다.
         switch(session.screen) {
             case "ADMIN_MAIN":
                 if (msg === "1") return AdminActions.showSysInfo(session, replier);
-                if (msg === "2") return AdminActions.showUserList(session, replier); // v0.0.16의 유저 목록 호출
+                if (msg === "2") return AdminActions.showUserList(session, replier);
                 break;
 
-           case "ADMIN_USER_LIST":
-    var idx = parseInt(msg) - 1;
-    if (session.userListCache && session.userListCache[idx]) {
-        var selectedId = session.userListCache[idx];
-        
-        // 💡 중요: 세션에 타겟을 먼저 박고 스크린을 이동
-        session.targetUser = selectedId;
-        
-        if (Database.data[selectedId]) {
-            session.screen = "ADMIN_USER_DETAIL"; 
-            return replier.reply(UI.renderCategoryUI(session, "작업 선택", ""));
-        } else {
-            return replier.reply("🚨 DB에 [" + selectedId + "] 데이터가 없습니다. 목록을 갱신합니다.");
-        }
-    } else {
-        return replier.reply("❌ 올바른 번호를 입력해 주세요.");
-    }
-    break;
+            case "ADMIN_USER_LIST":
+                var idx = parseInt(msg) - 1;
+                // 캐시된 목록이 있고, 입력한 번호가 유효한지 체크
+                if (session.userListCache && session.userListCache[idx]) {
+                    var selectedId = session.userListCache[idx];
+                    
+                    // [핵심 수정] 타겟 유저를 세션에 즉시 강제 할당
+                    session.targetUser = String(selectedId); 
+                    session.screen = "ADMIN_USER_DETAIL"; 
+                    
+                    // 데이터가 있는지 최종 확인 후 UI 렌더링
+                    if (Database.data[session.targetUser]) {
+                        return replier.reply(UI.renderCategoryUI(session, "유저 관리 모드", "원하시는 작업을 선택하세요."));
+                    } else {
+                        // 만약 메모리에 없다면 DB 강제 로드 후 재시도
+                        Database.data = Database.load();
+                        if (Database.data[session.targetUser]) {
+                            return replier.reply(UI.renderCategoryUI(session, "유저 관리 모드", "데이터 재로드 완료."));
+                        }
+                        return replier.reply(UI.make("오류", "선택한 유저[" + session.targetUser + "]의 데이터를 찾을 수 없습니다.", "목록을 다시 불러와주세요."));
+                    }
+                } else {
+                    return replier.reply("❌ 올바른 번호를 입력해주세요. (1~" + session.userListCache.length + ")");
+                }
+                break;
 
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
