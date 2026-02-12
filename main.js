@@ -1,4 +1,4 @@
-// [1. 설정 및 상수] - 이전과 동일
+// ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
     Version: "v0.0.18",
     Prefix: ".",
@@ -48,7 +48,7 @@ function getTierInfo(lp) {
     return { name: "아이언", icon: "⚫" };
 }
 
-// [2. 모듈: UI 엔진]
+// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
@@ -68,6 +68,7 @@ var UI = {
 
         var title = "정보", head = "", body = "";
 
+        // [동기화] 프로필, 스탯강화, 관리자 상세, 문의 확인 UI 통합
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL" || scr === "ADMIN_INQUIRY_VIEW") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
@@ -97,7 +98,7 @@ var UI = {
             }
             else if (scr === "ADMIN_INQUIRY_VIEW") {
                 title = "문의 내역";
-                body = "✉️ 미확인 문의 존재\n(상세 내용은 관리자 채팅방 확인)\n\n1. 답변 작성하기";
+                body = "✉️ 미확인 문의 존재\n(상세 내용은 관리방 메시지 확인)\n\n1. 답변 작성하기";
             }
         }
         else if (scr.indexOf("SHOP") !== -1) {
@@ -239,7 +240,6 @@ var UserActions = {
             }
             if (msg === "2") {
                 var champs = d.collection.champions;
-                // [수정] 보유 챔피언 목록을 번호화하여 나열
                 var cList = (champs && champs.length > 0) ? champs.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유 챔피언 없음";
                 return replier.reply(UI.go(session, "COL_CHAR_VIEW", "", cList, "목록 확인"));
             }
@@ -320,7 +320,7 @@ var AdminManager = {
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
                 if (msg === "2") {
-                    // [변경] 문의를 읽는 시점에 알림 초기화
+                    // [변경] 문의 진입 시 즉시 알림 초기화 및 상세 페이지 이동
                     if(data) { data.inquiryCount = 0; Database.save(Database.data); }
                     return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", "답변 여부 선택"));
                 }
@@ -409,7 +409,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
             if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
             if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
-            if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
+            if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr === "ADMIN_INQUIRY_VIEW" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
             SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
         }
 
