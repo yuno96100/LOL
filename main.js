@@ -367,28 +367,22 @@ if (session.screen === "LOGIN_PW") {
             var dbPw = String(userData ? userData.pw : "").trim();
 
             if (userData && dbPw === inputPw) {
-                // 1. 세션 상태 먼저 변경 (renderMenu가 정상 작동하기 위함)
+                // 1. 세션 상태를 먼저 확정 (에러 방지용)
                 session.data = userData; 
                 session.isLoggedIn = true; 
                 session.screen = "USER_MAIN"; 
 
-                // 2. [첫 번째 메시지] 성공 알림창 즉시 전송
-                replier.reply(UI.make("인증 성공", "🔓 [" + session.tempId + "]님, 본인 인증에 성공하였습니다!", "잠시 후 메인 메뉴가 나타납니다."));
-                
-                // 3. [두 번째 메시지] 메인 메뉴 즉시 전송
-                // UI.renderMenu 내부에 UI.go가 있어 session.screen을 다시 세팅하므로 안전합니다.
+                // 2. 답장을 먼저 보냅니다. (성공 창 -> 메뉴판 순서)
+                replier.reply(UI.make("인증 성공", "🔓 [" + session.tempId + "]님, 반갑습니다!", "로그인에 성공하였습니다."));
                 replier.reply(UI.renderMenu(session));
 
-                // 4. 마지막에 데이터 저장 (파일 시스템 지연으로 인한 끊김 방지)
+                // 3. 마지막에 저장을 시도합니다. (여기서 터져도 이미 로그인은 된 상태)
                 try {
                     SessionManager.save();
-                } catch(e) {
-                    // 저장 에러 시 관리자 알림 (선택 사항)
-                    if (Config.AdminRoom) Api.replyRoom(Config.AdminRoom, "세션 저장 오류: " + e.message);
-                }
-                return; 
+                } catch(e) {}
+                return;
             } else {
-                return replier.reply(UI.make("인증 실패", "❌ 비밀번호가 일치하지 않습니다.", "다시 입력하시거나 '메뉴'를 입력하세요."));
+                return replier.reply(UI.make("인증 실패", "❌ 비밀번호가 틀렸습니다.", "다시 입력해주세요."));
             }
         }
             if (session.screen === "GUEST_INQUIRY") {
