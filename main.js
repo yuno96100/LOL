@@ -361,13 +361,20 @@ var UserManager = {
                 session.tempId = msg; 
                 return replier.reply(UI.go(session, "LOGIN_PW", "인증", "비밀번호를 입력하세요.", "비밀번호 입력")); 
             }
-            if (session.screen === "LOGIN_PW") {
+           if (session.screen === "LOGIN_PW") {
                 var userData = Database.data[session.tempId];
+                // .trim()을 사용하여 입력 시 발생할 수 있는 줄바꿈이나 공백 제거
                 if (userData && String(userData.pw).trim() === String(msg).trim()) {
-                    session.data = userData; session.isLoggedIn = true; 
-                    return replier.reply(UI.make("성공", "로그인되었습니다.", "'메뉴'를 입력하세요."));
+                    session.data = userData; 
+                    session.isLoggedIn = true; 
+                    session.screen = "USER_MAIN"; // 즉시 화면 상태 변경
+                    
+                    // 세션 강제 저장 및 세션 매니저 업데이트
+                    SessionManager.save(); 
+                    
+                    return replier.reply(UI.make("성공", "🔓 [" + session.tempId + "]님 환영합니다!", "'메뉴'를 입력하여 시작하세요."));
                 } else {
-                    return replier.reply(UI.make("실패", "비밀번호 불일치", "정확히 입력해주세요."));
+                    return replier.reply(UI.make("실패", "❌ 비밀번호가 일치하지 않습니다.", "다시 입력하거나 처음부터 시작하려면 '메뉴' 입력"));
                 }
             }
             if (session.screen === "GUEST_INQUIRY") {
