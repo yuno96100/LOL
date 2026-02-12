@@ -17,8 +17,8 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 17,
-    NAV_LEFT: "    ",
-    NAV_RIGHT: "  ",
+    NAV_LEFT: "   ",
+    NAV_RIGHT: " ",
     NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
