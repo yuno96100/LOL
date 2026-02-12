@@ -354,19 +354,18 @@ var AdminManager = {
 
             case "ADMIN_USER_LIST":
                 var idx = parseInt(msg) - 1;
-                // [검증] 캐시가 있고 입력한 번호가 유효한지 체크
                 if (session.userListCache && session.userListCache[idx]) {
                     var selectedId = session.userListCache[idx];
                     
-                    // [핵심] targetUser에 ID를 정확히 박아넣음
+                    // [교정] targetUser를 먼저 확실히 박고 세션을 업데이트함
                     session.targetUser = selectedId;
                     
-                    // [안전장치] 해당 유저의 데이터가 실제 DB에 있는지 확인
                     if (Database.data[selectedId]) {
-                        // v0.0.16 로직: 상세 정보로 이동 (renderCategoryUI가 자동 호출됨)
-                        return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업 선택"));
+                        // 중요: screen을 먼저 변경한 후 UI를 호출해야 renderCategoryUI가 targetUser를 인식함
+                        session.screen = "ADMIN_USER_DETAIL"; 
+                        return replier.reply(UI.renderCategoryUI(session, "작업 선택", ""));
                     } else {
-                        return replier.reply("🚨 선택한 유저의 데이터를 DB에서 찾을 수 없습니다.");
+                        return replier.reply("🚨 DB에 [" + selectedId + "] 데이터가 없습니다.");
                     }
                 } else {
                     return replier.reply("❌ 올바른 번호를 입력해 주세요.");
