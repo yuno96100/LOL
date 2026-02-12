@@ -75,11 +75,16 @@ var UI = {
 
         // 2. 데이터가 진짜로 없을 경우 (예외 처리)
         if (!data) {
-            // 현재 DB에 있는 유저 목록을 살짝 보여주어 디버깅 도움
-            var dbKeys = Object.keys(Database.data).join(", ");
-            return this.make("데이터 오류", 
-                "대상: [" + targetId + "]\n데이터를 찾을 수 없습니다.\n\n현재 DB 유저: [" + dbKeys + "]", 
-                "관리자 메뉴에서 유저를 다시 선택해주세요.", false);
+    Database.data = Database.load(); // 💡 실시간으로 DB를 다시 로드 시도
+    data = Database.data[targetId];
+    
+    if (!data) { // 재로드 후에도 없다면 세션 초기화
+        session.targetUser = null;
+        var dbKeys = Object.keys(Database.data).join(", ");
+        return this.make("데이터 오류", 
+            "선택한 유저 ID [" + targetId + "]를 찾을 수 없습니다.\n현재 DB: [" + dbKeys + "]", 
+            "메뉴로 돌아가 유저 목록을 갱신하세요.", false);
+    }
         }
 
         // 3. 컬렉션 데이터 안전 장치
@@ -353,17 +358,13 @@ var AdminManager = {
                 break;
 
             case "ADMIN_USER_LIST":
-                var idx = parseInt(msg) - 1;
-                if (session.userListCache && session.userListCache[idx]) {
-                    var selectedId = session.userListCache[idx];
-                    
-                    // [교정] targetUser를 먼저 확실히 박고 세션을 업데이트함
-                    session.targetUser = selectedId;
-                    
-                    if (Database.data[selectedId]) {
-                        // 중요: screen을 먼저 변경한 후 UI를 호출해야 renderCategoryUI가 targetUser를 인식함
-                        session.screen = "ADMIN_USER_DETAIL"; 
-                        return replier.reply(UI.renderCategoryUI(session, "작업 선택", ""));
+    var idx = parseInt(msg) - 1;
+    if (session.userListCache && session.userListCache[idx]) {
+        var selectedId = session.userListCache[idx];
+        session.targetUser = selectedId; // 이 시점에서 targetUser 할당
+        if (Database.data[selectedId]) {
+            session.screen = "ADMIN_USER_DETAIL"; 
+            return replier.reply(UI.renderCategoryUI(session, "작업 선택", ""));
                     } else {
                         return replier.reply("🚨 DB에 [" + selectedId + "] 데이터가 없습니다.");
                     }
