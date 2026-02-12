@@ -142,10 +142,13 @@ var UI = {
         return this.make(title, content, help, isRoot);
     },
 
-    renderMenu: function(session) {
-        if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리 센터", "1. 시스템 정보\n2. 유저 관리", "원하시는 관리 항목의 번호를 입력해 주십시오");
-        if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "진행하실 메뉴 번호를 선택해 주십시오");
-        return this.go(session, "USER_MAIN", "메인 로비", "1. 프로필 조회\n2. 컬렉션 확인\n3. 대전 모드\n4. 상점 이용\n5. 운영진 문의\n6. 로그아웃", "진행하실 작업 번호를 입력해 주십시오");
+    UI.renderMenu = function(session) {
+    if (session.type === "ADMIN") {
+        // 관리자 메뉴에 3번 문의 관리 추가
+        return this.go(session, "ADMIN_MAIN", "관리 센터", "1. 시스템 정보\n2. 전체 유저\n3. 문의 관리 🔔", "관리 항목 번호 입력");
+    }
+    if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "번호 선택");
+    return this.go(session, "USER_MAIN", "메인 로비", "1. 프로필 조회\n2. 컬렉션 확인\n3. 대전 모드\n4. 상점 이용\n5. 운영진 문의\n6. 로그아웃", "번호 선택");
     }
 };
 
@@ -228,6 +231,25 @@ var AdminActions = {
             replier.reply(UI.go(session, "SUCCESS_IDLE", "삭제 완료", "영구 삭제되었습니다", "메인 복귀"));
         }
     }
+showInquiryList: function(session, replier) {
+        session.userListCache = [];
+        for (var id in Database.data) {
+            if ((Database.data[id].inquiryCount || 0) > 0) {
+                session.userListCache.push(id);
+            }
+        }
+
+        if (session.userListCache.length === 0) {
+            return replier.reply(UI.make("알림", "새로운 문의가 없습니다.", "현재 대기 중인 문의가 모두 처리되었습니다.", false));
+        }
+
+        var list = session.userListCache.map(function(id, i) {
+            return (i + 1) + ". " + id + " [🔔" + Database.data[id].inquiryCount + "]";
+        }).join("\n");
+
+        replier.reply(UI.go(session, "ADMIN_INQUIRY_LIST", "문의 센터", list, "답변할 유저 번호 입력"));
+    }
+};
 };
 
 // ━━━━━━━━ [5. 유저 액션 모듈] ━━━━━━━━
@@ -318,43 +340,55 @@ var UserActions = {
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
-        var data = Database.data[session.targetUser];
-        switch(session.screen) {
-            case "ADMIN_MAIN":
-                if (msg === "1") return AdminActions.showSysInfo(session, replier);
-                if (msg === "2") return AdminActions.showUserList(session, replier);
-                break;
-            case "ADMIN_USER_LIST":
-                var idx = parseInt(msg) - 1;
-                if (session.userListCache[idx]) {
-                    session.targetUser = session.userListCache[idx];
-                    return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업 선택"));
-                }
-                break;
+        var screen = session.screen;
+        
+        // 1. 관리자 메인 메뉴
+        if (screen === "ADMIN_MAIN") {
+            if (msg === "1") return AdminActions.showSysInfo(session, replier);
+            if (msg === "2") return AdminActions.showUserList(session, replier);
+            if (msg === "3") return AdminActions.showInquiryList(session, replier); // 전용 메뉴
+            return;
+        }
+
+        // 2. 문의 센터 전용 리스트 처리
+        if (screen === "ADMIN_INQUIRY_LIST") {
+            var idx = parseInt(msg) - 1;
+            if (session.userListCache[idx]) {
+                session.targetUser = session.userListCache[idx];
+                session.hasInquiryFlag = true; 
+                return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", "답변 여부 선택"));
+            }
+        }
+
+        // 3. 일반 유저 리스트 처리
+        if (screen === "ADMIN_USER_LIST") {
+            var idx = parseInt(msg) - 1;
+            if (session.userListCache[idx]) {
+                session.targetUser = session.userListCache[idx];
+                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업 선택"));
+            }
+        }
+
+        // 4. 유저 상세 및 답변/수정 로직 (분리 유지)
+        switch(screen) {
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
                 if (msg === "2") {
-                    // 문의 내역 진입 전 실제 데이터 확인 및 플래그 설정
-                    var currentInq = (data && data.inquiryCount > 0);
-                    session.hasInquiryFlag = currentInq;
-                    // 진입 시 알림(🔔) 제거
-                    if(data) { data.inquiryCount = 0; Database.save(Database.data); }
-                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", currentInq ? "답변 여부 선택" : "내역 없음"));
+                    var data = Database.data[session.targetUser];
+                    session.hasInquiryFlag = (data && data.inquiryCount > 0);
+                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", session.hasInquiryFlag ? "답변 선택" : "내역 없음"));
                 }
-                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "해당 계정을 초기화하시겠습니까?", "'확인' 입력 시 실행"));
-                if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "해당 계정을 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
+                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "계정을 초기화하시겠습니까?", "'확인' 입력"));
+                if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "계정을 삭제하시겠습니까?", "'삭제확인' 입력"));
                 break;
+            
             case "ADMIN_INQUIRY_VIEW":
-                // 플래그가 true(문의 있음)일 때만 1번 선택 시 답변창 이동
                 if (msg === "1" && session.hasInquiryFlag) {
-                    return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저에게 보낼 내용 입력", "내용 입력 후 전송"));
+                    return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저에게 전송", "내용 입력"));
                 }
                 break;
+
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
-            case "ADMIN_EDIT_MENU":
-                if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "수치 입력", "입력 대기")); }
-                if (msg === "2") { session.editType = "lp"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "LP 수정", "수치 입력", "입력 대기")); }
-                break;
             case "ADMIN_EDIT_INPUT": return AdminActions.editUserData(msg, session, replier);
             case "ADMIN_RESET_CONFIRM": return AdminActions.resetConfirm(msg, session, replier);
             case "ADMIN_DELETE_CONFIRM": return AdminActions.deleteConfirm(msg, session, replier);
