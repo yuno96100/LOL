@@ -66,12 +66,18 @@ var UI = {
     },
 
     renderCategoryUI: function(session, help, content) {
+        // [수정] targetUser가 있으면 우선적으로 Database.data에서 찾음
         var id = session.targetUser || session.tempId;
-        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
+        var data = Database.data[id]; // 이 부분이 핵심입니다. 세션의 data보다 DB 원본을 먼저 참조하게 함
+        
         var div = Utils.getFixedDivider();
         var scr = session.screen;
         
-        if (!data) return this.make("알림", "데이터를 찾을 수 없습니다", "메뉴로 이동", false);
+        // 데이터가 없는 경우를 위한 방어 코드
+        if (!data) {
+            return this.make("알림", id + " 님의 데이터를 불러올 수 없습니다.\n(현재 로드된 유저: " + Object.keys(Database.data).length + "명)", "이전으로 이동", false);
+        }
+
         if (!data.collection) data.collection = { titles: ["뉴비"], champions: [] };
 
         var title = "정보", head = "", body = "";
