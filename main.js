@@ -1,14 +1,13 @@
 /**
- * [main.js] v0.0.18
- * 1. 경험치 배치: 유저 정보 하단 이동 완료
- * 2. 챔피언 목록: 번호화 적용
- * 3. 관리자 상세조회: 유저 프로필 UI와 100% 동기화
- * 4. 문의 관리: 문의 확인 시 알림(🔔) 즉시 제거 및 답변 카테고리화
+ * [main.js] v0.0.19
+ * 1. 문의 관리: 문의 내역 없을 시 예외 문구 출력 및 메뉴 숨김
+ * 2. UI 최적화: 관리자 상세 조회 시 불필요한 상세 안내 문구 제거
+ * 3. 안정성: 모든 매니저 로직 간의 상태 동기화 유지
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
-    Version: "v0.0.18",
+    Version: "v0.0.19",
     Prefix: ".",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
@@ -76,7 +75,6 @@ var UI = {
 
         var title = "정보", head = "", body = "";
 
-        // [동기화] 프로필, 스탯강화, 관리자 상세, 문의 확인 UI 통합
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL" || scr === "ADMIN_INQUIRY_VIEW") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
@@ -106,7 +104,14 @@ var UI = {
             }
             else if (scr === "ADMIN_INQUIRY_VIEW") {
                 title = "문의 내역";
-                body = "✉️ 미확인 문의 존재\n(상세 내용은 관리방 메시지 확인)\n\n1. 답변 작성하기";
+                // 문의가 있을 때만 답변 버튼 출력, 없을 시 안내 문구만 출력
+                if (session.hasInquiryFlag) {
+                    body = "✉️ 새로운 문의가 접수되어 있습니다.";
+                    content = "1. 답변 작성하기";
+                } else {
+                    body = "📭 접수된 문의 내역이 없습니다.";
+                    content = ""; 
+                }
             }
         }
         else if (scr.indexOf("SHOP") !== -1) {
@@ -164,12 +169,12 @@ var SessionManager = {
     load: function() { try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch(e) { this.sessions = {}; } },
     save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions)); },
     get: function(room, hash) {
-        if (!this.sessions[hash]) { this.sessions[hash] = { data: null, screen: "IDLE", tempId: "비회원", userListCache: [], targetUser: null, editType: null, room: room, lastTime: Date.now() }; }
+        if (!this.sessions[hash]) { this.sessions[hash] = { data: null, screen: "IDLE", tempId: "비회원", userListCache: [], targetUser: null, editType: null, room: room, lastTime: Date.now(), hasInquiryFlag: false }; }
         var s = this.sessions[hash]; s.room = room; s.type = (room === Config.AdminRoom) ? "ADMIN" : "DIRECT";
         var now = Date.now(); if (s.screen !== "IDLE" && (now - (s.lastTime || 0) > Config.TIMEOUT)) { this.reset(s); }
         s.lastTime = now; return s;
     },
-    reset: function(session) { session.screen = "IDLE"; session.targetUser = null; session.editType = null; session.userListCache = []; },
+    reset: function(session) { session.screen = "IDLE"; session.targetUser = null; session.editType = null; session.userListCache = []; session.hasInquiryFlag = false; },
     findUserRoom: function(userId) { for (var h in this.sessions) { if (this.sessions[h].tempId === userId) return this.sessions[h].room; } return userId; },
     forceLogout: function(userId) {
         for (var h in this.sessions) { if (this.sessions[h].tempId === userId) { this.sessions[h].data = null; this.sessions[h].tempId = "비회원"; this.reset(this.sessions[h]); } }
@@ -328,15 +333,19 @@ var AdminManager = {
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
                 if (msg === "2") {
-                    // [변경] 문의 진입 시 즉시 알림 초기화 및 상세 페이지 이동
+                    // 문의 진입 전 상태 체크
+                    var hasInq = data && (data.inquiryCount > 0);
+                    session.hasInquiryFlag = hasInq; // 플래그 기록
                     if(data) { data.inquiryCount = 0; Database.save(Database.data); }
-                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", "답변 여부 선택"));
+                    return replier.reply(UI.go(session, "ADMIN_INQUIRY_VIEW", "문의 확인", "", hasInq ? "답변 여부 선택" : "내역 없음"));
                 }
                 if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "해당 계정을 초기화하시겠습니까?", "'확인' 입력 시 실행"));
                 if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "해당 계정을 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
                 break;
             case "ADMIN_INQUIRY_VIEW":
-                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저에게 보낼 내용 입력", "내용 입력 후 전송"));
+                if (msg === "1" && session.hasInquiryFlag) {
+                    return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저에게 보낼 내용 입력", "내용 입력 후 전송"));
+                }
                 break;
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
             case "ADMIN_EDIT_MENU":
