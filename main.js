@@ -346,63 +346,61 @@ var UserActions = {
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
-        // 1. 유저 관리 메뉴 진입 시 (목록 생성)
-        if (session.screen === "ADMIN_MAIN" && msg === "2") {
-            var userIds = Object.keys(Database.data);
-            if (userIds.length === 0) {
-                return replier.reply(UI.make("알림", "등록된 유저가 없습니다.", "메뉴로 이동", false));
-            }
-            
-            // 세션 캐시에 ID 목록 저장 (번호 선택을 위해)
-            session.userListCache = userIds; 
-            
-            var listText = userIds.map(function(id, i) {
-                var d = Database.data[id];
-                var badge = (d && d.inquiryCount > 0) ? " [🔔" + d.inquiryCount + "]" : "";
-                return (i + 1) + ". " + id + badge;
-            }).join("\n");
-            
-            return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", listText, "관리할 유저 번호를 입력하세요."));
-        }
+        var scr = session.screen;
 
-        // 2. 화면별 상세 처리
-        switch(session.screen) {
+        // [핵심 수정] 화면별 로직을 switch문 안에서 엄격하게 분리
+        switch(scr) {
             case "ADMIN_MAIN":
-                if (msg === "1") return AdminActions.showSysInfo(session, replier);
+                if (msg === "1") {
+                    return AdminActions.showSysInfo(session, replier);
+                }
+                if (msg === "2") {
+                    // 유저 목록 생성 및 캐시 저장
+                    var userIds = Object.keys(Database.data);
+                    if (userIds.length === 0) {
+                        return replier.reply(UI.make("알림", "등록된 유저가 없습니다.", "메뉴로 이동", false));
+                    }
+                    
+                    session.userListCache = userIds; // 현재 로드된 유저 리스트 저장
+                    
+                    var listText = userIds.map(function(id, i) {
+                        var d = Database.data[id];
+                        var badge = (d && d.inquiryCount > 0) ? " [🔔" + d.inquiryCount + "]" : "";
+                        return (i + 1) + ". " + id + badge;
+                    }).join("\n");
+                    
+                    // 화면 전환: ADMIN_USER_LIST로 이동
+                    return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", listText, "관리할 유저 번호를 입력하세요."));
+                }
                 break;
 
             case "ADMIN_USER_LIST":
                 var idx = parseInt(msg) - 1;
-                // 입력한 번호가 목록 안에 있는지 확인
                 if (!isNaN(idx) && session.userListCache && session.userListCache[idx]) {
                     var selectedId = session.userListCache[idx];
                     
-                    // 핵심: targetUser를 확실히 세팅
+                    // 관리 대상 유저 ID를 세션에 고정
                     session.targetUser = selectedId; 
                     
-                    // 데이터가 실제로 존재하는지 한 번 더 검증
-                    if (Database.data[selectedId]) {
-                        return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업을 선택하세요."));
-                    } else {
-                        return replier.reply("🚨 해당 유저의 실시간 데이터를 찾을 수 없습니다.");
-                    }
+                    // 상세 화면으로 이동
+                    return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업을 선택하세요."));
                 } else {
-                    return replier.reply("❌ 올바른 유저 번호를 입력해주세요. (예: 1)");
+                    return replier.reply("❌ 올바른 번호를 입력해주세요.");
                 }
                 break;
 
             case "ADMIN_USER_DETAIL":
-                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 2. LP 3. 레벨", "항목 번호 입력"));
+                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 2. LP 3. 레벨", "번호 입력"));
                 if (msg === "2") return AdminActions.showInquiryDetail(session, replier);
-                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "정말 초기화하시겠습니까?", "'확인' 입력 시 실행"));
-                if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "정말 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
+                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "정말 초기화하시겠습니까?", "'확인' 입력"));
+                if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "정말 삭제하시겠습니까?", "'삭제확인' 입력"));
                 break;
 
             case "ADMIN_EDIT_MENU":
                 var types = { "1": "gold", "2": "lp", "3": "level" };
                 if (types[msg]) { 
                     session.editType = types[msg]; 
-                    return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "수치 변경", "새로운 수치를 입력하세요.", "숫자만 입력 가능")); 
+                    return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "수치 변경", "새로운 수치를 입력하세요.", "숫자 입력")); 
                 }
                 break;
 
