@@ -1,14 +1,16 @@
 /**
- * [main.js] v0.0.01
- * 1. 관리자 권한 개방: AdminHash 검사 제거, AdminRoom 이름 일치 시 권한 부여
- * 2. 개인톡 전용: 단체방 로직 제외, 1:1 채팅 환경 최적화
- * 3. 모듈화 유지: AdminActions / UserActions 구조 완비
+ * [main.js] v0.0.02
+ * 1. 시스템 정보 내 버전 표시 (v0.0.02)
+ * 2. 전 채팅방 대상 IDLE 상태 '메뉴' 호출 허용
+ * 3. 5분(300,000ms) 미활동 시 세션 자동 초기화 로직 적용
+ * 4. 관리자 방(AdminRoom) 특권 유지 및 단톡방 예외 처리
  */
 
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
+    Version: "v0.0.02",
     Prefix: ".",
-    AdminRoom: "소환사의협곡관리", // 이 방 이름과 채팅방 이름이 같으면 관리자로 인식
+    AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
@@ -16,7 +18,8 @@ var Config = {
     FIXED_LINE: 17,
     NAV_LEFT: "  ",
     NAV_RIGHT: " ",
-    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
+    NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"],
+    TIMEOUT: 300000 // 5분 (밀리초)
 };
 
 var Utils = {
@@ -113,10 +116,19 @@ var SessionManager = {
     load: function() { try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch(e) { this.sessions = {}; } },
     save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions)); },
     get: function(r, h) {
-        if (!this.sessions[h]) this.sessions[h] = { data: null, screen: "IDLE", history: [], lastTitle: "메뉴", tempId: "비회원", userListCache: [], targetUser: null, editType: null, room: r };
+        if (!this.sessions[h]) {
+            this.sessions[h] = { data: null, screen: "IDLE", history: [], lastTitle: "메뉴", tempId: "비회원", userListCache: [], targetUser: null, editType: null, room: r, lastTime: Date.now() };
+        }
         var s = this.sessions[h];
         s.room = r;
         s.type = (r === Config.AdminRoom) ? "ADMIN" : "DIRECT";
+        
+        // 5분 타임아웃 로직
+        var now = Date.now();
+        if (s.screen !== "IDLE" && (now - (s.lastTime || 0) > Config.TIMEOUT)) {
+            this.reset(s);
+        }
+        s.lastTime = now;
         return s;
     },
     reset: function(session) { session.screen = "IDLE"; session.history = []; session.userListCache = []; session.targetUser = null; session.editType = null; },
@@ -135,7 +147,8 @@ var AdminActions = {
     showSysInfo: function(session, replier) {
         var rt = java.lang.Runtime.getRuntime();
         var used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
-        replier.reply(UI.go(session, "ADMIN_SYS_INFO", "시스템 정보", "📟 RAM: " + used + " MB\n👥 총원: " + Object.keys(Database.data).length + "명", "조회 완료"));
+        var info = "📟 RAM: " + used + " MB\n👥 총원: " + Object.keys(Database.data).length + "명\n🛡️ 버전: " + Config.Version;
+        replier.reply(UI.go(session, "ADMIN_SYS_INFO", "시스템 정보", info, "조회 완료"));
     },
     showUserList: function(session, replier) {
         session.userListCache = Object.keys(Database.data);
@@ -365,19 +378,16 @@ var UserManager = {
 Database.data = Database.load(); 
 SessionManager.load();          
 
-// ━━━━━━━━ [8. 메인 응답 핸들러 수정본] ━━━━━━━━
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
         if (!msg) return; 
         
-        // 관리자 방인 경우 단톡방(isGroupChat)이라도 무시하지 않고 진행
         if (isGroupChat && room !== Config.AdminRoom) return; 
 
         var hash = String(imageDB.getProfileHash()); 
         var session = SessionManager.get(room, hash); 
         msg = msg.trim(); 
         
-        // [강력 초기화] 관리자 방에서 '관리자' 혹은 '메뉴' 입력 시 즉시 메뉴 출력
         if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) {
             SessionManager.reset(session); 
             return replier.reply(UI.renderMenu(session)); 
@@ -390,25 +400,17 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 세션이 IDLE 상태일 때 관리자 방에서 아무 글이나 치면 메뉴판을 띄워줌 (반응성 강화)
         if (session.screen === "IDLE") {
-            if (room === Config.AdminRoom) {
+            if (msg === "메뉴" || room === Config.AdminRoom) {
                 return replier.reply(UI.renderMenu(session));
             }
             return;
         }
         
-        // 관리자 핸들러 실행
-        if (session.type === "ADMIN") {
-            AdminManager.handle(msg, session, replier);
-            SessionManager.save();
-            return;
-        }
-        
-        // 유저 핸들러 실행
-        UserManager.handle(msg, session, replier);
-        SessionManager.save();
+        if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
+        else UserManager.handle(msg, session, replier);
 
+        SessionManager.save();
     } catch (e) { 
         Api.replyRoom(Config.AdminRoom, "🚨 오류 발생: " + e.message + "\n라인: " + e.lineNumber); 
     }
