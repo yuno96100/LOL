@@ -429,19 +429,41 @@ var UserManager = {
     }
 };
 
-// ━━━━━━━━ [9. 메인 응답 핸들러] ━━━━━━━━
-try {
-    Database.data = Database.load(); 
-    SessionManager.load();
-} catch(e) {
-    Api.replyRoom(Config.AdminRoom, "🚨 초기화 오류: " + e.message);
+// ... (섹션 1~8: Config, UI, Database 객체 정의는 기존과 동일하게 유지)
+
+// ━━━━━━━━ [9. 메인 응답 핸들러 및 초기화] ━━━━━━━━
+
+// 💡 초기화 로직 수정 (안전한 로드 보장)
+function initialize() {
+    try {
+        var db = Database.load();
+        if (db) Database.data = db;
+        
+        // 세션 로드 시 에러 방지 처리
+        var sFile = FileStream.read(Config.SESSION_PATH);
+        if (sFile) SessionManager.sessions = JSON.parse(sFile);
+        else SessionManager.sessions = {};
+        
+        // 성공 시 관리자 알림 (확인용)
+        Api.replyRoom(Config.AdminRoom, "✅ 시스템 초기화 완료 (유저: " + Object.keys(Database.data).length + "명)");
+    } catch(e) {
+        Api.replyRoom(Config.AdminRoom, "🚨 초기화 실패: " + e.message);
+    }
 }
+
+// 봇 시작 시 실행
+initialize();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
         if (!msg) return; 
         if (isGroupChat && room !== Config.AdminRoom) return;
         
+        // 데이터가 비어있을 경우를 대비한 강제 재로드 체크
+        if (Object.keys(Database.data).length === 0) {
+            Database.data = Database.load();
+        }
+
         var session = SessionManager.get(room, String(imageDB.getProfileHash())); 
         msg = msg.trim();
         
