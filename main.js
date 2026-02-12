@@ -365,31 +365,51 @@ var UserManager = {
 Database.data = Database.load(); 
 SessionManager.load();          
 
+// ━━━━━━━━ [8. 메인 응답 핸들러 수정본] ━━━━━━━━
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
-        if (!msg || isGroupChat) return; 
+        if (!msg) return; 
         
+        // 관리자 방인 경우 단톡방(isGroupChat)이라도 무시하지 않고 진행
+        if (isGroupChat && room !== Config.AdminRoom) return; 
+
         var hash = String(imageDB.getProfileHash()); 
         var session = SessionManager.get(room, hash); 
         msg = msg.trim(); 
         
-        if (msg === "메뉴" || msg === "취소") {
-            SessionManager.reset(session); return replier.reply(UI.renderMenu(session)); 
+        // [강력 초기화] 관리자 방에서 '관리자' 혹은 '메뉴' 입력 시 즉시 메뉴 출력
+        if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) {
+            SessionManager.reset(session); 
+            return replier.reply(UI.renderMenu(session)); 
         }
 
         if (msg === "이전" && session.history && session.history.length > 0) {
-            var p = session.history.pop(); session.screen = p.screen; session.lastTitle = p.title;
+            var p = session.history.pop(); 
+            session.screen = p.screen; 
+            session.lastTitle = p.title;
             return replier.reply(UI.renderMenu(session));
         }
 
-        if (session.screen === "IDLE") return;
+        // 세션이 IDLE 상태일 때 관리자 방에서 아무 글이나 치면 메뉴판을 띄워줌 (반응성 강화)
+        if (session.screen === "IDLE") {
+            if (room === Config.AdminRoom) {
+                return replier.reply(UI.renderMenu(session));
+            }
+            return;
+        }
         
-        // [수정 핵심] 해시값 조건 제거: 방 이름만 맞으면 무조건 AdminManager 실행
-        if (session.type === "ADMIN") return AdminManager.handle(msg, session, replier);
+        // 관리자 핸들러 실행
+        if (session.type === "ADMIN") {
+            AdminManager.handle(msg, session, replier);
+            SessionManager.save();
+            return;
+        }
         
+        // 유저 핸들러 실행
         UserManager.handle(msg, session, replier);
         SessionManager.save();
+
     } catch (e) { 
-        Api.replyRoom(Config.AdminRoom, "오류: " + e.message + " (L:" + e.lineNumber + ")"); 
+        Api.replyRoom(Config.AdminRoom, "🚨 오류 발생: " + e.message + "\n라인: " + e.lineNumber); 
     }
 }
