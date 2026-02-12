@@ -70,20 +70,19 @@ var UI = {
         var scr = session.screen;
         
         // 1. 대상 데이터 결정 (관리자면 targetUser, 아니면 본인 데이터)
-        var targetId = (session.type === "ADMIN" && session.targetUser) ? session.targetUser : session.tempId;
-        var data = Database.data[targetId];
+       var targetId = (session.type === "ADMIN" && session.targetUser) ? session.targetUser : session.tempId;
+    var data = Database.data[targetId];
 
-        // 2. 데이터가 진짜로 없을 경우 (예외 처리)
-        if (!data) {
-    Database.data = Database.load(); // 💡 실시간으로 DB를 다시 로드 시도
-    data = Database.data[targetId];
-    
-    if (!data) { // 재로드 후에도 없다면 세션 초기화
-        session.targetUser = null;
-        var dbKeys = Object.keys(Database.data).join(", ");
-        return this.make("데이터 오류", 
-            "선택한 유저 ID [" + targetId + "]를 찾을 수 없습니다.\n현재 DB: [" + dbKeys + "]", 
-            "메뉴로 돌아가 유저 목록을 갱신하세요.", false);
+    if (!data) {
+        Database.data = Database.load(); // 💡 실시간으로 DB를 파일에서 다시 로드
+        data = Database.data[targetId];
+        
+        if (!data) { // 재로드 후에도 데이터가 없는 진짜 오류인 경우
+            session.targetUser = null; 
+            var dbKeys = Object.keys(Database.data).join(", ");
+            return this.make("데이터 오류", 
+                "대상: [" + targetId + "]\n해당 데이터를 찾을 수 없습니다.", 
+                "유저 목록을 다시 갱신해 주세요.", false);
     }
         }
 
@@ -357,21 +356,24 @@ var AdminManager = {
                 if (msg === "2") return AdminActions.showUserList(session, replier); // v0.0.16의 유저 목록 호출
                 break;
 
-            case "ADMIN_USER_LIST":
+           case "ADMIN_USER_LIST":
     var idx = parseInt(msg) - 1;
     if (session.userListCache && session.userListCache[idx]) {
         var selectedId = session.userListCache[idx];
-        session.targetUser = selectedId; // 이 시점에서 targetUser 할당
+        
+        // 💡 중요: 세션에 타겟을 먼저 박고 스크린을 이동
+        session.targetUser = selectedId;
+        
         if (Database.data[selectedId]) {
             session.screen = "ADMIN_USER_DETAIL"; 
             return replier.reply(UI.renderCategoryUI(session, "작업 선택", ""));
-                    } else {
-                        return replier.reply("🚨 DB에 [" + selectedId + "] 데이터가 없습니다.");
-                    }
-                } else {
-                    return replier.reply("❌ 올바른 번호를 입력해 주세요.");
-                }
-                break;
+        } else {
+            return replier.reply("🚨 DB에 [" + selectedId + "] 데이터가 없습니다. 목록을 갱신합니다.");
+        }
+    } else {
+        return replier.reply("❌ 올바른 번호를 입력해 주세요.");
+    }
+    break;
 
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
