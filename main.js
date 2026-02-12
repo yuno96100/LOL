@@ -346,68 +346,53 @@ var UserActions = {
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
-        var scr = session.screen;
-
-        // [핵심 수정] 화면별 로직을 switch문 안에서 엄격하게 분리
-        switch(scr) {
+        // [수정] 스크린 상태를 기준으로 switch문을 먼저 태웁니다.
+        switch(session.screen) {
             case "ADMIN_MAIN":
-                if (msg === "1") {
-                    return AdminActions.showSysInfo(session, replier);
-                }
-                if (msg === "2") {
-                    // 유저 목록 생성 및 캐시 저장
-                    var userIds = Object.keys(Database.data);
-                    if (userIds.length === 0) {
-                        return replier.reply(UI.make("알림", "등록된 유저가 없습니다.", "메뉴로 이동", false));
-                    }
-                    
-                    session.userListCache = userIds; // 현재 로드된 유저 리스트 저장
-                    
-                    var listText = userIds.map(function(id, i) {
-                        var d = Database.data[id];
-                        var badge = (d && d.inquiryCount > 0) ? " [🔔" + d.inquiryCount + "]" : "";
-                        return (i + 1) + ". " + id + badge;
-                    }).join("\n");
-                    
-                    // 화면 전환: ADMIN_USER_LIST로 이동
-                    return replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", listText, "관리할 유저 번호를 입력하세요."));
-                }
+                if (msg === "1") return AdminActions.showSysInfo(session, replier);
+                if (msg === "2") return AdminActions.showUserList(session, replier); // v0.0.16의 유저 목록 호출
                 break;
 
             case "ADMIN_USER_LIST":
                 var idx = parseInt(msg) - 1;
-                if (!isNaN(idx) && session.userListCache && session.userListCache[idx]) {
+                // [검증] 캐시가 있고 입력한 번호가 유효한지 체크
+                if (session.userListCache && session.userListCache[idx]) {
                     var selectedId = session.userListCache[idx];
                     
-                    // 관리 대상 유저 ID를 세션에 고정
-                    session.targetUser = selectedId; 
+                    // [핵심] targetUser에 ID를 정확히 박아넣음
+                    session.targetUser = selectedId;
                     
-                    // 상세 화면으로 이동
-                    return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업을 선택하세요."));
+                    // [안전장치] 해당 유저의 데이터가 실제 DB에 있는지 확인
+                    if (Database.data[selectedId]) {
+                        // v0.0.16 로직: 상세 정보로 이동 (renderCategoryUI가 자동 호출됨)
+                        return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업 선택"));
+                    } else {
+                        return replier.reply("🚨 선택한 유저의 데이터를 DB에서 찾을 수 없습니다.");
+                    }
                 } else {
-                    return replier.reply("❌ 올바른 번호를 입력해주세요.");
+                    return replier.reply("❌ 올바른 번호를 입력해 주세요.");
                 }
                 break;
 
             case "ADMIN_USER_DETAIL":
-                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 2. LP 3. 레벨", "번호 입력"));
-                if (msg === "2") return AdminActions.showInquiryDetail(session, replier);
-                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "정말 초기화하시겠습니까?", "'확인' 입력"));
-                if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "정말 삭제하시겠습니까?", "'삭제확인' 입력"));
+                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
+                if (msg === "2") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "["+session.targetUser+"] 유저 답변 내용 입력", "전송 대기"));
+                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "해당 계정을 초기화하시겠습니까?", "'확인' 입력 시 실행"));
+                if (msg === "4") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "해당 계정을 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
                 break;
 
             case "ADMIN_EDIT_MENU":
-                var types = { "1": "gold", "2": "lp", "3": "level" };
-                if (types[msg]) { 
-                    session.editType = types[msg]; 
-                    return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "수치 변경", "새로운 수치를 입력하세요.", "숫자 입력")); 
+                var map = {"1": "gold", "2": "lp", "3": "level"};
+                if (map[msg]) {
+                    session.editType = map[msg];
+                    return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "수치 수정", "수정할 값을 숫자로 입력하세요.", "입력 대기"));
                 }
                 break;
 
             case "ADMIN_EDIT_INPUT": return AdminActions.editUserData(msg, session, replier);
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
-            case "ADMIN_RESET_CONFIRM": if (msg === "확인") AdminActions.resetConfirm(msg, session, replier); break;
-            case "ADMIN_DELETE_CONFIRM": if (msg === "삭제확인") AdminActions.deleteConfirm(msg, session, replier); break;
+            case "ADMIN_RESET_CONFIRM": return AdminActions.resetConfirm(msg, session, replier);
+            case "ADMIN_DELETE_CONFIRM": return AdminActions.deleteConfirm(msg, session, replier);
         }
     }
 };
