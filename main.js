@@ -15,7 +15,7 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 14,
-    WRAP_LIMIT: 16,
+    WRAP_LIMIT: 18,
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"],
     TIMEOUT: 300000 
 };
