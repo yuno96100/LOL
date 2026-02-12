@@ -498,37 +498,41 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (!msg || msg.indexOf(".업데이트") !== -1) return;
         msg = msg.trim(); 
 
-        // 대기 상태 리스트 정의
         var standbyScreens = ["IDLE", "USER_MAIN", "GUEST_MAIN", "ADMIN_MAIN"];
         var isStandby = standbyScreens.indexOf(session.screen) !== -1;
 
-        // 1. [메뉴] 명령어: 오직 대기 상태에서만 작동
+        // 1. [메뉴] 명령어: 대기 상태에서만 작동
         if (msg === "메뉴") {
             if (isStandby) {
                 return replier.reply(UI.renderMenu(session));
-            } else {
-                // 대기 상태가 아니면(입력 중, 대전 중 등) 무시
-                return;
             }
+            return;
         }
 
-        // 2. [이전/취소] 명령어: 대기 상태가 아닐 때만 작동
+        // 2. [이전/취소] 명령어: 진행 중일 때만 작동
         if (msg === "이전" || msg === "취소") {
             if (!isStandby) {
-                // 취소 시 세션 상태를 메인으로 초기화하고 메뉴 출력
+                // [수정] 취소 알림 메시지 먼저 전송
+                replier.reply(UI.make("작업 취소", "⏹ 진행 중이던 작업이 취소되었습니다.", "메인 메뉴로 돌아갑니다."));
+                
+                // 세션 초기화 및 메뉴 출력
                 return replier.reply(UI.renderMenu(session));
-            } else {
-                // 이미 메인이면 명령어 무시
-                return;
             }
+            return;
         }
 
         // 3. 대전 드래프트 화면 처리
         if (session.screen && session.screen.indexOf("BATTLE_DRAFT") !== -1) {
+            // 대전 준비 중 취소 시에도 알림 출력
+            if (msg === "취소") {
+                session.battle = null;
+                replier.reply(UI.make("대전 이탈", "⚔️ 준비를 중단하고 전장을 떠납니다.", "메인 메뉴로 이동합니다."));
+                return replier.reply(UI.renderMenu(session));
+            }
             return MatchingManager.handleDraft(msg, session, replier);
         } 
         
-        // 4. 그 외 일반적인 모든 상황 처리
+        // 4. 그 외 일반 핸들링
         else {
             return handleGeneralMenu(msg, session, sender, replier);
         }
@@ -540,7 +544,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
 function handleGeneralMenu(msg, session, sender, replier) {
     if (session.screen === "IDLE" || session.screen === "BATTLE_LOADING") return;
     
-    // 이미 위(response)에서 이전/취소를 처리했으므로 여기서는 통과
+    // 이미 상단에서 처리된 명령어는 통과
     if (msg === "이전" || msg === "취소") return;
 
     if (session.type === "ADMIN") {
