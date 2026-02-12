@@ -434,30 +434,52 @@ try {
     Database.data = Database.load(); 
     SessionManager.load();
 } catch(e) {
-    // 로드 실패 시 관리자 방에 즉시 알림
-    // Api.replyRoom(Config.AdminRoom, "🚨 초기화 오류: " + e.message);
+    Api.replyRoom(Config.AdminRoom, "🚨 초기화 오류: " + e.message);
+}
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
-        if (!msg) return; if (isGroupChat && room !== Config.AdminRoom) return;
-        var session = SessionManager.get(room, String(imageDB.getProfileHash())); msg = msg.trim();
+        if (!msg) return; 
+        if (isGroupChat && room !== Config.AdminRoom) return;
         
-        if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) { SessionManager.reset(session); return replier.reply(UI.renderMenu(session)); }
+        var session = SessionManager.get(room, String(imageDB.getProfileHash())); 
+        msg = msg.trim();
+        
+        if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) { 
+            SessionManager.reset(session); 
+            return replier.reply(UI.renderMenu(session)); 
+        }
+        
         if (msg === "이전") {
             var curr = session.screen;
-            if (curr.indexOf("JOIN_") !== -1 || curr.indexOf("LOGIN_") !== -1 || curr === "GUEST_INQUIRY") return replier.reply(UI.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "메뉴 선택"));
-            if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 복귀"));
-            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
-            if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
-            if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
-            if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
-            SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
+            if (curr.indexOf("JOIN_") !== -1 || curr.indexOf("LOGIN_") !== -1 || curr === "GUEST_INQUIRY") 
+                return replier.reply(UI.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "메뉴 선택"));
+            if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") 
+                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 복귀"));
+            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") 
+                return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
+            if (curr === "SHOP_BUY_ACTION") 
+                return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
+            if (curr === "ADMIN_USER_DETAIL") 
+                return AdminActions.showUserList(session, replier);
+            if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) 
+                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
+            
+            SessionManager.reset(session); 
+            return replier.reply(UI.renderMenu(session));
         }
 
-        if (session.screen === "IDLE") { if (msg === "메뉴" || room === Config.AdminRoom) return replier.reply(UI.renderMenu(session)); return; }
+        if (session.screen === "IDLE") { 
+            if (msg === "메뉴" || room === Config.AdminRoom) return replier.reply(UI.renderMenu(session)); 
+            return; 
+        }
+        
         if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
         else if (!session.data) LoginManager.handle(msg, session, replier);
         else UserManager.handle(msg, session, replier);
+        
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "🚨 오류: " + e.message + " (L:" + e.lineNumber + ")"); }
+    } catch (e) { 
+        Api.replyRoom(Config.AdminRoom, "🚨 오류: " + e.message + " (L:" + e.lineNumber + ")"); 
+    }
 }
