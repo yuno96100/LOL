@@ -1,5 +1,5 @@
 /**
- * [main.js] v9.0.17
+ * [main.js] v0.0.01
  * 1. 모듈화 완비: AdminActions / UserActions 기능 분리
  * 2. 개인톡 전용: 단체방 로직 완전 제거
  * 3. 전체 기능 포함: 가입, 로그인, 문의, 프로필, 상점, 컬렉션, 대전 매칭
@@ -15,8 +15,8 @@ var Config = {
     SESSION_PATH: "/sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 17,
-    NAV_LEFT: "    ",
-    NAV_RIGHT: "  ",
+    NAV_LEFT: "  ",
+    NAV_RIGHT: " ",
     NAV_ITEMS: ["⬅️ 이전", "❌ 취소", "🏠 메뉴"]
 };
 
