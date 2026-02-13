@@ -165,10 +165,16 @@ var Database = {
     inquiries: [],
     load: function() { 
         try { 
-            var d = JSON.parse(FileStream.read(Config.DB_PATH)); 
+            var content = FileStream.read(Config.DB_PATH);
+            if (!content) return;
+            var d = JSON.parse(content); 
+            // 데이터가 없으면 빈 객체/배열로 초기화하여 undefined 방지
             this.data = d.users || {};
             this.inquiries = d.inquiries || [];
-        } catch(e) { this.data = {}; this.inquiries = []; } 
+        } catch(e) { 
+            this.data = {}; 
+            this.inquiries = []; 
+        } 
     },
     save: function() { 
         var obj = { users: this.data, inquiries: this.inquiries };
@@ -278,8 +284,18 @@ var AdminActions = {
         replier.reply(UI.go(session, "ADMIN_SYS_INFO", "시스템 정보", "📟 메모리: " + used + "MB\n👥 유저: " + Object.keys(Database.data).length + "명\n🛡️ 버전: " + Config.Version, "조회 완료"));
     },
     showUserList: function(session, replier) {
-        session.userListCache = Object.keys(Database.data);
-        var list = session.userListCache.map(function(id, i){ return (i+1) + ". " + id; }).join("\n");
+        // Database.data에서 유저 아이디(Key)들만 추출
+        var userIds = Object.keys(Database.data);
+        
+        if (userIds.length === 0) {
+            return replier.reply(UI.make("알림", "등록된 유저가 없습니다.", "관리 센터 복귀", false));
+        }
+
+        session.userListCache = userIds;
+        var list = userIds.map(function(id, i) { 
+            return (i + 1) + ". " + id; 
+        }).join("\n");
+
         replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", list, "관리할 유저 선택"));
     },
     showInquiryList: function(session, replier) {
