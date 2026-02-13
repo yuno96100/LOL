@@ -67,6 +67,7 @@ function getTierInfo(lp) {
 }
 
 // ━━━━━━━━ [2. 모듈: UI 엔진 (아이콘 네비게이션형)] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: UI 엔진 (본문 복구 및 세로형 네비)] ━━━━━━━━
 var UI = {
     // 1. 기본 프레임 생성기
     make: function(top, mid, isRoot, help) {
@@ -78,9 +79,9 @@ var UI = {
             res += Utils.wrapText(mid) + "\n" + div + "\n";
         }
 
-        // [하단] 네비게이션 바 (메인 로비가 아닐 때만 노출)
+        // [하단] 세로형 네비게이션 바 (메인 로비가 아닐 때만 노출)
         if (!isRoot) {
-            res += " ⬅️이전    ❌취소 \n" + div + "\n";
+            res += "⬅️ 이전\n❌ 취소\n" + div + "\n";
         }
 
         // [최하단] 도움말
@@ -91,7 +92,7 @@ var UI = {
         return res;
     },
 
-    // 2. 카테고리별 화면 구성 (상단 정보 구간 정의)
+    // 2. 카테고리별 화면 구성
     go: function(session, screen, title, content, help) {
         session.screen = screen;
         var id = session.targetUser || session.tempId;
@@ -99,38 +100,38 @@ var UI = {
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
 
         var top = title;
-        var mid = content;
+        var info = ""; // 상단에 표시될 유저 정보 구간 전용 변수
 
-        // [상단 정보 구간 커스텀 로직]
+        // [상단부 정보 구성 로직]
         if (data && (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL")) {
             top = (session.targetUser) ? id + " 님" : "내 프로필";
             var tier = getTierInfo(data.lp);
-            // 상단부: 계정 ~ 포인트 정보 (구분선으로 목록과 분리)
-            mid = "👤 계정: " + id + "\n" +
-                  "🏅 칭호: [" + data.title + "]\n" + Utils.getFixedDivider() + "\n" +
-                  "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-                  "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                  "⚔️ 전적: " + data.win + "승 " + data.lose + "패\n" + Utils.getFixedDivider() + "\n" +
-                  "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                  "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
-                  "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
-                  "✨ 포인트: " + (data.point || 0) + " P\n" + 
-                  Utils.getFixedDivider() + "\n" + (content || "");
+            info = "👤 계정: " + id + "\n" +
+                   "🏅 칭호: [" + data.title + "]\n" + Utils.getFixedDivider() + "\n" +
+                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                   "⚔️ 전적: " + data.win + "승 " + data.lose + "패\n" + Utils.getFixedDivider() + "\n" +
+                   "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                   "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
+                   "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
+                   "✨ 포인트: " + (data.point || 0) + " P\n" + 
+                   Utils.getFixedDivider() + "\n";
         } 
         else if (data && (screen === "SHOP_MAIN" || screen === "SHOP_BUY_ACTION")) {
             top = "상점";
-            mid = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                  "📦 보유 챔피언: " + (data.collection.champions.length) + " / 18\n" + 
-                  Utils.getFixedDivider() + "\n" + (content || "");
+            info = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                   "📦 보유 챔피언: " + (data.collection.champions.length) + " / 18\n" + 
+                   Utils.getFixedDivider() + "\n";
         }
         else if (data && (screen === "COL_MAIN" || screen.indexOf("COL_") !== -1)) {
             top = "컬렉션";
-            mid = "🏅 장착 칭호: [" + data.title + "]\n" +
-                  "🏆 수집율: " + Math.floor((data.collection.champions.length / 18) * 100) + "%\n" +
-                  Utils.getFixedDivider() + "\n" + (content || "");
+            info = "🏅 장착 칭호: [" + data.title + "]\n" +
+                   "🏆 수집율: " + Math.floor((data.collection.champions.length / 18) * 100) + "%\n" +
+                   Utils.getFixedDivider() + "\n";
         }
 
-        return this.make(top, mid, isRoot, help);
+        // 핵심: info(상단정보)와 content(넘겨받은 목록)를 합쳐서 전달
+        return this.make(top, info + (content || ""), isRoot, help);
     },
 
     renderMenu: function(session) {
