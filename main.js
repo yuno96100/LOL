@@ -298,10 +298,9 @@ var AdminActions = {
 var UserActions = {
     handleInquiry: function(msg, session, replier) {
         var now = new Date();
-        var ampm = now.getHours() >= 12 ? "오후" : "오전";
-        var h12 = now.getHours() % 12 || 12;
-        var min = now.getMinutes() < 10 ? "0" + now.getMinutes() : now.getMinutes();
-        var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + ampm + " " + h12 + ":" + min;
+        var hours = now.getHours() < 10 ? "0" + now.getHours() : now.getHours(); // 09, 13, 23 등
+var min = now.getMinutes() < 10 ? "0" + now.getMinutes() : now.getMinutes();
+var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min;
 
         Database.inquiries.push({
             sender: session.tempId || "비회원",
