@@ -68,6 +68,7 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
+    // 기본 프레임 생성
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
         var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content) + "\n" + div + "\n";
@@ -76,6 +77,7 @@ var UI = {
         return res;
     },
 
+    // 카테고리별 조건부 헤더 렌더링
     renderCategoryUI: function(session, help, content) {
         var id = session.targetUser || session.tempId;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -84,82 +86,87 @@ var UI = {
         
         var title = "정보", head = "", body = "";
 
-        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
-            title = (session.targetUser) ? id + " 님" : "프로필";
+        // 1. 프로필 조회 (조회 자체가 액션이므로 상세 정보 표시)
+        if (scr === "PROFILE_VIEW" || scr === "ADMIN_USER_DETAIL") {
+            title = (session.targetUser) ? id + " 님" : "내 프로필";
             var tier = getTierInfo(data.lp);
-            var win = data.win || 0, lose = data.lose || 0, total = win + lose;
-            var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-            var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
-            
             head = "👤 계정: " + id + "\n" +
-                   "🏅 칭호: [" + data.title + "]\n" +
-                   div + "\n" +
                    "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
                    "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                   "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
-                   div + "\n" +
-                   "🆙 레벨: Lv." + data.level + "\n" +
-                   "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                   div + "\n" +
-                   "🎯정확:" + st.acc + " | ⚡반응:" + st.ref + "\n" +
-                   "🧘침착:" + st.com + " | 🧠직관:" + st.int + "\n" +
-                   "✨포인트: " + (data.point || 0) + " P";
+                   "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                   "✨ 포인트: " + (data.point || 0) + " P";
             
             if (scr === "PROFILE_VIEW") body = "1. 능력치 강화";
-            else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
             else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
         }
-        else if (scr === "ADMIN_INQUIRY_DETAIL") {
-    var iq = Database.inquiries[session.targetInquiryIdx];
-    title = "문의 상세";
-    // head에 상세 내용을 모두 담습니다.
-    head = "👤 발신: " + iq.sender + "\n" +
-           "⏰ 시간: " + iq.time + "\n" + 
-           div + "\n" + 
-           Utils.wrapText(iq.content);
-    // body를 비워두어 하단 💡 부분에 중복 노출되지 않게 합니다.
-    body = ""; 
-    help = "1. 답변하기\n2. 삭제하기"; // 실제 메뉴는 help 자리에 배치
-}
-        // 여기에 닫는 중괄호 없이 바로 else if로 이어져야 합니다.
-        else if (scr.indexOf("SHOP") !== -1) { 
-            title = "상점";
-            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
-            head = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n📦 보유 챔피언: " + ownedCount + " / " + SystemData.champions.length;
-            if (scr === "SHOP_MAIN") body = "1. 챔피언 영입";
-        }
-        else if (scr.indexOf("COL") !== -1) {
-            title = "컬렉션";
-            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
-            head = "🏅 현재 칭호: [" + data.title + "]\n🏆 수집율: " + Math.floor((ownedCount / SystemData.champions.length) * 100) + "%";
-            if (scr === "COL_MAIN") body = "1. 보유 칭호\n2. 보유 챔피언";
+
+        // 2. [액션 화면] 상점 구매 시: "현재 골드" 헤더 노출
+        else if (scr === "SHOP_BUY_ACTION") {
+            title = "챔피언 영입";
+            head = "💰 보유 잔액: " + (data.gold || 0).toLocaleString() + " G";
         }
 
-        var fullContent = head; 
-        if (content && scr !== "ADMIN_INQUIRY_DETAIL") fullContent += "\n" + div + "\n" + content;
-        
+        // 3. [액션 화면] 스탯 강화 입력 시: "보유 포인트" 헤더 노출
+        else if (scr === "STAT_UP_INPUT") {
+            title = "능력치 강화";
+            head = "✨ 보유 포인트: " + (data.point || 0) + " P";
+        }
+
+        // 4. [액션 화면] 칭호 변경 시: "현재 장착 중인 칭호" 헤더 노출
+        else if (scr === "COL_TITLE_ACTION") {
+            title = "칭호 변경";
+            head = "🏅 현재 장착: [" + data.title + "]";
+        }
+
+        // 5. [메인/목록 화면] 헤더 없이 깔끔하게 메뉴만 출력
+        else {
+            if (scr === "SHOP_MAIN") {
+                title = "상점";
+                content = "1. 챔피언 영입";
+            } else if (scr === "COL_MAIN") {
+                title = "컬렉션";
+                content = "1. 보유 칭호\n2. 보유 챔피언";
+            } else if (scr === "STAT_UP_MENU") {
+                title = "강화 선택";
+                content = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
+            } else if (scr === "COL_CHAR_VIEW") {
+                title = "보유 챔피언";
+                // content는 호출부에서 전달된 목록 사용
+            }
+            head = ""; // 메인 메뉴들은 헤더를 비움
+        }
+
+        // 컨텐츠 결합 (헤더가 있을 때만 구분선 추가)
+        var fullContent = head ? (head + "\n" + div + "\n" + (content || "")) : (content || "");
+
+        // 6. [특수 화면] 문의 상세 (관리자 전용 레이아웃)
         if (scr === "ADMIN_INQUIRY_DETAIL") {
-            // 상세 페이지 전용 출력 로직
-            var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(fullContent) + "\n" + div + "\n";
-            res += (body || help); // 💡 아이콘 없이 '선택지'만 깔끔하게 출력
-            res += "\n" + div + "\n" + Utils.getNav();
+            var iq = Database.inquiries[session.targetInquiryIdx];
+            var res = "『 문의 상세 』\n" + div + "\n" + 
+                      Utils.wrapText("👤 발신: " + iq.sender + "\n⏰ 시간: " + iq.time + "\n" + div + "\n" + iq.content) + 
+                      "\n" + div + "\n";
+            res += "1. 답변하기\n2. 삭제하기\n" + div + "\n" + Utils.getNav();
             return res;
         }
 
-        // 그 외 일반 화면은 UI.make를 통해 💡 아이콘이 붙어서 나감
+        // 일반 카테고리 UI 출력
         return this.make(title, fullContent, body || help, false);
     },
     
+    // 화면 이동 처리
     go: function(session, screen, title, content, help) {
         session.screen = screen;
-        var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_DETAIL"];
-        for (var i=0; i<fixedScreens.length; i++) {
-            if (screen.indexOf(fixedScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
+        // 카테고리 UI를 적용할 스크워드 리스트
+        var categoryScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_DETAIL"];
+        for (var i = 0; i < categoryScreens.length; i++) {
+            if (screen.indexOf(categoryScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
         }
-        var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "SUCCESS_IDLE"].indexOf(screen) !== -1);
+        
+        var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
         return this.make(title, content, help, isRoot);
     },
 
+    // 메인 메뉴 렌더링
     renderMenu: function(session) {
         if (session.type === "ADMIN") {
             var unread = Database.inquiries.some(function(iq) { return !iq.read; });
