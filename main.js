@@ -590,7 +590,8 @@ var UserManager = {
 
 JavaScript
 // ━━━━━━━━ [9. 메인 응답 핸들러] ━━━━━━━━
-Database.load(); SessionManager.load();
+Database.load(); 
+SessionManager.load();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
@@ -602,7 +603,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         
         // 공통 명령어 처리 (메뉴, 취소, 관리자)
         if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) { 
-            SessionManager.reset(session); 
+            SessionManager.reset(session, String(imageDB.getProfileHash())); 
             return replier.reply(UI.renderMenu(session)); 
         }
         
@@ -618,16 +619,16 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
             if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
             
-            SessionManager.reset(session); 
+            SessionManager.reset(session, String(imageDB.getProfileHash())); 
             return replier.reply(UI.renderMenu(session));
         }
 
-        // IDLE 상태(세션 종료 등) 처리 로직
+        // IDLE 상태 처리 (세션 종료 후 '메뉴' 입력 대기)
         if (session.screen === "IDLE") { 
             if (msg === "메뉴") {
                 return replier.reply(UI.renderMenu(session));
             }
-            return; // '메뉴'가 아니면 아무 작업도 하지 않음
+            return; // '메뉴'가 아니면 응답하지 않음
         }
 
         // 세션 타입 및 로그인 여부에 따른 핸들러 분기
@@ -641,6 +642,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
 
         SessionManager.save();
     } catch (e) { 
-        Api.replyRoom(Config.AdminRoom, "🚨 오류: " + e.message + " (L:" + e.lineNumber + ")"); 
+        Api.replyRoom(Config.AdminRoom, "🚨 오류 발생\n라인: " + e.lineNumber + "\n내용: " + e.message); 
     }
 }
