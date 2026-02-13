@@ -66,24 +66,23 @@ function getTierInfo(lp) {
     return { name: "아이언", icon: "⚫" };
 }
 
-// ━━━━━━━━ [2. 모듈: UI 엔진 (목록 복구 및 세로형 네비)] ━━━━━━━━
+
+// ━━━━━━━━ [2. 모듈: UI 엔진 (단계별 정보 제어)] ━━━━━━━━
 var UI = {
-    // 1. 기본 프레임 생성기
+    // 공통 프레임 (세로형 네비게이션 적용)
     make: function(top, mid, isRoot, help) {
         var div = Utils.getFixedDivider();
         var res = "『 " + top + " 』\n" + div + "\n";
 
-        // [중단] 상단 정보 + 본문/목록 결합 출력
         if (mid) {
             res += Utils.wrapText(mid) + "\n" + div + "\n";
         }
 
-        // [하단] 세로형 네비게이션 바 (메인 화면이 아닐 때만 노출)
+        // 하단바 세로형 네비게이션
         if (!isRoot) {
             res += "⬅️ 이전\n❌ 취소\n" + div + "\n";
         }
 
-        // [최하단] 도움말
         if (help) {
             res += "💡 " + Utils.wrapText(help);
         }
@@ -91,64 +90,60 @@ var UI = {
         return res;
     },
 
-    // 2. 카테고리별 화면 구성 (기존 누락된 목록들 강제 복구)
     go: function(session, screen, title, content, help) {
         session.screen = screen;
-        var id = session.targetUser || session.tempId;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
-
+        
         var top = title;
-        var info = ""; 
+        var info = "";
 
-        // [상단부 정보 구성]
-        if (data && (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL")) {
-            top = (session.targetUser) ? id + " 님" : "내 프로필";
-            var tier = getTierInfo(data.lp);
-            info = "👤 계정: " + id + "\n" +
-                   "🏅 칭호: [" + data.title + "]\n" + Utils.getFixedDivider() + "\n" +
-                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                   "⚔️ 전적: " + data.win + "승 " + data.lose + "패\n" + Utils.getFixedDivider() + "\n" +
-                   "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                   "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
-                   "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
-                   "✨ 포인트: " + (data.point || 0) + " P\n" + 
-                   Utils.getFixedDivider() + "\n";
+        if (data) {
+            // [특수 단계: 프로필] - 이전 그대로 상세 내용 노출
+            if (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL") {
+                var id = session.targetUser || session.tempId;
+                top = (session.targetUser) ? id + " 님" : "내 프로필";
+                var tier = getTierInfo(data.lp);
+                info = "👤 계정: " + id + "\n" +
+                       "🏅 칭호: [" + data.title + "]\n" + Utils.getFixedDivider() + "\n" +
+                       "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+                       "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                       "⚔️ 전적: " + data.win + "승 " + data.lose + "패\n" + Utils.getFixedDivider() + "\n" +
+                       "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                       "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
+                       "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
+                       "✨ 포인트: " + (data.point || 0) + " P\n" + 
+                       Utils.getFixedDivider() + "\n";
+                if (screen === "PROFILE_VIEW" && !content) content = "1. 스탯 강화";
+            } 
             
-            // 프로필 화면에서 목록이 누락되지 않도록 추가
-            if (screen === "PROFILE_VIEW" && !content) content = "1. 스탯 강화";
-            if (screen === "ADMIN_USER_DETAIL" && !content) content = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
-        } 
-        else if (data && (screen === "SHOP_MAIN" || screen === "SHOP_BUY_ACTION")) {
-            top = "상점";
-            info = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                   "📦 보유 챔피언: " + (data.collection.champions.length) + " / 18\n" + 
-                   Utils.getFixedDivider() + "\n";
-            if (screen === "SHOP_MAIN" && !content) content = "1. 챔피언 영입";
-        }
-        else if (data && (screen === "COL_MAIN" || screen.indexOf("COL_") !== -1)) {
-            top = "컬렉션";
-            info = "🏅 장착 칭호: [" + data.title + "]\n" +
-                   "🏆 수집율: " + Math.floor((data.collection.champions.length / 18) * 100) + "%\n" +
-                   Utils.getFixedDivider() + "\n";
-            if (screen === "COL_MAIN" && !content) content = "1. 칭호 관리\n2. 챔피언 도감";
-        }
-        else if (screen === "STAT_UP_MENU") {
-            top = "스탯 강화";
-            content = "1. 정확\n2. 반응\n3. 침착\n4. 직관";
+            // [3단계: 상세 액션 화면] - 필요한 요약 정보만 노출
+            else if (screen === "SHOP_BUY_ACTION") {
+                top = "챔피언 영입";
+                info = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n";
+            }
+            else if (screen === "COL_TITLE_ACTION" || screen === "COL_CHAR_VIEW") {
+                top = screen === "COL_TITLE_ACTION" ? "칭호 관리" : "챔피언 도감";
+                info = "🎖️ 장착: [" + data.title + "]\n" +
+                       "📦 보유: " + (data.collection.champions.length) + " / 18\n" + Utils.getFixedDivider() + "\n";
+            }
+
+            // [2단계: 카테고리 화면] - 목록만 깔끔하게 노출
+            else if (screen === "SHOP_MAIN") {
+                top = "상점";
+                if (!content) content = "1. 챔피언 영입";
+            }
+            else if (screen === "COL_MAIN") {
+                top = "컬렉션";
+                if (!content) content = "1. 칭호 관리\n2. 챔피언 도감";
+            }
+            else if (screen === "BATTLE_MAIN") {
+                top = "대전 모드";
+                if (!content) content = "1. AI 대전 시작";
+            }
         }
 
-        // 최종 합치기 (Header 정보 + 본문 목록)
         return this.make(top, info + (content || ""), isRoot, help);
-    },
-
-    renderMenu: function(session) {
-        if (session.type === "ADMIN") {
-            return this.go(session, "ADMIN_MAIN", "관리 센터", "1. 시스템 정보\n2. 전체 유저\n3. 문의 관리", "관리 항목 번호 입력");
-        }
-        if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "번호 선택");
-        return this.go(session, "USER_MAIN", "메인 로비", "1. 프로필 조회\n2. 컬렉션 확인\n3. 대전 모드\n4. 상점 이용\n5. 운영진 문의\n6. 로그아웃", "번호 선택");
     }
 };
 
