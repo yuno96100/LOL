@@ -17,7 +17,7 @@ var Config = {
     FIXED_LINE: 14,
     WRAP_LIMIT: 18,
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"],
-    TIMEOUT: 300000 
+    TIMEOUT: 30000 
 };
 
 var MAX_LEVEL = 30;
@@ -187,18 +187,85 @@ var Database = {
 
 var SessionManager = {
     sessions: {},
-    load: function() { try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch(e) { this.sessions = {}; } },
-    save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions)); },
-    get: function(room, hash) {
-        if (!this.sessions[hash]) { this.sessions[hash] = { data: null, screen: "IDLE", tempId: "비회원", userListCache: [], targetUser: null, targetInquiryIdx: null, editType: null, room: room, lastTime: Date.now() }; }
-        var s = this.sessions[hash]; s.room = room; s.type = (room === Config.AdminRoom) ? "ADMIN" : "DIRECT";
-        var now = Date.now(); if (s.screen !== "IDLE" && (now - (s.lastTime || 0) > Config.TIMEOUT)) { this.reset(s); }
-        s.lastTime = now; return s;
+    timers: {}, // 세션별 타이머 저장소
+
+    load: function() {
+        try {
+            this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH));
+        } catch(e) { this.sessions = {}; }
     },
-    reset: function(session) { session.screen = "IDLE"; session.targetUser = null; session.targetInquiryIdx = null; session.editType = null; session.userListCache = []; },
-    findUserRoom: function(userId) { for (var h in this.sessions) { if (this.sessions[h].tempId === userId) return this.sessions[h].room; } return userId; },
+
+    save: function() {
+        FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions));
+    },
+
+    get: function(room, hash, replier) {
+        if (!this.sessions[hash]) { 
+            this.sessions[hash] = { 
+                screen: "IDLE", 
+                tempId: "비회원", 
+                type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
+                data: null 
+            }; 
+        }
+        var s = this.sessions[hash];
+        s.room = room;
+        s.lastTime = Date.now();
+
+        // 1. 기존 타이머가 있다면 즉시 제거 (유저가 새 메시지를 보냈으므로)
+        if (this.timers[hash]) {
+            clearTimeout(this.timers[hash]);
+            delete this.timers[hash];
+        }
+
+        // 2. IDLE 상태가 아닐 때만 30초 타이머 작동
+        var self = this;
+        if (s.screen !== "IDLE") {
+            this.timers[hash] = setTimeout(function() {
+    if (s.screen !== "IDLE") {
+        self.reset(s, hash); 
+        self.save(); // 리셋 직후에 저장 (순서 최적화)
+        
+        replier.reply(UI.make("세션 자동 종료", 
+            "입력 시간이 30초를 초과하여\n세션이 안전하게 종료되었습니다.", 
+            "다시 시작하려면 '메뉴'를 입력하세요.", true));
+    }
+}, Config.TIMEOUT);
+        }
+
+        return s;
+    },
+
+    // hash를 인자로 받아 타이머까지 확실히 제거하도록 수정
+    reset: function(session, hash) {
+        session.screen = "IDLE";
+        session.targetUser = null;
+        session.targetInquiryIdx = null;
+        session.editType = null;
+        session.userListCache = [];
+        
+        // 타이머가 남아있다면 제거
+        if (hash && this.timers[hash]) {
+            clearTimeout(this.timers[hash]);
+            delete this.timers[hash];
+        }
+    },
+
+    findUserRoom: function(userId) { 
+        for (var h in this.sessions) { 
+            if (this.sessions[h].tempId === userId) return this.sessions[h].room; 
+        } 
+        return userId; 
+    },
+
     forceLogout: function(userId) {
-        for (var h in this.sessions) { if (this.sessions[h].tempId === userId) { this.sessions[h].data = null; this.sessions[h].tempId = "비회원"; this.reset(this.sessions[h]); } }
+        for (var h in this.sessions) { 
+            if (this.sessions[h].tempId === userId) { 
+                this.sessions[h].data = null; 
+                this.sessions[h].tempId = "비회원"; 
+                this.reset(this.sessions[h], h); 
+            } 
+        }
         this.save();
     }
 };
@@ -501,8 +568,12 @@ Database.load(); SessionManager.load();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
-        if (!msg) return; if (isGroupChat && room !== Config.AdminRoom) return;
-        var session = SessionManager.get(room, String(imageDB.getProfileHash())); msg = msg.trim();
+        if (!msg) return; 
+        if (isGroupChat && room !== Config.AdminRoom) return;
+        
+        // replier를 세 번째 인자로 추가 전달
+        var session = SessionManager.get(room, String(imageDB.getProfileHash()), replier); 
+        msg = msg.trim();
         
         if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) { SessionManager.reset(session); return replier.reply(UI.renderMenu(session)); }
         
