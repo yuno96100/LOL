@@ -73,17 +73,19 @@ var UI = {
         var div = Utils.getFixedDivider();
         var res = "『 " + top + " 』\n" + div + "\n";
         
-        // 본문 출력
-        if (mid) res += Utils.wrapText(mid) + "\n";
+        // 1. 본문 영역
+        if (mid) res += mid + "\n";
         
-        // 내비게이션 (루트 메뉴가 아닐 때만 표시)
+        // 2. 내비게이션 영역 (세로형 분리)
         if (!isRoot) {
-            res += div + "\n"; // 본문과 내비게이션 사이 구분선
-            res += "⬅️ 이전  |  ❌ 취소\n";
+            res += div + "\n";
+            res += "⬅️ 이전\n";
+            res += "❌ 취소\n";
         }
         
-        res += div + "\n"; // 하단 구분선
-        if (help) res += "💡 " + Utils.wrapText(help);
+        // 3. 하단 도움말 영역
+        res += div + "\n";
+        if (help) res += "💡 " + help;
         return res;
     },
 
@@ -103,15 +105,15 @@ var UI = {
                     var tier = getTierInfo(data.lp);
                     top = (session.type === "ADMIN") ? "👤 유저: " + targetId : "👤 내 프로필";
                     
-                    // 레벨 밑에 경험치가 오도록 세로형 구성
+                    // 세로형 구조 및 스탯 정렬 (직관50 잘림 방지)
                     body = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
                            "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
                            "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
-                           "🆙 레벨: Lv." + data.level + "\n" + // 레벨
-                           "📊 경험: [" + data.exp + "/" + (data.level * 100) + "]\n" + // 레벨 바로 밑 경험치
+                           "🆙 레벨: Lv." + data.level + "\n" +
+                           "📊 경험: [" + data.exp + "/" + (data.level * 100) + "]\n" +
                            Utils.getFixedDivider() + "\n" +
-                           "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
-                           "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
+                           "🎯 정확:" + data.stats.acc + " |⚡ 반응:" + data.stats.ref + "\n" +
+                           "🧘 침착:" + data.stats.com + " |🧠 직관:" + data.stats.int + "\n" +
                            "✨ 포인트: " + (data.point || 0) + " P";
                     help = (session.type === "ADMIN") ? "1.수정 2.초기화 3.삭제" : "1. 스탯 강화";
                     break;
