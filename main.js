@@ -66,20 +66,19 @@ function getTierInfo(lp) {
     return { name: "아이언", icon: "⚫" };
 }
 
-// ━━━━━━━━ [2. 모듈: UI 엔진 (아이콘 네비게이션형)] ━━━━━━━━
-// ━━━━━━━━ [2. 모듈: UI 엔진 (본문 복구 및 세로형 네비)] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: UI 엔진 (목록 복구 및 세로형 네비)] ━━━━━━━━
 var UI = {
     // 1. 기본 프레임 생성기
     make: function(top, mid, isRoot, help) {
         var div = Utils.getFixedDivider();
         var res = "『 " + top + " 』\n" + div + "\n";
 
-        // [중단] 본문 및 선택지 목록
+        // [중단] 상단 정보 + 본문/목록 결합 출력
         if (mid) {
             res += Utils.wrapText(mid) + "\n" + div + "\n";
         }
 
-        // [하단] 세로형 네비게이션 바 (메인 로비가 아닐 때만 노출)
+        // [하단] 세로형 네비게이션 바 (메인 화면이 아닐 때만 노출)
         if (!isRoot) {
             res += "⬅️ 이전\n❌ 취소\n" + div + "\n";
         }
@@ -92,7 +91,7 @@ var UI = {
         return res;
     },
 
-    // 2. 카테고리별 화면 구성
+    // 2. 카테고리별 화면 구성 (기존 누락된 목록들 강제 복구)
     go: function(session, screen, title, content, help) {
         session.screen = screen;
         var id = session.targetUser || session.tempId;
@@ -100,9 +99,9 @@ var UI = {
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
 
         var top = title;
-        var info = ""; // 상단에 표시될 유저 정보 구간 전용 변수
+        var info = ""; 
 
-        // [상단부 정보 구성 로직]
+        // [상단부 정보 구성]
         if (data && (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL")) {
             top = (session.targetUser) ? id + " 님" : "내 프로필";
             var tier = getTierInfo(data.lp);
@@ -116,21 +115,31 @@ var UI = {
                    "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
                    "✨ 포인트: " + (data.point || 0) + " P\n" + 
                    Utils.getFixedDivider() + "\n";
+            
+            // 프로필 화면에서 목록이 누락되지 않도록 추가
+            if (screen === "PROFILE_VIEW" && !content) content = "1. 스탯 강화";
+            if (screen === "ADMIN_USER_DETAIL" && !content) content = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
         } 
         else if (data && (screen === "SHOP_MAIN" || screen === "SHOP_BUY_ACTION")) {
             top = "상점";
             info = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
                    "📦 보유 챔피언: " + (data.collection.champions.length) + " / 18\n" + 
                    Utils.getFixedDivider() + "\n";
+            if (screen === "SHOP_MAIN" && !content) content = "1. 챔피언 영입";
         }
         else if (data && (screen === "COL_MAIN" || screen.indexOf("COL_") !== -1)) {
             top = "컬렉션";
             info = "🏅 장착 칭호: [" + data.title + "]\n" +
                    "🏆 수집율: " + Math.floor((data.collection.champions.length / 18) * 100) + "%\n" +
                    Utils.getFixedDivider() + "\n";
+            if (screen === "COL_MAIN" && !content) content = "1. 칭호 관리\n2. 챔피언 도감";
+        }
+        else if (screen === "STAT_UP_MENU") {
+            top = "스탯 강화";
+            content = "1. 정확\n2. 반응\n3. 침착\n4. 직관";
         }
 
-        // 핵심: info(상단정보)와 content(넘겨받은 목록)를 합쳐서 전달
+        // 최종 합치기 (Header 정보 + 본문 목록)
         return this.make(top, info + (content || ""), isRoot, help);
     },
 
