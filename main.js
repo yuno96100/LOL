@@ -24,7 +24,7 @@ var MAX_LEVEL = 30;
 
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
-    getNav: function() { return " " + Config.NAV_ITEMS.join("  ") + " "; },
+    getNav: function() { return " " + Config.NAV_ITEMS.join("  ") + " "; },
     wrapText: function(str) {
         if (!str) return "";
         var lines = str.split("\n"), result = [];
