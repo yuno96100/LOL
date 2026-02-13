@@ -190,15 +190,6 @@ var SessionManager = {
 };
 
 // ━━━━━━━━ [4. 관리자 액션 모듈] ━━━━━━━━
-네, 올려주신 전체 코드에 제가 드린 로직이 아주 잘 녹아들었습니다! 다만, 코드 중간에 중복된 함수 정의와 누락된 중괄호가 하나 있어 이대로 실행하면 오류가 발생할 수 있습니다.
-
-특히 AdminActions 객체 안에서 viewInquiryDetail 함수가 끝난 뒤 };로 객체가 닫혀버리고, 그 아래에 다시 submitAnswer 등이 겉돌고 있는 부분을 수정해야 합니다.
-
-🛠️ 필수 수정 사항 (복사해서 붙여넣으세요)
-아래 코드는 AdminActions 부분의 문법 오류를 잡고, 답변 전송 로직을 유저별 그룹화 방식에 맞게 완벽히 수정한 버전입니다.
-
-JavaScript
-// ━━━━━━━━ [4. 관리자 액션 모듈] ━━━━━━━━
 var AdminActions = {
     showSysInfo: function(session, replier) {
         var rt = java.lang.Runtime.getRuntime();
@@ -241,6 +232,7 @@ var AdminActions = {
         
         if (userIqs.length === 0) return replier.reply("해당 유저의 문의를 찾을 수 없습니다.");
 
+        // 읽음 처리
         Database.inquiries.forEach(function(iq) {
             if (iq.sender === userName) iq.read = true;
         });
@@ -251,14 +243,12 @@ var AdminActions = {
         }).join("\n" + Utils.getFixedDivider() + "\n");
 
         session.targetUser = userName; 
-        
         var title = "👤 " + userName + " 님의 문의";
         var body = combinedContent + "\n\n1. 답변하기\n2. 이 유저의 모든 문의 삭제";
         replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", title, body, "항목 선택"));
-    }, // 이 쉼표가 중요합니다!
+    },
 
     submitAnswer: function(msg, session, replier) {
-        // targetUser를 사용하여 방을 찾습니다.
         var targetRoom = SessionManager.findUserRoom(session.targetUser);
         Api.replyRoom(targetRoom, UI.make("운영진 회신", "문의하신 내용에 대한 답변입니다.\n\n" + msg, "소환사의 협곡 드림", true));
         
@@ -270,25 +260,31 @@ var AdminActions = {
     editUserData: function(msg, session, replier) {
         var val = parseInt(msg);
         if (isNaN(val)) return replier.reply(UI.make("입력 오류", "숫자만 입력해 주십시오", "다시 입력"));
-        Database.data[session.targetUser][session.editType] = val; Database.save();
+        Database.data[session.targetUser][session.editType] = val; 
+        Database.save();
         Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "[" + (session.editType === "gold" ? "골드" : "LP") + "] 정보가 조정되었습니다", "운영 정책 조치", true));
-        SessionManager.reset(session); replier.reply(UI.go(session, "SUCCESS_IDLE", "수정 완료", "반영되었습니다", "메인 복귀"));
+        SessionManager.reset(session); 
+        replier.reply(UI.go(session, "SUCCESS_IDLE", "수정 완료", "반영되었습니다", "메인 복귀"));
     },
 
     resetConfirm: function(msg, session, replier) {
         if (msg === "확인") {
             var pw = Database.data[session.targetUser].pw;
-            Database.data[session.targetUser] = Database.getInitData(pw); Database.save();
+            Database.data[session.targetUser] = Database.getInitData(pw); 
+            Database.save();
             Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "데이터가 초기화되었습니다", "관리자 조치", true));
-            SessionManager.reset(session); replier.reply(UI.go(session, "SUCCESS_IDLE", "초기화 완료", "성공했습니다", "메인 복귀"));
+            SessionManager.reset(session); 
+            replier.reply(UI.go(session, "SUCCESS_IDLE", "초기화 완료", "성공했습니다", "메인 복귀"));
         }
     },
 
     deleteConfirm: function(msg, session, replier) {
         if (msg === "삭제확인") {
             Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "계정이 삭제되었습니다", "관리자 조치", true));
-            delete Database.data[session.targetUser]; Database.save();
-            SessionManager.forceLogout(session.targetUser); SessionManager.reset(session);
+            delete Database.data[session.targetUser]; 
+            Database.save();
+            SessionManager.forceLogout(session.targetUser); 
+            SessionManager.reset(session);
             replier.reply(UI.go(session, "SUCCESS_IDLE", "삭제 완료", "영구 삭제되었습니다", "메인 복귀"));
         }
     }
@@ -379,7 +375,6 @@ var AdminManager = {
     handle: function(msg, session, replier) {
         var screen = session.screen;
 
-        // 메인 메뉴 진입
         if (screen === "ADMIN_MAIN") {
             if (msg === "1") return AdminActions.showSysInfo(session, replier);
             if (msg === "2") return AdminActions.showUserList(session, replier);
@@ -387,28 +382,18 @@ var AdminManager = {
             return;
         }
 
-        // 1. 문의 목록에서 유저 선택 시
         if (screen === "ADMIN_INQUIRY_LIST") {
             var idx = parseInt(msg) - 1;
             var userName = session.userListCache[idx];
-            if (userName) {
-                AdminActions.viewInquiryDetail(userName, session, replier);
-            } else {
-                replier.reply("올바른 번호를 입력해주세요.");
-            }
+            if (userName) AdminActions.viewInquiryDetail(userName, session, replier);
+            else replier.reply("올바른 번호를 입력해주세요.");
             return;
         }
 
-        // 2. 문의 상세 보기 내 액션 (답변/삭제)
         if (screen === "ADMIN_INQUIRY_DETAIL") {
-            if (msg === "1") {
-                return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "[" + session.targetUser + "] 유저에게 전송", "회신 내용을 입력하세요."));
-            }
+            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "[" + session.targetUser + "] 유저에게 전송", "회신 내용을 입력하세요."));
             if (msg === "2") {
-                // 해당 유저의 데이터만 제외하고 다시 저장 (삭제)
-                Database.inquiries = Database.inquiries.filter(function(iq) {
-                    return iq.sender !== session.targetUser;
-                });
+                Database.inquiries = Database.inquiries.filter(function(iq) { return iq.sender !== session.targetUser; });
                 Database.save();
                 replier.reply("🗑️ " + session.targetUser + " 님의 모든 문의를 삭제했습니다.");
                 return AdminActions.showInquiryList(session, replier);
@@ -416,15 +401,6 @@ var AdminManager = {
             return;
         }
 
-        // 3. 답변 입력 완료 시
-        if (screen === "ADMIN_ANSWER_INPUT") {
-            var targetRoom = SessionManager.findUserRoom(session.targetUser);
-            Api.replyRoom(targetRoom, UI.make("운영진 회신", "문의하신 내용에 대한 답변입니다.\n\n" + msg, "소환사의 협곡 드림", true));
-            
-            replier.reply("✅ [" + session.targetUser + "] 님에게 답변이 전송되었습니다.");
-            SessionManager.reset(session); 
-            return replier.reply(UI.renderMenu(session));
-        }
         if (screen === "ADMIN_USER_LIST") {
             var idx = parseInt(msg) - 1;
             if (session.userListCache[idx]) {
@@ -432,11 +408,17 @@ var AdminManager = {
                 return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업 선택"));
             }
         }
+
+        // 스위치 문으로 나머지 입력 처리
         switch(screen) {
             case "ADMIN_USER_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
                 if (msg === "2") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "계정을 초기화하시겠습니까?", "'확인' 입력"));
                 if (msg === "3") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "계정을 삭제하시겠습니까?", "'삭제확인' 입력"));
+                break;
+            case "ADMIN_EDIT_MENU":
+                if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "설정할 골드 값을 입력하세요.", "숫자 입력")); }
+                if (msg === "2") { session.editType = "lp"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "LP 수정", "설정할 LP 값을 입력하세요.", "숫자 입력")); }
                 break;
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
             case "ADMIN_EDIT_INPUT": return AdminActions.editUserData(msg, session, replier);
