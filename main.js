@@ -86,8 +86,9 @@ var UI = {
         
         var title = "정보", head = "", body = "";
 
-        // 1. 프로필 조회 (조회 자체가 액션이므로 상세 정보 표시)
-        if (scr === "PROFILE_VIEW" || scr === "ADMIN_USER_DETAIL") {
+        // 1. [기존 방식 유지] 프로필 및 스탯 강화 메뉴: 항상 상세 정보 헤더 출력
+        // PROFILE(조회), STAT(강화 메뉴/입력), ADMIN_USER_DETAIL(관리자 유저조회) 포함
+        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
             title = (session.targetUser) ? id + " 님" : "내 프로필";
             var tier = getTierInfo(data.lp);
             head = "👤 계정: " + id + "\n" +
@@ -96,8 +97,18 @@ var UI = {
                    "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
                    "✨ 포인트: " + (data.point || 0) + " P";
             
-            if (scr === "PROFILE_VIEW") body = "1. 능력치 강화";
-            else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
+            // 하단 조작 가이드 설정
+            if (scr === "PROFILE_VIEW") {
+                body = "1. 능력치 강화";
+            } else if (scr === "STAT_UP_MENU") {
+                title = "강화 선택";
+                content = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
+            } else if (scr === "STAT_UP_INPUT") {
+                title = session.selectedStatName + " 강화";
+                content = "강화할 수치를 입력해주세요.";
+            } else if (scr === "ADMIN_USER_DETAIL") {
+                body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
+            }
         }
 
         // 2. [액션 화면] 상점 구매 시: "현재 골드" 헤더 노출
@@ -106,19 +117,13 @@ var UI = {
             head = "💰 보유 잔액: " + (data.gold || 0).toLocaleString() + " G";
         }
 
-        // 3. [액션 화면] 스탯 강화 입력 시: "보유 포인트" 헤더 노출
-        else if (scr === "STAT_UP_INPUT") {
-            title = "능력치 강화";
-            head = "✨ 보유 포인트: " + (data.point || 0) + " P";
-        }
-
-        // 4. [액션 화면] 칭호 변경 시: "현재 장착 중인 칭호" 헤더 노출
+        // 3. [액션 화면] 칭호 변경 시: "현재 장착 중인 칭호" 헤더 노출
         else if (scr === "COL_TITLE_ACTION") {
             title = "칭호 변경";
             head = "🏅 현재 장착: [" + data.title + "]";
         }
 
-        // 5. [메인/목록 화면] 헤더 없이 깔끔하게 메뉴만 출력
+        // 4. [메인/목록 화면] 헤더 없이 깔끔하게 메뉴만 출력 (상점/컬렉션 메인)
         else {
             if (scr === "SHOP_MAIN") {
                 title = "상점";
@@ -126,20 +131,17 @@ var UI = {
             } else if (scr === "COL_MAIN") {
                 title = "컬렉션";
                 content = "1. 보유 칭호\n2. 보유 챔피언";
-            } else if (scr === "STAT_UP_MENU") {
-                title = "강화 선택";
-                content = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
             } else if (scr === "COL_CHAR_VIEW") {
                 title = "보유 챔피언";
-                // content는 호출부에서 전달된 목록 사용
+                // content는 호출부에서 전달된 목록(cList)을 그대로 사용
             }
-            head = ""; // 메인 메뉴들은 헤더를 비움
+            head = ""; // 상점/컬렉션 메인 메뉴들은 헤더를 비움
         }
 
         // 컨텐츠 결합 (헤더가 있을 때만 구분선 추가)
         var fullContent = head ? (head + "\n" + div + "\n" + (content || "")) : (content || "");
 
-        // 6. [특수 화면] 문의 상세 (관리자 전용 레이아웃)
+        // 5. [특수 화면] 문의 상세 (관리자 전용 레이아웃 유지)
         if (scr === "ADMIN_INQUIRY_DETAIL") {
             var iq = Database.inquiries[session.targetInquiryIdx];
             var res = "『 문의 상세 』\n" + div + "\n" + 
@@ -149,7 +151,7 @@ var UI = {
             return res;
         }
 
-        // 일반 카테고리 UI 출력
+        // 최종 규격에 맞춰 출력
         return this.make(title, fullContent, body || help, false);
     },
     
