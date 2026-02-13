@@ -127,15 +127,15 @@ var UI = {
         var fullContent = head; 
         if (content && scr !== "ADMIN_INQUIRY_DETAIL") fullContent += "\n" + div + "\n" + content;
         
-        // [수정] 문의 상세 페이지는 '선택지'이므로 아이콘 없이 출력
         if (scr === "ADMIN_INQUIRY_DETAIL") {
+            // 상세 페이지 전용 출력 로직
             var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(fullContent) + "\n" + div + "\n";
-            res += (body || help); // 아이콘 없이 메뉴만 표시
+            res += (body || help); // 💡 아이콘 없이 '선택지'만 깔끔하게 출력
             res += "\n" + div + "\n" + Utils.getNav();
             return res;
         }
 
-        // 그 외 일반적인 도움말이 필요한 화면은 기존대로 유지
+        // 그 외 일반 화면은 UI.make를 통해 💡 아이콘이 붙어서 나감
         return this.make(title, fullContent, body || help, false);
     },
     
