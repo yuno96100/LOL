@@ -144,7 +144,7 @@ var UI = {
         }
 
         return this.make(top, info + (content || ""), isRoot, help);
-    }
+    },
     renderMenu: function(session) {
         if (session.type === "ADMIN") {
             return this.go(session, "ADMIN_MAIN", "관리 센터", "1. 시스템 정보\n2. 전체 유저\n3. 문의 관리", "관리 항목 번호 입력");
