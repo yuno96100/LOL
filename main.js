@@ -249,14 +249,14 @@ var SessionManager = {
         var self = this;
         if (s.screen !== "IDLE") {
             this.timers[hash] = setTimeout(function() {
-                if (s.screen !== "IDLE") {
-                    self.reset(s, hash); 
-                    self.save();
-                    replier.reply(UI.make("⏰ 세션 종료", 
-                        "입력 시간이 30초를 초과했습니다.\n데이터 보호를 위해 세션을 종료합니다.", 
-                        "다시 시작하려면 '메뉴'를 입력하세요.", true));
-                }
-            }, Config.TIMEOUT);
+    if (s.screen !== "IDLE") {
+        self.reset(s, hash); 
+        self.save();
+        replier.reply(UI.make("⏰ 세션 종료", 
+            "입력 시간이 30초를 초과하여\n데이터 보호를 위해 세션을 종료합니다", // 끝에 마침표 제거하여 리스크 방지
+            "다시 시작하려면 '메뉴'를 입력하세요", true)); // 도움말 문구도 깔끔하게 수정
+    }
+}, Config.TIMEOUT);
         }
         return s;
     },
