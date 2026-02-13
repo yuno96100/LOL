@@ -98,15 +98,18 @@ var UI = {
             else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
             else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
         }
-        if (scr === "ADMIN_INQUIRY_DETAIL") {
-            var iq = Database.inquiries[session.targetInquiryIdx];
-            title = "문의 상세";
-            head = "👤 발신: " + iq.sender + "\n" +
-                   "⏰ 시간: " + iq.time + "\n" + 
-                   div + "\n" + 
-                   Utils.wrapText(iq.content);
-            body = "1. 답변하기\n2. 삭제하기";
-        }
+        else if (scr === "ADMIN_INQUIRY_DETAIL") {
+    var iq = Database.inquiries[session.targetInquiryIdx];
+    title = "문의 상세";
+    // head에 상세 내용을 모두 담습니다.
+    head = "👤 발신: " + iq.sender + "\n" +
+           "⏰ 시간: " + iq.time + "\n" + 
+           div + "\n" + 
+           Utils.wrapText(iq.content);
+    // body를 비워두어 하단 💡 부분에 중복 노출되지 않게 합니다.
+    body = ""; 
+    help = "1. 답변하기\n2. 삭제하기"; // 실제 메뉴는 help 자리에 배치
+}
         // 여기에 닫는 중괄호 없이 바로 else if로 이어져야 합니다.
         else if (scr.indexOf("SHOP") !== -1) { 
             title = "상점";
@@ -204,37 +207,36 @@ var AdminActions = {
         replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", list, "관리할 유저 선택"));
     },
     showInquiryList: function(session, replier) {
-        if (Database.inquiries.length === 0) {
-            return replier.reply(UI.make("알림", "접수된 문의가 없습니다.", "목록이 비어있음", false));
-        }
+    if (Database.inquiries.length === 0) {
+        return replier.reply(UI.make("알림", "접수된 문의가 없습니다.", "목록이 비어있음", false));
+    }
 
-        var groups = {};
-        Database.inquiries.forEach(function(iq, index) {
-            // 시간 형식이 "2/13 오전 9:23" 인지 확인 후 안전하게 분리
+    var groups = {};
+    Database.inquiries.forEach(function(iq, index) {
+        // "2/13 09:23"에서 "2/13"만 추출
+        var date = iq.time.split(" ")[0] || "날짜미상"; 
+        if (!groups[date]) groups[date] = [];
+        groups[date].push({ idx: index, data: iq });
+    });
+
+    var listText = "";
+    var dateKeys = Object.keys(groups);
+    for (var i = 0; i < dateKeys.length; i++) {
+        var date = dateKeys[i];
+        listText += "📅 [ " + date + " ]\n";
+        listText += groups[date].map(function(item) {
+            var iq = item.data;
+            var icon = iq.read ? "✅" : "🆕";
+            // "2/13 09:23"에서 "09:23"만 추출 (undefined 방지 로직 강화)
             var timeParts = iq.time.split(" ");
-            var date = timeParts[0] || "날짜미상"; 
-            if (!groups[date]) groups[date] = [];
-            groups[date].push({ idx: index, data: iq });
-        });
+            var timeOnly = (timeParts.length > 1) ? timeParts[1] : iq.time;
+            return (item.idx + 1) + ". " + icon + " " + iq.sender + " (" + timeOnly + ")";
+        }).join("\n");
+        if (i < dateKeys.length - 1) listText += "\n" + Utils.getFixedDivider() + "\n";
+    }
 
-        var listText = "";
-        var dateKeys = Object.keys(groups);
-        for (var i = 0; i < dateKeys.length; i++) {
-            var date = dateKeys[i];
-            listText += "📅 [ " + date + " ]\n";
-            listText += groups[date].map(function(item) {
-                var iq = item.data;
-                var icon = iq.read ? "✅" : "🆕";
-                // undefined 방지를 위해 시간 파트만 추출 (오전/오후 포함)
-                var timeParts = iq.time.split(" ");
-                var timeOnly = (timeParts.length > 1) ? timeParts[1] + " " + timeParts[2] : iq.time;
-                return (item.idx + 1) + ". " + icon + " " + iq.sender + " (" + timeOnly + ")";
-            }).join("\n");
-            if (i < dateKeys.length - 1) listText += "\n" + Utils.getFixedDivider() + "\n";
-        }
-
-        replier.reply(UI.go(session, "ADMIN_INQUIRY_LIST", "문의 센터", listText, "열람할 번호 입력"));
-    },
+    replier.reply(UI.go(session, "ADMIN_INQUIRY_LIST", "문의 센터", listText, "열람할 번호 입력"));
+},
 
     viewInquiryDetail: function(idx, session, replier) {
         var iq = Database.inquiries[idx];
