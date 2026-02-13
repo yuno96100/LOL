@@ -226,27 +226,21 @@ var AdminActions = {
     },
 
     viewInquiryDetail: function(userName, session, replier) {
-        var userIqs = Database.inquiries.filter(function(iq) { 
-            return iq.sender === userName; 
-        });
-        
-        if (userIqs.length === 0) return replier.reply("해당 유저의 문의를 찾을 수 없습니다.");
+    var userIqs = Database.inquiries.filter(function(iq) { return iq.sender === userName; });
+    
+    // 읽음 처리 (최적화: filter 사용 시 이미 인덱스를 알 수 있다면 더 좋음)
+    Database.inquiries.forEach(function(iq) {
+        if (iq.sender === userName) iq.read = true;
+    });
+    Database.save();
 
-        // 읽음 처리
-        Database.inquiries.forEach(function(iq) {
-            if (iq.sender === userName) iq.read = true;
-        });
-        Database.save();
+    var combinedContent = userIqs.map(function(iq, idx) {
+        return "Q" + (idx + 1) + ". [" + iq.time + "]\n" + iq.content;
+    }).join("\n" + Utils.getFixedDivider() + "\n");
 
-        var combinedContent = userIqs.map(function(iq) {
-            return "⏰ [" + iq.time + "]\n" + iq.content;
-        }).join("\n" + Utils.getFixedDivider() + "\n");
-
-        session.targetUser = userName; 
-        var title = "👤 " + userName + " 님의 문의";
-        var body = combinedContent + "\n\n1. 답변하기\n2. 이 유저의 모든 문의 삭제";
-        replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", title, body, "항목 선택"));
-    },
+    session.targetUser = userName; 
+    replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", "👤 " + userName + " 님의 문의", combinedContent, "1. 답변하기\n2. 전체 문의 삭제"));
+}
 
     submitAnswer: function(msg, session, replier) {
         var targetRoom = SessionManager.findUserRoom(session.targetUser);
