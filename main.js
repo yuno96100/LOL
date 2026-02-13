@@ -283,52 +283,54 @@ var AdminActions = {
         var used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
         replier.reply(UI.go(session, "ADMIN_SYS_INFO", "시스템 정보", "📟 메모리: " + used + "MB\n👥 유저: " + Object.keys(Database.data).length + "명\n🛡️ 버전: " + Config.Version, "조회 완료"));
     },
+    
     showUserList: function(session, replier) {
-        // Database.data에서 유저 아이디(Key)들만 추출
-        var userIds = Object.keys(Database.data);
+        // Database.data에서 유저 ID 추출 및 방어 코드 추가
+        var userIds = Object.keys(Database.data || {});
         
         if (userIds.length === 0) {
             return replier.reply(UI.make("알림", "등록된 유저가 없습니다.", "관리 센터 복귀", false));
         }
 
         session.userListCache = userIds;
-        var list = userIds.map(function(id, i) { 
-            return (i + 1) + ". " + id; 
-        }).join("\n");
+        // 목록 생성 로직 최적화
+        var listStr = "";
+        for (var i = 0; i < userIds.length; i++) {
+            listStr += (i + 1) + ". " + userIds[i] + (i < userIds.length - 1 ? "\n" : "");
+        }
 
-        replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", list, "관리할 유저 선택"));
+        replier.reply(UI.go(session, "ADMIN_USER_LIST", "유저 목록", listStr, "관리할 유저 선택"));
     },
+
     showInquiryList: function(session, replier) {
-    if (Database.inquiries.length === 0) {
-        return replier.reply(UI.make("알림", "접수된 문의가 없습니다.", "목록이 비어있음", false));
-    }
+        if (!Database.inquiries || Database.inquiries.length === 0) {
+            return replier.reply(UI.make("알림", "접수된 문의가 없습니다.", "목록이 비어있음", false));
+        }
 
-    var groups = {};
-    Database.inquiries.forEach(function(iq, index) {
-        // "2/13 09:23"에서 "2/13"만 추출
-        var date = iq.time.split(" ")[0] || "날짜미상"; 
-        if (!groups[date]) groups[date] = [];
-        groups[date].push({ idx: index, data: iq });
-    });
+        var groups = {};
+        Database.inquiries.forEach(function(iq, index) {
+            var date = iq.time ? iq.time.split(" ")[0] : "날짜미상"; 
+            if (!groups[date]) groups[date] = [];
+            groups[date].push({ idx: index, data: iq });
+        });
 
-    var listText = "";
-    var dateKeys = Object.keys(groups);
-    for (var i = 0; i < dateKeys.length; i++) {
-        var date = dateKeys[i];
-        listText += "📅 [ " + date + " ]\n";
-        listText += groups[date].map(function(item) {
-            var iq = item.data;
-            var icon = iq.read ? "✅" : "🆕";
-            // "2/13 09:23"에서 "09:23"만 추출 (undefined 방지 로직 강화)
-            var timeParts = iq.time.split(" ");
-            var timeOnly = (timeParts.length > 1) ? timeParts[1] : iq.time;
-            return (item.idx + 1) + ". " + icon + " " + iq.sender + " (" + timeOnly + ")";
-        }).join("\n");
-        if (i < dateKeys.length - 1) listText += "\n" + Utils.getFixedDivider() + "\n";
-    }
+        var listText = "";
+        var dateKeys = Object.keys(groups);
+        for (var i = 0; i < dateKeys.length; i++) {
+            var date = dateKeys[i];
+            listText += "📅 [ " + date + " ]\n";
+            listText += groups[date].map(function(item) {
+                var iq = item.data;
+                var icon = iq.read ? "✅" : "🆕";
+                var timeParts = iq.time ? iq.time.split(" ") : [];
+                var timeOnly = (timeParts.length > 1) ? timeParts[1] : "00:00";
+                return (item.idx + 1) + ". " + icon + " " + iq.sender + " (" + timeOnly + ")";
+            }).join("\n");
+            if (i < dateKeys.length - 1) listText += "\n" + Utils.getFixedDivider() + "\n";
+        }
 
-    replier.reply(UI.go(session, "ADMIN_INQUIRY_LIST", "문의 센터", listText, "열람할 번호 입력"));
-},
+        replier.reply(UI.go(session, "ADMIN_INQUIRY_LIST", "문의 센터", listText, "열람할 번호 입력"));
+    },
 
     viewInquiryDetail: function(idx, session, replier) {
         var iq = Database.inquiries[idx];
@@ -340,16 +342,13 @@ var AdminActions = {
         session.targetInquiryIdx = idx;
         session.targetUser = iq.sender;
         
-        // 상세 내용 구성 (이미지 구조 유지)
         var detail = "👤 발신: " + iq.sender + "\n⏰ 시간: " + iq.time;
-        // content 인자를 비워두어 UI 중복 출력 방지
         replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", "문의 상세", detail, "1. 답변하기\n2. 삭제하기"));
     },
 
     submitAnswer: function(msg, session, replier) {
         var targetRoom = SessionManager.findUserRoom(session.targetUser);
         Api.replyRoom(targetRoom, UI.make("운영진 회신", "문의하신 내용에 대한 답변입니다.\n\n" + msg, "소환사의 협곡 드림", true));
-        
         replier.reply(UI.make("전송 완료", "[" + session.targetUser + "] 님에게 답변을 보냈습니다.", "목록으로 복귀", false));
         return this.showInquiryList(session, replier);
     },
@@ -360,7 +359,7 @@ var AdminActions = {
         Database.data[session.targetUser][session.editType] = val; 
         Database.save();
         Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "[" + (session.editType === "gold" ? "골드" : "LP") + "] 정보가 조정되었습니다", "운영 정책 조치", true));
-        SessionManager.reset(session); 
+        SessionManager.reset(session, String(session.hash)); 
         replier.reply(UI.make("수정 완료", "유저 정보가 반영되었습니다.", "관리 센터 복귀", false));
         return this.showUserList(session, replier);
     },
