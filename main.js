@@ -145,6 +145,15 @@ var UI = {
 
         return this.make(top, info + (content || ""), isRoot, help);
     }
+    renderMenu: function(session) {
+        if (session.type === "ADMIN") {
+            return this.go(session, "ADMIN_MAIN", "관리 센터", "1. 시스템 정보\n2. 전체 유저\n3. 문의 관리", "관리 항목 번호 입력");
+        }
+        if (!session.data) {
+            return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "번호 선택");
+        }
+        return this.go(session, "USER_MAIN", "메인 로비", "1. 프로필 조회\n2. 컬렉션 확인\n3. 대전 모드\n4. 상점 이용\n5. 운영진 문의\n6. 로그아웃", "번호 선택");
+    }
 };
 
 // ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
