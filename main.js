@@ -69,52 +69,80 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진 (단계별 정보 제어)] ━━━━━━━━
 var UI = {
+    /**
+     * UI 프레임 생성기
+     * 모든 에러와 알림은 이 함수를 거쳐야 UI가 적용됩니다.
+     */
     make: function(top, mid, isRoot, help) {
         var div = Utils.getFixedDivider();
         var res = "『 " + top + " 』\n" + div + "\n";
         if (mid) res += Utils.wrapText(mid) + "\n" + div + "\n";
-        if (!isRoot) res += "⬅️ 이전\n❌ 취소\n" + div + "\n";
+        
+        // 이전/취소 내비게이션 (루트 메뉴가 아닐 때만 표시)
+        if (!isRoot) {
+            res += "⬅️ 이전 | ❌ 취소\n" + div + "\n";
+        }
+        
         if (help) res += "💡 " + Utils.wrapText(help);
         return res;
     },
 
+    /**
+     * 화면 이동 및 데이터 매칭 (버그 수정 핵심)
+     * screen 값에 따라 제목(top)과 본문(body)을 강제로 할당합니다.
+     */
     go: function(session, screen, title, content, help) {
         session.screen = screen;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
         
         var top = title || "정보";
-        var info = "";
+        var body = content || "";
 
+        // [버그 해결] 화면별 제목/본문 강제 매칭 로직
         if (data) {
-            if (screen === "PROFILE_VIEW" || screen === "ADMIN_USER_DETAIL" || screen.indexOf("STAT") !== -1) {
-                var targetId = session.targetUser || session.tempId;
-                var tier = getTierInfo(data.lp);
-                top = (screen.indexOf("ADMIN") !== -1) ? "👤 유저 관리: " + targetId : "👤 내 프로필";
-                info = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
-                       "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                       "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
-                       "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                       Utils.getFixedDivider() + "\n" +
-                       "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
-                       "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
-                       "✨ 포인트: " + (data.point || 0) + " P\n" +
-                       Utils.getFixedDivider() + "\n";
-            } 
-            else if (screen === "COL_TITLE_ACTION") {
-                top = "🎖️ 칭호 설정";
-                info = "현재 장착: [" + data.title + "]\n보유 칭호: " + (data.collection.titles.length) + "개\n" + Utils.getFixedDivider() + "\n";
-            }
-            else if (screen === "COL_CHAR_VIEW") {
-                top = "📦 보유 챔피언";
-                info = "수집 현황: " + (data.collection.champions.length) + " / 18\n" + Utils.getFixedDivider() + "\n";
-            }
-            else if (screen === "SHOP_BUY_ACTION") {
-                top = "💰 챔피언 영입";
-                info = "보유 자산: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n";
+            switch (screen) {
+                case "PROFILE_VIEW":
+                case "ADMIN_USER_DETAIL":
+                    var targetId = session.targetUser || session.tempId;
+                    var tier = getTierInfo(data.lp);
+                    top = (session.type === "ADMIN") ? "👤 유저: " + targetId : "👤 내 프로필";
+                    body = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
+                           "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                           "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
+                           "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                           Utils.getFixedDivider() + "\n" +
+                           "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
+                           "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
+                           "✨ 포인트: " + (data.point || 0) + " P";
+                    help = (session.type === "ADMIN") ? "1.수정 2.초기화 3.삭제" : "1. 스탯 강화";
+                    break;
+
+                case "COL_MAIN":
+                    top = "📦 컬렉션";
+                    body = "1. 칭호 설정\n2. 챔피언 도감";
+                    help = "항목 번호를 입력하세요.";
+                    break;
+
+                case "SHOP_MAIN":
+                    top = "💰 상점";
+                    body = "1. 챔피언 영입 (500G)";
+                    help = "구매할 항목을 선택하세요.";
+                    break;
+                
+                case "USER_INQUIRY":
+                case "GUEST_INQUIRY":
+                    top = "📩 문의하기";
+                    body = "운영진에게 보낼 내용을\n입력해 주세요.";
+                    help = "내용 입력 후 전송";
+                    break;
             }
         }
-        return this.make(top, info + (content || ""), isRoot, help);
+
+        // 에러 상황 등 content가 직접 들어온 경우 우선 처리
+        if (content) body = content;
+
+        return this.make(top, body, isRoot, help);
     },
 
     renderMenu: function(session) {
