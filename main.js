@@ -69,28 +69,24 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진 (단계별 정보 제어)] ━━━━━━━━
 var UI = {
-    /**
-     * UI 프레임 생성기
-     * 모든 에러와 알림은 이 함수를 거쳐야 UI가 적용됩니다.
-     */
     make: function(top, mid, isRoot, help) {
         var div = Utils.getFixedDivider();
         var res = "『 " + top + " 』\n" + div + "\n";
-        if (mid) res += Utils.wrapText(mid) + "\n" + div + "\n";
         
-        // 이전/취소 내비게이션 (루트 메뉴가 아닐 때만 표시)
+        // 본문 출력
+        if (mid) res += Utils.wrapText(mid) + "\n";
+        
+        // 내비게이션 (루트 메뉴가 아닐 때만 표시)
         if (!isRoot) {
-            res += "⬅️ 이전 | ❌ 취소\n" + div + "\n";
+            res += div + "\n"; // 본문과 내비게이션 사이 구분선
+            res += "⬅️ 이전  |  ❌ 취소\n";
         }
         
+        res += div + "\n"; // 하단 구분선
         if (help) res += "💡 " + Utils.wrapText(help);
         return res;
     },
 
-    /**
-     * 화면 이동 및 데이터 매칭 (버그 수정 핵심)
-     * screen 값에 따라 제목(top)과 본문(body)을 강제로 할당합니다.
-     */
     go: function(session, screen, title, content, help) {
         session.screen = screen;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -99,25 +95,26 @@ var UI = {
         var top = title || "정보";
         var body = content || "";
 
-        // [버그 해결] 화면별 제목/본문 강제 매칭 로직
         if (data) {
             switch (screen) {
-               case "PROFILE_VIEW":
-case "ADMIN_USER_DETAIL":
-    var targetId = session.targetUser || session.tempId;
-    var tier = getTierInfo(data.lp);
-    top = (session.type === "ADMIN") ? "👤 유저: " + targetId : "👤 내 프로필";
-    // 이 body 부분이 실제 출력될 내용입니다.
-    body = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
-           "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-           "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
-           "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
-           Utils.getFixedDivider() + "\n" +
-           "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
-           "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
-           "✨ 포인트: " + (data.point || 0) + " P";
-    help = (session.type === "ADMIN") ? "1.수정 2.초기화 3.삭제" : "1. 스탯 강화";
-    break;
+                case "PROFILE_VIEW":
+                case "ADMIN_USER_DETAIL":
+                    var targetId = session.targetUser || session.tempId;
+                    var tier = getTierInfo(data.lp);
+                    top = (session.type === "ADMIN") ? "👤 유저: " + targetId : "👤 내 프로필";
+                    
+                    // 레벨 밑에 경험치가 오도록 세로형 구성
+                    body = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
+                           "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                           "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
+                           "🆙 레벨: Lv." + data.level + "\n" + // 레벨
+                           "📊 경험: [" + data.exp + "/" + (data.level * 100) + "]\n" + // 레벨 바로 밑 경험치
+                           Utils.getFixedDivider() + "\n" +
+                           "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
+                           "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
+                           "✨ 포인트: " + (data.point || 0) + " P";
+                    help = (session.type === "ADMIN") ? "1.수정 2.초기화 3.삭제" : "1. 스탯 강화";
+                    break;
                 case "COL_MAIN":
                     top = "📦 컬렉션";
                     body = "1. 칭호 설정\n2. 챔피언 도감";
