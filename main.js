@@ -166,14 +166,25 @@ var Database = {
     load: function() { 
         try { 
             var content = FileStream.read(Config.DB_PATH);
-            if (!content) return;
+            if (!content || content.trim() === "") {
+                this.data = {};
+                this.inquiries = [];
+                return;
+            }
             var d = JSON.parse(content); 
-            // 데이터가 없으면 빈 객체/배열로 초기화하여 undefined 방지
-            this.data = d.users || {};
-            this.inquiries = d.inquiries || [];
+            
+            // 데이터 구조 강제 교정 (스크린샷의 'users' 출력 문제 해결)
+            if (d && typeof d === 'object') {
+                this.data = d.users || {};
+                this.inquiries = d.inquiries || [];
+            }
+            
+            // 로그 확인용 (관리자 방에 로드 상태 알림)
+            Api.replyRoom(Config.AdminRoom, "📊 DB 로드 완료: 유저 " + Object.keys(this.data).length + "명 / 문의 " + this.inquiries.length + "건");
         } catch(e) { 
             this.data = {}; 
-            this.inquiries = []; 
+            this.inquiries = [];
+            Api.replyRoom(Config.AdminRoom, "⚠️ DB 로드 중 오류: " + e.message);
         } 
     },
     save: function() { 
@@ -193,11 +204,12 @@ var Database = {
 
 var SessionManager = {
     sessions: {},
-    timers: {}, // 세션별 타이머 저장소
+    timers: {},
 
     load: function() {
         try {
-            this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH));
+            var content = FileStream.read(Config.SESSION_PATH);
+            this.sessions = content ? JSON.parse(content) : {};
         } catch(e) { this.sessions = {}; }
     },
 
@@ -216,41 +228,34 @@ var SessionManager = {
         }
         var s = this.sessions[hash];
         s.room = room;
-        s.lastTime = Date.now();
+        s.hash = hash; 
 
-        // 1. 기존 타이머가 있다면 즉시 제거 (유저가 새 메시지를 보냈으므로)
         if (this.timers[hash]) {
             clearTimeout(this.timers[hash]);
             delete this.timers[hash];
         }
 
-        // 2. IDLE 상태가 아닐 때만 30초 타이머 작동
         var self = this;
         if (s.screen !== "IDLE") {
             this.timers[hash] = setTimeout(function() {
-    if (s.screen !== "IDLE") {
-        self.reset(s, hash); 
-        self.save(); // 리셋 직후에 저장 (순서 최적화)
-        
-        replier.reply(UI.make("세션 자동 종료", 
-            "입력 시간이 30초를 초과하여\n세션이 안전하게 종료되었습니다.", 
-            "다시 시작하려면 '메뉴'를 입력하세요.", true));
-    }
-}, Config.TIMEOUT);
+                if (s.screen !== "IDLE") {
+                    self.reset(s, hash); 
+                    self.save();
+                    replier.reply(UI.make("⏰ 세션 종료", 
+                        "입력 시간이 30초를 초과했습니다.\n데이터 보호를 위해 세션을 종료합니다.", 
+                        "다시 시작하려면 '메뉴'를 입력하세요.", true));
+                }
+            }, Config.TIMEOUT);
         }
-
         return s;
     },
 
-    // hash를 인자로 받아 타이머까지 확실히 제거하도록 수정
     reset: function(session, hash) {
         session.screen = "IDLE";
         session.targetUser = null;
         session.targetInquiryIdx = null;
         session.editType = null;
         session.userListCache = [];
-        
-        // 타이머가 남아있다면 제거
         if (hash && this.timers[hash]) {
             clearTimeout(this.timers[hash]);
             delete this.timers[hash];
