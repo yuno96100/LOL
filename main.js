@@ -102,22 +102,22 @@ var UI = {
         // [버그 해결] 화면별 제목/본문 강제 매칭 로직
         if (data) {
             switch (screen) {
-                case "PROFILE_VIEW":
-                case "ADMIN_USER_DETAIL":
-                    var targetId = session.targetUser || session.tempId;
-                    var tier = getTierInfo(data.lp);
-                    top = (session.type === "ADMIN") ? "👤 유저: " + targetId : "👤 내 프로필";
-                    body = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
-                           "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                           "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
-                           "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                           Utils.getFixedDivider() + "\n" +
-                           "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
-                           "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
-                           "✨ 포인트: " + (data.point || 0) + " P";
-                    help = (session.type === "ADMIN") ? "1.수정 2.초기화 3.삭제" : "1. 스탯 강화";
-                    break;
-
+               case "PROFILE_VIEW":
+case "ADMIN_USER_DETAIL":
+    var targetId = session.targetUser || session.tempId;
+    var tier = getTierInfo(data.lp);
+    top = (session.type === "ADMIN") ? "👤 유저: " + targetId : "👤 내 프로필";
+    // 이 body 부분이 실제 출력될 내용입니다.
+    body = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
+           "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+           "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
+           "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
+           Utils.getFixedDivider() + "\n" +
+           "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
+           "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
+           "✨ 포인트: " + (data.point || 0) + " P";
+    help = (session.type === "ADMIN") ? "1.수정 2.초기화 3.삭제" : "1. 스탯 강화";
+    break;
                 case "COL_MAIN":
                     top = "📦 컬렉션";
                     body = "1. 칭호 설정\n2. 챔피언 도감";
