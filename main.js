@@ -1,4 +1,4 @@
- /**
+/**
  * [main.js] v0.0.21
  * 1. 구조 유지 및 문의 시스템 개편 적용
  * 2. 관리자 메뉴 🔔 동적 표시 및 전용 문의 DB 관리
@@ -24,7 +24,7 @@ var MAX_LEVEL = 30;
 
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
-    getNav: function() { return " " + Config.NAV_ITEMS.join("  ") + " "; },
+    getNav: function() { return " " + Config.NAV_ITEMS.join("  ") + " "; },
     wrapText: function(str) {
         if (!str) return "";
         var lines = str.split("\n"), result = [];
@@ -226,21 +226,27 @@ var AdminActions = {
     },
 
     viewInquiryDetail: function(userName, session, replier) {
-    var userIqs = Database.inquiries.filter(function(iq) { return iq.sender === userName; });
-    
-    // 읽음 처리 (최적화: filter 사용 시 이미 인덱스를 알 수 있다면 더 좋음)
-    Database.inquiries.forEach(function(iq) {
-        if (iq.sender === userName) iq.read = true;
-    });
-    Database.save();
+        var userIqs = Database.inquiries.filter(function(iq) { 
+            return iq.sender === userName; 
+        });
+        
+        if (userIqs.length === 0) return replier.reply("해당 유저의 문의를 찾을 수 없습니다.");
 
-    var combinedContent = userIqs.map(function(iq, idx) {
-        return "Q" + (idx + 1) + ". [" + iq.time + "]\n" + iq.content;
-    }).join("\n" + Utils.getFixedDivider() + "\n");
+        // 읽음 처리
+        Database.inquiries.forEach(function(iq) {
+            if (iq.sender === userName) iq.read = true;
+        });
+        Database.save();
 
-    session.targetUser = userName; 
-    replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", "👤 " + userName + " 님의 문의", combinedContent, "1. 답변하기\n2. 전체 문의 삭제"));
-}
+        var combinedContent = userIqs.map(function(iq) {
+            return "⏰ [" + iq.time + "]\n" + iq.content;
+        }).join("\n" + Utils.getFixedDivider() + "\n");
+
+        session.targetUser = userName; 
+        var title = "👤 " + userName + " 님의 문의";
+        var body = combinedContent + "\n\n1. 답변하기\n2. 이 유저의 모든 문의 삭제";
+        replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", title, body, "항목 선택"));
+    },
 
     submitAnswer: function(msg, session, replier) {
         var targetRoom = SessionManager.findUserRoom(session.targetUser);
