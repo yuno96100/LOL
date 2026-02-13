@@ -30,8 +30,19 @@ var Utils = {
         var lines = str.split("\n"), result = [];
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
-            if (line.length <= Config.WRAP_LIMIT) { result.push(line); } 
-            else { for (var j = 0; j < line.length; j += Config.WRAP_LIMIT) { result.push(line.substring(j, j + Config.WRAP_LIMIT)); } }
+            if (line.length <= Config.WRAP_LIMIT) { 
+                result.push(line); 
+            } else { 
+                for (var j = 0; j < line.length; j += Config.WRAP_LIMIT) {
+                    var chunk = line.substring(j, j + Config.WRAP_LIMIT);
+                    // 마침표가 다음 줄 첫 글자가 되는 것을 방지
+                    if (j + Config.WRAP_LIMIT < line.length && line[j + Config.WRAP_LIMIT] === ".") {
+                        chunk = line.substring(j, j + Config.WRAP_LIMIT - 1);
+                        j--; // 인덱스를 한 칸 당겨서 마침표를 이번 줄에 포함
+                    }
+                    result.push(chunk);
+                }
+            }
         }
         return result.join("\n");
     }
