@@ -564,6 +564,16 @@ var UserManager = {
 };
 
 // ━━━━━━━━ [9. 메인 응답 핸들러] ━━━━━━━━
+네, 보내주신 코드는 요청하신 **"IDLE 상태에서 '메뉴' 입력 시에만 반응"**하는 로직이 잘 적용되어 있습니다. 다만, 코드의 가장 마지막 부분(response 함수의 닫는 중괄호)에 사소한 문법적 오타가 있어 이대로 실행하면 오류가 발생할 수 있습니다.
+
+⚠️ 수정이 필요한 부분 (코드 하단)
+현재 코드의 끝부분을 보면 if (session.screen === "IDLE") 블록 이후에 }(중괄호)가 하나 더 들어가 있어, 그 아래의 AdminManager.handle 로직이 response 함수 밖으로 튕겨 나가 있습니다.
+
+✅ 최종적으로 수정된 [9. 메인 응답 핸들러] 부분
+아래 코드를 복사해서 [9. 메인 응답 핸들러] 부분을 교체해 주세요. (중괄호 위치와 흐름을 정리했습니다.)
+
+JavaScript
+// ━━━━━━━━ [9. 메인 응답 핸들러] ━━━━━━━━
 Database.load(); SessionManager.load();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
@@ -571,35 +581,50 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         if (!msg) return; 
         if (isGroupChat && room !== Config.AdminRoom) return;
         
-        // replier를 세 번째 인자로 추가 전달
         var session = SessionManager.get(room, String(imageDB.getProfileHash()), replier); 
         msg = msg.trim();
         
-        if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) { SessionManager.reset(session); return replier.reply(UI.renderMenu(session)); }
+        // 공통 명령어 처리 (메뉴, 취소, 관리자)
+        if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) { 
+            SessionManager.reset(session); 
+            return replier.reply(UI.renderMenu(session)); 
+        }
         
+        // 이전 버튼 처리
         if (msg === "이전") {
             var curr = session.screen;
-            // 1. 게스트/로그인 관련
             if (curr.indexOf("JOIN_") !== -1 || curr.indexOf("LOGIN_") !== -1 || curr === "GUEST_INQUIRY") return replier.reply(UI.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "메뉴 선택"));
-            
-            // 2. 관리자 문의 관련
             if (curr === "ADMIN_INQUIRY_DETAIL") return AdminActions.showInquiryList(session, replier);
             if (curr === "ADMIN_INQUIRY_LIST" || curr === "ADMIN_USER_LIST" || curr === "ADMIN_SYS_INFO") return replier.reply(UI.renderMenu(session));
-            
-            // 3. 유저 상점/컬렉션/능력치 관련
             if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 복귀"));
             if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
             if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
             if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
             if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
             
-            SessionManager.reset(session); return replier.reply(UI.renderMenu(session));
+            SessionManager.reset(session); 
+            return replier.reply(UI.renderMenu(session));
         }
 
-        if (session.screen === "IDLE") { if (msg === "메뉴" || room === Config.AdminRoom) return replier.reply(UI.renderMenu(session)); return; }
-        if (session.type === "ADMIN") AdminManager.handle(msg, session, replier);
-        else if (!session.data) LoginManager.handle(msg, session, replier);
-        else UserManager.handle(msg, session, replier);
+        // IDLE 상태(세션 종료 등) 처리 로직
+        if (session.screen === "IDLE") { 
+            if (msg === "메뉴") {
+                return replier.reply(UI.renderMenu(session));
+            }
+            return; // '메뉴'가 아니면 아무 작업도 하지 않음
+        }
+
+        // 세션 타입 및 로그인 여부에 따른 핸들러 분기
+        if (session.type === "ADMIN") {
+            AdminManager.handle(msg, session, replier);
+        } else if (!session.data) {
+            LoginManager.handle(msg, session, replier);
+        } else {
+            UserManager.handle(msg, session, replier);
+        }
+
         SessionManager.save();
-    } catch (e) { Api.replyRoom(Config.AdminRoom, "🚨 오류: " + e.message + " (L:" + e.lineNumber + ")"); }
+    } catch (e) { 
+        Api.replyRoom(Config.AdminRoom, "🚨 오류: " + e.message + " (L:" + e.lineNumber + ")"); 
+    }
 }
