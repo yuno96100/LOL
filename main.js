@@ -69,85 +69,123 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진 (단계별 정보 제어)] ━━━━━━━━
 var UI = {
-    make: function(top, mid, isRoot, help) {
+    // 1. UI 프레임 생성기 (레이아웃 규격화)
+    make: function(top, body, option, isRoot, help) {
         var div = Utils.getFixedDivider();
         var res = "『 " + top + " 』\n" + div + "\n";
         
-        // 1. 본문 영역
-        if (mid) res += mid + "\n";
-        
-        // 2. 내비게이션 영역 (세로형 분리)
-        if (!isRoot) {
-            res += div + "\n";
-            res += "⬅️ 이전\n";
-            res += "❌ 취소\n";
+        // 상단부 (고정 정보)
+        if (body) {
+            res += body + "\n" + div + "\n";
         }
         
-        // 3. 하단 도움말 영역
-        res += div + "\n";
-        if (help) res += "💡 " + help;
+        // 옵션부 (전환되는 선택지)
+        if (option) {
+            res += option + "\n" + div + "\n";
+        }
+        
+        // 내비게이션부 (이전/취소)
+        if (!isRoot) {
+            res += "⬅️ 이전\n❌ 취소\n" + div + "\n";
+        }
+        
+        // 도움말부
+        if (help) {
+            res += "💡 " + help;
+        }
         return res;
     },
 
+    // 2. 화면 이동 및 데이터 매칭 (화면 전환 로직)
     go: function(session, screen, title, content, help) {
         session.screen = screen;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
         
         var top = title || "정보";
-        var body = content || "";
+        var body = "";
+        var option = "";
+        var h = help || "번호 선택";
 
-        if (data) {
+        // 데이터가 있는 유저/관리자 화면 처리
+        if (data && !content) {
             switch (screen) {
                 case "PROFILE_VIEW":
                 case "ADMIN_USER_DETAIL":
                     var targetId = session.targetUser || session.tempId;
                     var tier = getTierInfo(data.lp);
                     top = (session.type === "ADMIN") ? "👤 유저: " + targetId : "👤 내 프로필";
-                    
-                    // 세로형 구조 및 스탯 정렬 (직관50 잘림 방지)
-                    body = "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
+                    body = "👤 계정: " + targetId + "\n" +
+                           "🏅 칭호: [" + (data.title || "뉴비") + "]\n" +
+                           Utils.getFixedDivider() + "\n" +
+                           "🏅 티어: " + tier.icon + tier.name + " (" + (data.lp || 0) + ")\n" +
                            "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
                            "⚔️ 전적: " + (data.win || 0) + "승 " + (data.lose || 0) + "패\n" +
-                           "🆙 레벨: Lv." + data.level + "\n" +
-                           "📊 경험: [" + data.exp + "/" + (data.level * 100) + "]\n" +
+                           "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
                            Utils.getFixedDivider() + "\n" +
-                           "🎯 정확:" + data.stats.acc + " |⚡ 반응:" + data.stats.ref + "\n" +
-                           "🧘 침착:" + data.stats.com + " |🧠 직관:" + data.stats.int + "\n" +
+                           "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
+                           "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
                            "✨ 포인트: " + (data.point || 0) + " P";
-                    help = (session.type === "ADMIN") ? "1.수정 2.초기화 3.삭제" : "1. 스탯 강화";
+                    option = (session.type === "ADMIN") ? "1. 수정\n2. 초기화\n3. 삭제" : "1. 스탯 강화";
+                    h = "조회 완료";
                     break;
-                case "COL_MAIN":
-                    top = "📦 컬렉션";
-                    body = "1. 칭호 설정\n2. 챔피언 도감";
-                    help = "항목 번호를 입력하세요.";
+
+                case "USER_MAIN":
+                    top = "🏠 메인 메뉴";
+                    body = "👤 환영합니다, " + (session.tempId) + "님!";
+                    option = "1. 프로필 조회\n2. 컬렉션\n3. 대전 모드\n4. 상점\n5. 관리자 문의\n6. 로그아웃";
                     break;
 
                 case "SHOP_MAIN":
                     top = "💰 상점";
-                    body = "1. 챔피언 영입 (500G)";
-                    help = "구매할 항목을 선택하세요.";
+                    body = "👤 구매자: " + (session.tempId) + "\n💰 잔액: " + (data.gold || 0).toLocaleString() + " G";
+                    option = "1. 챔피언 영입 (500G)";
                     break;
-                
-                case "USER_INQUIRY":
-                case "GUEST_INQUIRY":
-                    top = "📩 문의하기";
-                    body = "운영진에게 보낼 내용을\n입력해 주세요.";
-                    help = "내용 입력 후 전송";
+
+                case "SHOP_BUY_ACTION":
+                    top = "🛒 챔피언 영입";
+                    body = "💰 잔액: " + (data.gold || 0).toLocaleString() + " G\n✨ 영입 비용: 500 G";
+                    option = SystemData.champions.map(function(name, i) {
+                        var isOwned = (data.collection.champions || []).indexOf(name) !== -1 ? " [보유중]" : "";
+                        return (i + 1) + ". " + name + isOwned;
+                    }).join("\n");
+                    h = "영입할 번호 입력";
+                    break;
+
+                case "COL_MAIN":
+                    top = "📦 컬렉션";
+                    body = "✨ 현재 장착 칭호: [" + (data.title || "뉴비") + "]\n🃏 보유 챔피언: " + (data.collection.champions.length) + "명";
+                    option = "1. 칭호 설정\n2. 챔피언 도감";
+                    break;
+
+                case "COL_TITLE_ACTION":
+                    top = "🏅 칭호 설정";
+                    body = "✨ 현재 장착: [" + (data.title || "뉴비") + "]\n보유하신 칭호 목록입니다.";
+                    option = data.collection.titles.map(function(t, i) { 
+                        return (i + 1) + ". " + (t === data.title ? "✅ " : "") + t; 
+                    }).join("\n");
+                    h = "변경할 번호 입력";
+                    break;
+
+                case "STAT_UP_MENU":
+                    top = "⚡ 스탯 강화";
+                    body = "✨ 보유 포인트: " + (data.point || 0) + " P\n강화할 능력치를 선택하세요.";
+                    option = "1. 정확\n2. 반응\n3. 침착\n4. 직관";
                     break;
             }
         }
 
-        // 에러 상황 등 content가 직접 들어온 경우 우선 처리
+        // 알림 문구나 에러 내용 처리
         if (content) body = content;
 
-        return this.make(top, body, isRoot, help);
+        return this.make(top, body, option, isRoot, h);
     },
 
+    // 초기 메뉴 렌더링
     renderMenu: function(session) {
-        if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", "1. 시스템 정보\n2. 유저 조회\n3. 문의 관리", "관리 항목 번호 입력");
-        if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 관리자 문의", "번호 선택");
-        return this.go(session, "USER_MAIN", "메인 메뉴", "1. 프로필 조회\n2. 컬렉션\n3. 대전 모드\n4. 상점\n5. 관리자 문의\n6. 로그아웃", "번호 선택");
+        if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", null, "번호 선택");
+        if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", null, "번호 선택");
+        return this.go(session, "USER_MAIN");
     }
 };
 
