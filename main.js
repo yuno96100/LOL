@@ -71,8 +71,6 @@ var UI = {
         var div = Utils.getFixedDivider();
         var scr = session.screen;
         
-        if (!data && scr.indexOf("ADMIN_INQUIRY") === -1) return this.make("알림", "유저 데이터를 찾을 수 없습니다", "메뉴로 이동", false);
-
         var title = "정보", head = "", body = "";
 
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
@@ -100,13 +98,17 @@ var UI = {
             else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
             else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
         }
-        else if (scr === "ADMIN_INQUIRY_DETAIL") {
+        if (scr === "ADMIN_INQUIRY_DETAIL") {
             var iq = Database.inquiries[session.targetInquiryIdx];
             title = "문의 상세";
-            head = "👤 발신: " + iq.sender + "\n⏰ 시간: " + iq.time + "\n" + div + "\n" + iq.content;
+            head = "👤 발신: " + iq.sender + "\n" +
+                   "⏰ 시간: " + iq.time + "\n" + 
+                   div + "\n" + 
+                   Utils.wrapText(iq.content);
             body = "1. 답변하기\n2. 삭제하기";
         }
-        else if (scr.indexOf("SHOP") !== -1) {
+        // 여기에 닫는 중괄호 없이 바로 else if로 이어져야 합니다.
+        else if (scr.indexOf("SHOP") !== -1) { 
             title = "상점";
             var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
             head = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n📦 보유 챔피언: " + ownedCount + " / " + SystemData.champions.length;
@@ -119,8 +121,10 @@ var UI = {
             if (scr === "COL_MAIN") body = "1. 보유 칭호\n2. 보유 챔피언";
         }
 
-        var fullContent = head + (body ? "\n" + div + "\n" + body : "") + (content ? "\n" + div + "\n" + content : "");
-        return this.make(title, fullContent, help, false);
+        var fullContent = head; 
+        if (content && scr !== "ADMIN_INQUIRY_DETAIL") fullContent += "\n" + div + "\n" + content;
+        
+        return this.make(title, fullContent, body || help, false);
     },
     
     go: function(session, screen, title, content, help) {
@@ -201,13 +205,14 @@ var AdminActions = {
     },
     showInquiryList: function(session, replier) {
         if (Database.inquiries.length === 0) {
-            return replier.reply(UI.make("알림", "접수된 문의가 없습니다.", "목록이 비어있습니다.", false));
+            return replier.reply(UI.make("알림", "접수된 문의가 없습니다.", "목록이 비어있음", false));
         }
-        
-        // 날짜별 그룹화 로직
+
         var groups = {};
         Database.inquiries.forEach(function(iq, index) {
-            var date = iq.time.split(" ")[0]; // "2/13" 추출
+            // 시간 형식이 "2/13 오전 9:23" 인지 확인 후 안전하게 분리
+            var timeParts = iq.time.split(" ");
+            var date = timeParts[0] || "날짜미상"; 
             if (!groups[date]) groups[date] = [];
             groups[date].push({ idx: index, data: iq });
         });
@@ -220,7 +225,9 @@ var AdminActions = {
             listText += groups[date].map(function(item) {
                 var iq = item.data;
                 var icon = iq.read ? "✅" : "🆕";
-                var timeOnly = iq.time.split(" ")[1] + " " + iq.time.split(" ")[2]; // "오전 9:23"
+                // undefined 방지를 위해 시간 파트만 추출 (오전/오후 포함)
+                var timeParts = iq.time.split(" ");
+                var timeOnly = (timeParts.length > 1) ? timeParts[1] + " " + timeParts[2] : iq.time;
                 return (item.idx + 1) + ". " + icon + " " + iq.sender + " (" + timeOnly + ")";
             }).join("\n");
             if (i < dateKeys.length - 1) listText += "\n" + Utils.getFixedDivider() + "\n";
@@ -238,7 +245,11 @@ var AdminActions = {
 
         session.targetInquiryIdx = idx;
         session.targetUser = iq.sender;
-        replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", "", "", "1. 답변하기\n2. 삭제하기"));
+        
+        // 상세 내용 구성 (이미지 구조 유지)
+        var detail = "👤 발신: " + iq.sender + "\n⏰ 시간: " + iq.time;
+        // content 인자를 비워두어 UI 중복 출력 방지
+        replier.reply(UI.go(session, "ADMIN_INQUIRY_DETAIL", "문의 상세", detail, "1. 답변하기\n2. 삭제하기"));
     },
 
     submitAnswer: function(msg, session, replier) {
