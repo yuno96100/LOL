@@ -1,5 +1,5 @@
 /**
- * [main.js] v0.0.22
+ * [main.js] v0.0.23
  * 1. 문의 목록 날짜별 그룹화 적용 (오전/오후 표기)
  * 2. 모든 알림 문구 UI 엔진(UI.make) 적용
  * 3. 카테고리 및 내비게이션 이동 로직 정교화
@@ -17,7 +17,7 @@ var Config = {
     FIXED_LINE: 14,
     WRAP_LIMIT: 18,
     NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"],
-    TIMEOUT: 30000 
+    TIMEOUT: 300000
 };
 
 var MAX_LEVEL = 30;
@@ -66,113 +66,76 @@ function getTierInfo(lp) {
     return { name: "아이언", icon: "⚫" };
 }
 
-// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: UI 엔진 (아이콘 네비게이션형)] ━━━━━━━━
 var UI = {
-    // 기본 프레임 생성
-    make: function(title, content, help, isRoot) {
+    // 1. 기본 프레임 생성기
+    make: function(top, mid, isRoot, help) {
         var div = Utils.getFixedDivider();
-        var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content) + "\n" + div + "\n";
-        if (help) res += "💡 " + Utils.wrapText(help);
-        if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
+        var res = "『 " + top + " 』\n" + div + "\n";
+
+        // [중단] 본문 및 선택지 목록
+        if (mid) {
+            res += Utils.wrapText(mid) + "\n" + div + "\n";
+        }
+
+        // [하단] 네비게이션 바 (메인 로비가 아닐 때만 노출)
+        if (!isRoot) {
+            res += " ⬅️이전    ❌취소 \n" + div + "\n";
+        }
+
+        // [최하단] 도움말
+        if (help) {
+            res += "💡 " + Utils.wrapText(help);
+        }
+        
         return res;
     },
 
-    // 카테고리별 조건부 헤더 렌더링
-    renderCategoryUI: function(session, help, content) {
-        var id = session.targetUser || session.tempId;
-        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-        var div = Utils.getFixedDivider();
-        var scr = session.screen;
-        
-        var title = "정보", head = "", body = "";
-
-        // 1. [기존 방식 유지] 프로필 및 스탯 강화 메뉴: 항상 상세 정보 헤더 출력
-        // PROFILE(조회), STAT(강화 메뉴/입력), ADMIN_USER_DETAIL(관리자 유저조회) 포함
-        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
-            title = (session.targetUser) ? id + " 님" : "내 프로필";
-            var tier = getTierInfo(data.lp);
-            head = "👤 계정: " + id + "\n" +
-                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                   "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                   "✨ 포인트: " + (data.point || 0) + " P";
-            
-            // 하단 조작 가이드 설정
-            if (scr === "PROFILE_VIEW") {
-                body = "1. 능력치 강화";
-            } else if (scr === "STAT_UP_MENU") {
-                title = "강화 선택";
-                content = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
-            } else if (scr === "STAT_UP_INPUT") {
-                title = session.selectedStatName + " 강화";
-                content = "강화할 수치를 입력해주세요.";
-            } else if (scr === "ADMIN_USER_DETAIL") {
-                body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
-            }
-        }
-
-        // 2. [액션 화면] 상점 구매 시: "현재 골드" 헤더 노출
-        else if (scr === "SHOP_BUY_ACTION") {
-            title = "챔피언 영입";
-            head = "💰 보유 잔액: " + (data.gold || 0).toLocaleString() + " G";
-        }
-
-        // 3. [액션 화면] 칭호 변경 시: "현재 장착 중인 칭호" 헤더 노출
-        else if (scr === "COL_TITLE_ACTION") {
-            title = "칭호 변경";
-            head = "🏅 현재 장착: [" + data.title + "]";
-        }
-
-        // 4. [메인/목록 화면] 헤더 없이 깔끔하게 메뉴만 출력 (상점/컬렉션 메인)
-        else {
-            if (scr === "SHOP_MAIN") {
-                title = "상점";
-                content = "1. 챔피언 영입";
-            } else if (scr === "COL_MAIN") {
-                title = "컬렉션";
-                content = "1. 보유 칭호\n2. 보유 챔피언";
-            } else if (scr === "COL_CHAR_VIEW") {
-                title = "보유 챔피언";
-                // content는 호출부에서 전달된 목록(cList)을 그대로 사용
-            }
-            head = ""; // 상점/컬렉션 메인 메뉴들은 헤더를 비움
-        }
-
-        // 컨텐츠 결합 (헤더가 있을 때만 구분선 추가)
-        var fullContent = head ? (head + "\n" + div + "\n" + (content || "")) : (content || "");
-
-        // 5. [특수 화면] 문의 상세 (관리자 전용 레이아웃 유지)
-        if (scr === "ADMIN_INQUIRY_DETAIL") {
-            var iq = Database.inquiries[session.targetInquiryIdx];
-            var res = "『 문의 상세 』\n" + div + "\n" + 
-                      Utils.wrapText("👤 발신: " + iq.sender + "\n⏰ 시간: " + iq.time + "\n" + div + "\n" + iq.content) + 
-                      "\n" + div + "\n";
-            res += "1. 답변하기\n2. 삭제하기\n" + div + "\n" + Utils.getNav();
-            return res;
-        }
-
-        // 최종 규격에 맞춰 출력
-        return this.make(title, fullContent, body || help, false);
-    },
-    
-    // 화면 이동 처리
+    // 2. 카테고리별 화면 구성 (상단 정보 구간 정의)
     go: function(session, screen, title, content, help) {
         session.screen = screen;
-        // 카테고리 UI를 적용할 스크워드 리스트
-        var categoryScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_DETAIL"];
-        for (var i = 0; i < categoryScreens.length; i++) {
-            if (screen.indexOf(categoryScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
-        }
-        
+        var id = session.targetUser || session.tempId;
+        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
-        return this.make(title, content, help, isRoot);
+
+        var top = title;
+        var mid = content;
+
+        // [상단 정보 구간 커스텀 로직]
+        if (data && (screen.indexOf("PROFILE") !== -1 || screen.indexOf("STAT") !== -1 || screen === "ADMIN_USER_DETAIL")) {
+            top = (session.targetUser) ? id + " 님" : "내 프로필";
+            var tier = getTierInfo(data.lp);
+            // 상단부: 계정 ~ 포인트 정보 (구분선으로 목록과 분리)
+            mid = "👤 계정: " + id + "\n" +
+                  "🏅 칭호: [" + data.title + "]\n" + Utils.getFixedDivider() + "\n" +
+                  "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+                  "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                  "⚔️ 전적: " + data.win + "승 " + data.lose + "패\n" + Utils.getFixedDivider() + "\n" +
+                  "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                  "🎯 정확:" + data.stats.acc + " | ⚡ 반응:" + data.stats.ref + "\n" +
+                  "🧘 침착:" + data.stats.com + " | 🧠 직관:" + data.stats.int + "\n" +
+                  "✨ 포인트: " + (data.point || 0) + " P\n" + 
+                  Utils.getFixedDivider() + "\n" + (content || "");
+        } 
+        else if (data && (screen === "SHOP_MAIN" || screen === "SHOP_BUY_ACTION")) {
+            top = "상점";
+            mid = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                  "📦 보유 챔피언: " + (data.collection.champions.length) + " / 18\n" + 
+                  Utils.getFixedDivider() + "\n" + (content || "");
+        }
+        else if (data && (screen === "COL_MAIN" || screen.indexOf("COL_") !== -1)) {
+            top = "컬렉션";
+            mid = "🏅 장착 칭호: [" + data.title + "]\n" +
+                  "🏆 수집율: " + Math.floor((data.collection.champions.length / 18) * 100) + "%\n" +
+                  Utils.getFixedDivider() + "\n" + (content || "");
+        }
+
+        return this.make(top, mid, isRoot, help);
     },
 
-    // 메인 메뉴 렌더링
     renderMenu: function(session) {
         if (session.type === "ADMIN") {
-            var unread = Database.inquiries.some(function(iq) { return !iq.read; });
-            return this.go(session, "ADMIN_MAIN", "관리 센터", "1. 시스템 정보\n2. 전체 유저\n3. 문의 관리" + (unread ? " 🔔" : ""), "관리 항목 번호 입력");
+            return this.go(session, "ADMIN_MAIN", "관리 센터", "1. 시스템 정보\n2. 전체 유저\n3. 문의 관리", "관리 항목 번호 입력");
         }
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "번호 선택");
         return this.go(session, "USER_MAIN", "메인 로비", "1. 프로필 조회\n2. 컬렉션 확인\n3. 대전 모드\n4. 상점 이용\n5. 운영진 문의\n6. 로그아웃", "번호 선택");
