@@ -26,10 +26,31 @@ var Utils = {
     wrapText: function(str) {
         if (!str) return "";
         var lines = str.split("\n"), result = [];
+        var punctuation = [".", "!", "?", ","]; // 제외할 문장 부호들
+
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
-            if (line.length <= Config.WRAP_LIMIT) { result.push(line); } 
-            else { for (var j = 0; j < line.length; j += Config.WRAP_LIMIT) { result.push(line.substring(j, j + Config.WRAP_LIMIT)); } }
+            if (line.length <= Config.WRAP_LIMIT) { 
+                result.push(line); 
+            } else { 
+                var currentLine = "";
+                for (var j = 0; j < line.length; j++) {
+                    var char = line[j];
+                    currentLine += char;
+
+                    // 현재 글자 수가 제한에 도달했을 때
+                    if (currentLine.length >= Config.WRAP_LIMIT) {
+                        // 다음 글자가 문장 부호라면? 이번 줄에 포함시키고 인덱스 점프
+                        while (j + 1 < line.length && punctuation.indexOf(line[j + 1]) !== -1) {
+                            currentLine += line[j + 1];
+                            j++;
+                        }
+                        result.push(currentLine);
+                        currentLine = "";
+                    }
+                }
+                if (currentLine) result.push(currentLine);
+            }
         }
         return result.join("\n");
     }
