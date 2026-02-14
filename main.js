@@ -17,7 +17,6 @@ var Config = {
     FIXED_LINE: 14,
     WRAP_LIMIT: 18,
     NAV_ITEMS: ["이전", "취소", "메뉴"], // 입력값 매칭용
-    TIMEOUT: 30000 
 };
 
 var MAX_LEVEL = 30;
@@ -213,42 +212,45 @@ var SessionManager = {
         FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions));
     },
 
-    get: function(room, hash, replier) {
-        if (!this.sessions[hash]) { 
-            this.sessions[hash] = { 
-                screen: "IDLE", 
-                tempId: "비회원", 
-                type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
-                data: null 
-            }; 
-        }
-        var s = this.sessions[hash];
-        s.room = room;
-        s.lastTime = Date.now();
-
-        // 1. 기존 타이머가 있다면 즉시 제거 (유저가 새 메시지를 보냈으므로)
-        if (this.timers[hash]) {
-            clearTimeout(this.timers[hash]);
-            delete this.timers[hash];
-        }
-
-        // 2. IDLE 상태가 아닐 때만 30초 타이머 작동
-        var self = this;
-        if (s.screen !== "IDLE") {
-            this.timers[hash] = setTimeout(function() {
-    if (s.screen !== "IDLE") {
-        self.reset(s, hash); 
-        self.save(); // 리셋 직후에 저장 (순서 최적화)
-        
-        replier.reply(UI.make("세션 자동 종료", 
-            "입력 시간이 30초를 초과하여\n세션이 안전하게 종료되었습니다.", 
-            "다시 시작하려면 '메뉴'를 입력하세요.", true));
+    // [3. DB 및 세션 매니저] 내 수정
+get: function(room, hash, replier) {
+    if (!this.sessions[hash]) { 
+        this.sessions[hash] = { 
+            screen: "IDLE", 
+            tempId: "비회원", 
+            type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
+            data: null 
+        }; 
     }
-}, Config.TIMEOUT);
-        }
+    var s = this.sessions[hash];
+    s.room = room;
+    s.lastTime = Date.now();
 
-        return s;
-    },
+    // 1. 기존 타이머 제거 (새 메시지 수신 시)
+    if (this.timers[hash]) {
+        clearTimeout(this.timers[hash]);
+        delete this.timers[hash];
+    }
+
+    // 2. IDLE이 아닐 때만 5분(300000ms) 타이머 작동
+    // (이전 대화에서 5분으로 변경 요청하신 내용을 반영했습니다)
+    var self = this;
+    if (s.screen !== "IDLE") {
+        this.timers[hash] = setTimeout(function() {
+            // [중요] 실행 시점에 이미 IDLE 상태라면 알림을 보내지 않음
+            if (s.screen !== "IDLE") {
+                self.reset(s, hash); 
+                self.save();
+                
+                replier.reply(UI.make("세션 자동 종료", 
+                    "입력 시간이 초과되어\n세션이 안전하게 종료되었습니다.", 
+                    "다시 시작하려면 '메뉴'를 입력하세요.", true));
+            }
+        }, 300000); // 5분 설정 (300,000ms)
+    }
+
+    return s;
+},
 
     // hash를 인자로 받아 타이머까지 확실히 제거하도록 수정
     reset: function(session, hash) {
