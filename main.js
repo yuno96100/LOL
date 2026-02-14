@@ -149,26 +149,27 @@ var UI = {
         return res;
     },
     
-    go: function(session, screen, title, content, help) {
-        session.screen = screen;
-        
-        // 특정 화면들은 LayoutManager가 알맹이(content)를 생성함
-        var fixedScreens = ["PROFILE", "STAT", "DETAIL"]; 
-        for (var i=0; i<fixedScreens.length; i++) {
-            if (screen.indexOf(fixedScreens[i]) !== -1) {
-                var layoutContent = LayoutManager.renderProfile(session);
-                // 인자로 받은 content가 있다면 레이아웃 아래에 추가
-                if (content) layoutContent += "\n" + Utils.getFixedDivider() + "\n" + content;
-                
-                var displayTitle = (session.targetUser) ? session.targetUser + " 님" : "내 프로필";
-                return this.make(displayTitle, layoutContent, help, false);
-            }
-        }
+   go: function(session, screen, title, content, help) {
+    session.screen = screen;
+    var isProfileLayout = (/(PROFILE|STAT|DETAIL)/).test(screen);
+    
+    // 타이틀 자동 생성 로직
+    var displayTitle = title;
+    if (!title) {
+        if (isProfileLayout) displayTitle = (session.targetUser) ? session.targetUser + " 님" : "내 정보";
+        else if (screen.indexOf("SHOP") !== -1) displayTitle = "상점";
+        else if (screen.indexOf("COL") !== -1) displayTitle = "컬렉션";
+    }
 
-        var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "SUCCESS_IDLE"].indexOf(screen) !== -1);
-        return this.make(title, content, help, isRoot);
-    },
+    if (isProfileLayout) {
+        var layoutContent = LayoutManager.renderProfile(session);
+        if (content) layoutContent += "\n" + Utils.getFixedDivider() + "\n" + content;
+        return this.make(displayTitle, layoutContent, help, false);
+    }
 
+    var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "SUCCESS_IDLE"].indexOf(screen) !== -1);
+    return this.make(displayTitle, content, help, isRoot);
+},
     renderMenu: function(session) {
         if (session.type === "ADMIN") {
             var unread = Database.inquiries.some(function(iq) { return !iq.read; });
@@ -376,31 +377,30 @@ var AdminActions = {
     },
 
     editUserData: function(msg, session, replier) {
-        var val = parseInt(msg);
-        if (isNaN(val)) return replier.reply(UI.make("입력 오류", "숫자만 입력해 주십시오", "다시 입력"));
-        
-        var targetData = Database.data[session.targetUser];
-        
-        // 레벨 수정 시 로직 추가
-        if (session.editType === "level") {
-            if (val > MAX_LEVEL) val = MAX_LEVEL; // 최대 레벨 제한
-            if (val < 1) val = 1;
-            targetData.level = val;
-            // 레벨에 따른 포인트 재설정 (예: 레벨당 5포인트)
-            targetData.point = (val - 1) * 5; 
-        } else {
-            targetData[session.editType] = val; 
-        }
-        
-        Database.save();
-        
-        var typeName = { "gold": "골드", "lp": "LP", "level": "레벨" }[session.editType];
-        Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "[" + typeName + "] 정보가 운영진에 의해 조정되었습니다.", "운영 정책 조치", true));
-        
-        SessionManager.reset(session, String(imageDB.getProfileHash())); 
-        replier.reply(UI.make("수정 완료", session.targetUser + " 님의 " + typeName + "이(가) 반영되었습니다.", "관리 센터 복귀", false));
-        return this.showUserList(session, replier);
-    },
+    var val = parseInt(msg);
+    if (isNaN(val)) return replier.reply(UI.make("입력 오류", "숫자만 입력해 주십시오", "다시 입력"));
+    
+    var targetData = Database.data[session.targetUser];
+    var typeName = { "gold": "골드", "lp": "LP", "level": "레벨" }[session.editType];
+
+    if (session.editType === "level") {
+        val = Math.max(1, Math.min(val, MAX_LEVEL));
+        targetData.level = val;
+        targetData.point = (val - 1) * 5; 
+    } else {
+        targetData[session.editType] = val; 
+    }
+    
+    Database.save();
+    
+    // 유저에게 알림
+    Api.replyRoom(SessionManager.findUserRoom(session.targetUser), 
+        UI.make("알림", "[" + typeName + "] 정보가 운영진에 의해 조정되었습니다.", "운영 정책 조치", true));
+    
+    // [변경] 관리자 세션을 IDLE로 만들지 않고 목록으로 부드럽게 이동
+    replier.reply(UI.make("수정 완료", session.targetUser + " 님의 정보가 반영되었습니다.", "잠시 후 목록으로 이동합니다.", false));
+    return this.showUserList(session, replier);
+},
 
     resetConfirm: function(msg, session, replier) {
         if (msg === "확인") {
@@ -429,9 +429,9 @@ var AdminActions = {
 var UserActions = {
     handleInquiry: function(msg, session, replier) {
         var now = new Date();
-        var hours = now.getHours() < 10 ? "0" + now.getHours() : now.getHours(); // 09, 13, 23 등
-var min = now.getMinutes() < 10 ? "0" + now.getMinutes() : now.getMinutes();
-var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min;
+        var hours = now.getHours() < 10 ? "0" + now.getHours() : now.getHours();
+        var min = now.getMinutes() < 10 ? "0" + now.getMinutes() : now.getMinutes();
+        var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min;
 
         Database.inquiries.push({
             sender: session.tempId || "비회원",
@@ -489,48 +489,45 @@ var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min
             }
         }
     },
-    handleStatUp : function(msg, session, replier) {
-    var d = session.data;
-    
-    if (session.screen === "STAT_UP_MENU") {
-        // 포인트 없을 때 처리
-        if (d.point <= 0) {
-            replier.reply(UI.make("강화 불가", "보유 포인트가 부족합니다 (0P).", "잠시 후 프로필로 돌아갑니다.", true));
-            java.lang.Thread.sleep(2000); // 2초 지연
-            session.screen = "PROFILE_VIEW";
-            return replier.reply(UI.renderCategoryUI(session));
+    handleStatUp: function(msg, session, replier) {
+        var d = session.data;
+        
+        if (session.screen === "STAT_UP_MENU") {
+            if (d.point <= 0) {
+                replier.reply(UI.make("강화 불가", "보유 포인트가 부족합니다.", "잠시 후 프로필로 돌아갑니다.", true));
+                java.lang.Thread.sleep(1500);
+                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "강화 불가"));
+            }
+
+            var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
+            var idx = parseInt(msg) - 1;
+            if (keys[idx]) {
+                session.selectedStat = keys[idx]; 
+                session.selectedStatName = names[idx];
+                return replier.reply(UI.go(session, "STAT_UP_INPUT", "", "", "강화 수치 입력"));
+            }
+            return replier.reply(UI.make("번호 오류", "1~4 사이를 입력해주세요.", "항목 선택"));
         }
 
-        var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
-        var idx = parseInt(msg) - 1;
-        if (keys[idx]) {
-            session.selectedStat = keys[idx]; 
-            session.selectedStatName = names[idx];
-            return replier.reply(UI.go(session, "STAT_UP_INPUT", "", "", "강화 수치 입력"));
+        if (session.screen === "STAT_UP_INPUT") {
+            var amt = parseInt(msg);
+            if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "숫자만 입력 가능합니다.", "수치 입력"));
+
+            if (amt > d.point) {
+                replier.reply(UI.make("포인트 부족", "보유량보다 많이 입력했습니다.\n현재: " + d.point + "P", "잠시 후 다시 시도하세요."));
+                java.lang.Thread.sleep(2000);
+                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "포인트 부족"));
+            }
+
+            d.stats[session.selectedStat] += amt;
+            d.point -= amt;
+            Database.save();
+
+            replier.reply(UI.make("강화 성공 ✨", session.selectedStatName + " +" + amt, "반영되었습니다.", true));
+            java.lang.Thread.sleep(1500);
+            return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "강화 완료"));
         }
-        return replier.reply(UI.make("번호 오류", "1~4 사이를 입력해주세요.", "항목 선택"));
     }
-
-    if (session.screen === "STAT_UP_INPUT") {
-        var amt = parseInt(msg);
-        if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "숫자만 입력 가능합니다.", "수치 입력"));
-
-        if (amt > d.point) {
-            replier.reply(UI.make("포인트 부족", "보유량보다 많이 입력했습니다.\n현재: " + d.point + "P", "잠시 후 다시 시도하세요."));
-            java.lang.Thread.sleep(2000); // 2초 지연
-            return replier.reply(UI.renderCategoryUI(session));
-        }
-
-        d.stats[session.selectedStat] += amt;
-        d.point -= amt;
-        Database.save();
-
-        replier.reply(UI.make("강화 성공 ✨", session.selectedStatName + " +" + amt, "성공적으로 반영되었습니다.", true));
-        java.lang.Thread.sleep(2000); // 2초 지연
-        session.screen = "PROFILE_VIEW"; 
-        return replier.reply(UI.renderCategoryUI(session));
-        }
-    }     
 };
         
 // ━━━━━━━━ [7. 매니저: 관리자 핸들러] ━━━━━━━━
@@ -547,17 +544,21 @@ var AdminManager = {
 
         if (screen === "ADMIN_INQUIRY_LIST") {
             var idx = parseInt(msg) - 1;
-            if (Database.inquiries[idx]) AdminActions.viewInquiryDetail(idx, session, replier);
-            else replier.reply(UI.make("번호 오류", "올바른 번호를 입력해주세요.", "목록 확인", false));
+            if (Database.inquiries[idx]) {
+                AdminActions.viewInquiryDetail(idx, session, replier);
+            } else {
+                replier.reply(UI.make("번호 오류", "올바른 번호를 입력해주세요.", "목록 확인", false));
+            }
             return;
         }
 
+        // [추가] 상세 페이지 내 액션 처리
         if (screen === "ADMIN_INQUIRY_DETAIL") {
-            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "[" + session.targetUser + "] 유저에게 전송", "회신 내용을 입력하세요."));
+            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "회신할 내용을 입력하세요.", "메시지 입력"));
             if (msg === "2") {
                 Database.inquiries.splice(session.targetInquiryIdx, 1);
                 Database.save();
-                replier.reply(UI.make("삭제 완료", "해당 문의를 삭제했습니다.", "목록 복귀", false));
+                replier.reply(UI.make("삭제 완료", "해당 문의를 삭제했습니다.", "목록으로 복귀", false));
                 return AdminActions.showInquiryList(session, replier);
             }
             return;
@@ -565,21 +566,23 @@ var AdminManager = {
 
         if (screen === "ADMIN_USER_LIST") {
             var idx = parseInt(msg) - 1;
-            if (session.userListCache[idx]) {
+            if (session.userListCache && session.userListCache[idx]) {
                 session.targetUser = session.userListCache[idx];
-                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "작업 선택"));
+                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", "", "작업 선택"));
             }
+            return;
         }
 
         switch(screen) {
             case "ADMIN_USER_DETAIL":
-                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정", "항목 선택"));
+                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
                 if (msg === "2") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "계정을 초기화하시겠습니까?", "'확인' 입력"));
                 if (msg === "3") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "계정을 삭제하시겠습니까?", "'삭제확인' 입력"));
                 break;
             case "ADMIN_EDIT_MENU":
                 if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "설정할 골드 값을 입력하세요.", "숫자 입력")); }
                 if (msg === "2") { session.editType = "lp"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "LP 수정", "설정할 LP 값을 입력하세요.", "숫자 입력")); }
+                if (msg === "3") { session.editType = "level"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "레벨 수정", "설정할 레벨을 입력하세요 (1~30).", "숫자 입력")); }
                 break;
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
             case "ADMIN_EDIT_INPUT": return AdminActions.editUserData(msg, session, replier);
