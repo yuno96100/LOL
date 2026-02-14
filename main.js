@@ -67,7 +67,7 @@ function getTierInfo(lp) {
 }
 
 
-// ━━━━━━━━ [2. 모듈: UI 엔진 (수정 완료)] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: UI 엔진 (괄호 오류 수정본)] ━━━━━━━━
 var UI = {
     make: function(top, body, option, isRoot, help) {
         var div = "━━━━━━━━━━━━━━"; 
@@ -149,14 +149,15 @@ var UI = {
         }
         if (content) body = content;
         return this.make(top, body, option, isRoot, h);
-    },
+    }, // <-- 중복 닫힘 } 제거하고 쉼표로 연결
 
     renderMenu: function(session) {
         if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", null, "번호 선택");
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", null, "번호 선택");
         return this.go(session, "USER_MAIN");
     }
-};
+}; // UI 객체 끝
+
 
 // ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
 var Database = {
