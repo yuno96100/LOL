@@ -497,7 +497,8 @@ var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min
         java.lang.Thread.sleep(2000); // 2초 지연
         session.screen = "PROFILE_VIEW"; 
         return replier.reply(UI.renderCategoryUI(session));
-    }
+        }
+    }     
 };
         
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
