@@ -16,7 +16,7 @@ var Config = {
     LINE_CHAR: "━",
     FIXED_LINE: 14,
     WRAP_LIMIT: 18,
-    NAV_ITEMS: ["⬅️이전", "❌취소", "🏠메뉴"],
+    NAV_ITEMS: ["이전", "취소", "메뉴"], // 입력값 매칭용
     TIMEOUT: 30000 
 };
 
@@ -57,11 +57,29 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
+    // 세션에서 사용하는 세로형 내비게이션 생성
+    getVerticalNav: function() {
+        return "◀️ 이전\n" +
+               "✖️ 취소\n" +
+               "🏠 메뉴";
+    },
+
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
         var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content) + "\n" + div + "\n";
-        if (help) res += "💡 " + Utils.wrapText(help);
-        if (!isRoot) res += "\n" + div + "\n" + Utils.getNav();
+        
+        // 1. 선택지/본문 (이미 content에 포함되어 넘어옴)
+        
+        // 2. 내비게이션 (Root가 아닐 때만 세로형으로 추가)
+        if (!isRoot) {
+            res += this.getVerticalNav() + "\n" + div + "\n";
+        }
+        
+        // 3. 도움말 (최하단)
+        if (help) {
+            res += "💡 " + Utils.wrapText(help);
+        }
+        
         return res;
     },
 
@@ -73,6 +91,7 @@ var UI = {
         
         var title = "정보", head = "", body = "";
 
+        // [데이터 바인딩 영역] - 기존과 동일
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
@@ -99,18 +118,15 @@ var UI = {
             else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
         }
         else if (scr === "ADMIN_INQUIRY_DETAIL") {
-    var iq = Database.inquiries[session.targetInquiryIdx];
-    title = "문의 상세";
-    // head에 상세 내용을 모두 담습니다.
-    head = "👤 발신: " + iq.sender + "\n" +
-           "⏰ 시간: " + iq.time + "\n" + 
-           div + "\n" + 
-           Utils.wrapText(iq.content);
-    // body를 비워두어 하단 💡 부분에 중복 노출되지 않게 합니다.
-    body = ""; 
-    help = "1. 답변하기\n2. 삭제하기"; // 실제 메뉴는 help 자리에 배치
-}
-        // 여기에 닫는 중괄호 없이 바로 else if로 이어져야 합니다.
+            var iq = Database.inquiries[session.targetInquiryIdx];
+            title = "문의 상세";
+            head = "👤 발신: " + iq.sender + "\n" +
+                   "⏰ 시간: " + iq.time + "\n" + 
+                   div + "\n" + 
+                   Utils.wrapText(iq.content);
+            body = "1. 답변하기\n2. 삭제하기"; 
+            help = "원하시는 작업 번호를 입력하세요.";
+        }
         else if (scr.indexOf("SHOP") !== -1) { 
             title = "상점";
             var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
@@ -124,19 +140,12 @@ var UI = {
             if (scr === "COL_MAIN") body = "1. 보유 칭호\n2. 보유 챔피언";
         }
 
-        var fullContent = head; 
-        if (content && scr !== "ADMIN_INQUIRY_DETAIL") fullContent += "\n" + div + "\n" + content;
-        
-        if (scr === "ADMIN_INQUIRY_DETAIL") {
-            // 상세 페이지 전용 출력 로직
-            var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(fullContent) + "\n" + div + "\n";
-            res += (body || help); // 💡 아이콘 없이 '선택지'만 깔끔하게 출력
-            res += "\n" + div + "\n" + Utils.getNav();
-            return res;
-        }
+        // 최종 조립
+        var fullContent = head;
+        if (body) fullContent += "\n" + div + "\n" + body;
+        if (content) fullContent += "\n" + div + "\n" + content;
 
-        // 그 외 일반 화면은 UI.make를 통해 💡 아이콘이 붙어서 나감
-        return this.make(title, fullContent, body || help, false);
+        return this.make(title, fullContent, help, false);
     },
     
     go: function(session, screen, title, content, help) {
