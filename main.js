@@ -427,32 +427,41 @@ var AdminActions = {
         return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 번호 선택"));
     },
 
-    resetConfirm: function(msg, session, replier) {
-        if (msg === "확인") {
-            var pw = Database.data[session.targetUser].pw;
-            Database.data[session.targetUser] = Database.getInitData(pw); 
-            Database.save();
-            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "데이터가 초기화되었습니다", "관리자 조치", true));
-            
-            // [수정] 상태 알림 문구 및 내비 제거
-            replier.reply(UI.make("초기화 완료", "성공적으로 초기화되었습니다.", "상세 정보로 돌아갑니다.", true));
-            java.lang.Thread.sleep(1500);
-            return this.showUserDetail(session, replier);
-        }
-    },
+   resetConfirm: function(msg, session, replier) {
+    // 거절 대답 처리
+    if (msg === "아니오") return this.showUserDetail(session, replier);
 
-    deleteConfirm: function(msg, session, replier) {
-        if (msg === "삭제확인") {
-            Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "계정이 삭제되었습니다", "관리자 조치", true));
-            delete Database.data[session.targetUser]; 
-            Database.save();
-            SessionManager.forceLogout(session.targetUser); 
+    if (msg === "확인") {
+        var pw = Database.data[session.targetUser].pw;
+        Database.data[session.targetUser] = Database.getInitData(pw);
+        Database.save();
+        
+        // 상태 알림: 내비 없음, 1.5초 후 이동
+        replier.reply(UI.make("초기화 완료", "성공적으로 초기화되었습니다.", "잠시 후 상세 화면으로 이동합니다.", true));
+        java.lang.Thread.sleep(1500);
+        return this.showUserDetail(session, replier);
+    }
+    
+    return replier.reply(UI.make("입력 확인", "진행하시려면 '확인'을,\n취소하시려면 '아니오'를 입력하세요.", "", true));
+},
 
-            // [수정] 삭제는 상세로 갈 수 없으므로 목록으로 이동
-            replier.reply(UI.make("삭제 완료", "계정이 파기되었습니다.", "유저 목록으로 돌아갑니다.", true));
-            java.lang.Thread.sleep(1500);
-            return this.showUserList(session, replier);
-        }
+deleteConfirm: function(msg, session, replier) {
+    // 거절 대답 처리
+    if (msg === "아니오") return this.showUserDetail(session, replier);
+
+    if (msg === "삭제확인") {
+        delete Database.data[session.targetUser];
+        Database.save();
+        SessionManager.forceLogout(session.targetUser);
+
+        // 상태 알림: 내비 없음, 1.5초 후 목록으로 이동
+        replier.reply(UI.make("삭제 완료", "계정이 파기되었습니다.", "유저 목록으로 돌아갑니다.", true));
+        java.lang.Thread.sleep(1500);
+        return this.showUserList(session, replier);
+    }
+    
+    return replier.reply(UI.make("입력 확인", "진행하시려면 '삭제확인'을,\n취소하시려면 '아니오'를 입력하세요.", "", true));
+}
     }
 };
 
@@ -590,10 +599,18 @@ var AdminManager = {
         // 3. 상세 액션 (Switch)
         switch(screen) {
             case "ADMIN_USER_DETAIL":
-                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
-                if (msg === "2") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "정말 초기화하시겠습니까?", "'확인' 입력 시 실행"));
-                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "정말 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
-                break;
+    if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
+    
+    // [보완] 다음 입력을 처리할 수 있도록 session.screen을 변경한 후 UI.make 호출
+    if (msg === "2") {
+        session.screen = "ADMIN_RESET_CONFIRM"; // 상태 변경
+        return replier.reply(UI.make("초기화 확인", "정말 초기화하시겠습니까?\n\n(취소: '아니오' 입력)", "'확인' 또는 '아니오'", true));
+    }
+    if (msg === "3") {
+        session.screen = "ADMIN_DELETE_CONFIRM"; // 상태 변경
+        return replier.reply(UI.make("계정 삭제 확인", "정말 삭제하시겠습니까?\n\n(취소: '아니오' 입력)", "'삭제확인' 또는 '아니오'", true));
+    }
+    break;
             case "ADMIN_INQUIRY_DETAIL":
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "회신 내용을 입력하세요.", "메시지 입력"));
                 if (msg === "2") {
