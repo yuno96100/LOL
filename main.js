@@ -130,7 +130,7 @@ var LayoutManager = {
     }
 };
 
-// ━━━━━━━━ [3. 모듈: UI 엔진 (공통 프레임)] ━━━━━━━━
+// ━━━━━━━━ [3. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     getHorizontalNav: function() {
         return "[ ◀이전 | ✖취소 | 🏠메뉴 ]";
@@ -138,7 +138,9 @@ var UI = {
 
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
-        var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content) + "\n" + div + "\n";
+        // content가 비어있을 경우 줄바꿈 방지 로직 추가
+        var mainContent = content ? Utils.wrapText(content) + "\n" + div + "\n" : "";
+        var res = "『 " + title + " 』\n" + div + "\n" + mainContent;
         
         if (!isRoot) {
             res += this.getHorizontalNav() + "\n" + div + "\n";
@@ -151,27 +153,27 @@ var UI = {
         return res;
     },
     
-   go: function(session, screen, title, content, help) {
-    session.screen = screen;
-    var isProfileLayout = (/(PROFILE|STAT|DETAIL)/).test(screen);
-    
-    // 타이틀 자동 생성 로직
-    var displayTitle = title;
-    if (!title) {
-        if (isProfileLayout) displayTitle = (session.targetUser) ? session.targetUser + " 님" : "내 정보";
-        else if (screen.indexOf("SHOP") !== -1) displayTitle = "상점";
-        else if (screen.indexOf("COL") !== -1) displayTitle = "컬렉션";
-    }
+    go: function(session, screen, title, content, help) {
+        session.screen = screen;
+        var isProfileLayout = (/(PROFILE|STAT|DETAIL)/).test(screen);
+        
+        var displayTitle = title;
+        if (!title) {
+            if (isProfileLayout) displayTitle = (session.targetUser) ? session.targetUser + " 님" : "내 정보";
+            else if (screen.indexOf("SHOP") !== -1) displayTitle = "상점";
+            else if (screen.indexOf("COL") !== -1) displayTitle = "컬렉션";
+        }
 
-    if (isProfileLayout) {
-        var layoutContent = LayoutManager.renderProfile(session);
-        if (content) layoutContent += "\n" + Utils.getFixedDivider() + "\n" + content;
-        return this.make(displayTitle, layoutContent, help, false);
-    }
+        if (isProfileLayout) {
+            var layoutContent = LayoutManager.renderProfile(session);
+            // 프로필 레이아웃 아래에 추가 안내 문구가 있다면 결합
+            if (content) layoutContent += "\n" + Utils.getFixedDivider() + "\n" + content;
+            return this.make(displayTitle, layoutContent, help, false);
+        }
 
-    var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "SUCCESS_IDLE"].indexOf(screen) !== -1);
-    return this.make(displayTitle, content, help, isRoot);
-},
+        var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "IDLE"].indexOf(screen) !== -1);
+        return this.make(displayTitle, content, help, isRoot);
+    },
     renderMenu: function(session) {
         if (session.type === "ADMIN") {
             var unread = Database.inquiries.some(function(iq) { return !iq.read; });
@@ -232,7 +234,7 @@ var Database = {
 
 var SessionManager = {
     sessions: {},
-    timers: {}, // 세션별 타이머 저장소
+    timers: {},
 
     load: function() {
         try {
@@ -244,54 +246,49 @@ var SessionManager = {
         FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions));
     },
 
-get: function(room, hash, replier) {
-    if (!this.sessions[hash]) { 
-        this.sessions[hash] = { 
-            screen: "IDLE", 
-            tempId: "비회원", 
-            type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
-            data: null 
-        }; 
-    }
-    var s = this.sessions[hash];
-    s.room = room;
-    s.lastTime = Date.now();
+    get: function(room, hash, replier) {
+        if (!this.sessions[hash]) { 
+            this.sessions[hash] = { 
+                screen: "IDLE", 
+                tempId: "비회원", 
+                type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
+                data: null 
+            }; 
+        }
+        var s = this.sessions[hash];
+        s.room = room;
 
-    // 1. 기존 타이머 제거 (새 메시지 수신 시)
-    if (this.timers[hash]) {
-        clearTimeout(this.timers[hash]);
-        delete this.timers[hash];
-    }
+        // 기존 타이머 클리어
+        if (this.timers[hash]) {
+            clearTimeout(this.timers[hash]);
+            delete this.timers[hash];
+        }
 
-    // 2. IDLE이 아닐 때만 5분(300000ms) 타이머 작동
-    // (이전 대화에서 5분으로 변경 요청하신 내용을 반영했습니다)
-    var self = this;
-    if (s.screen !== "IDLE") {
-        this.timers[hash] = setTimeout(function() {
-            // [중요] 실행 시점에 이미 IDLE 상태라면 알림을 보내지 않음
-            if (s.screen !== "IDLE") {
-                self.reset(s, hash); 
-                self.save();
-                
-                replier.reply(UI.make("세션 자동 종료", 
-                    "입력 시간이 초과되어\n세션이 안전하게 종료되었습니다.", 
-                    "다시 시작하려면 '메뉴'를 입력하세요.", true));
-            }
-        }, 300000); // 5분 설정 (300,000ms)
-    }
+        // IDLE이 아닐 때만 5분 타이머 작동
+        var self = this;
+        if (s.screen !== "IDLE") {
+            this.timers[hash] = setTimeout(function() {
+                // 실행 시점에 세션이 여전히 같은 상태라면 종료 처리
+                if (self.sessions[hash] && self.sessions[hash].screen !== "IDLE") {
+                    self.reset(self.sessions[hash], hash);
+                    self.save();
+                    try {
+                        replier.reply(UI.make("세션 자동 종료", 
+                            "입력 시간이 초과되어\n세션이 안전하게 종료되었습니다.", 
+                            "다시 시작하려면 '메뉴'를 입력하세요.", true));
+                    } catch(e) { /* replier 만료 대비 */ }
+                }
+            }, 300000); 
+        }
+        return s;
+    },
 
-    return s;
-},
-
-    // hash를 인자로 받아 타이머까지 확실히 제거하도록 수정
     reset: function(session, hash) {
         session.screen = "IDLE";
         session.targetUser = null;
         session.targetInquiryIdx = null;
         session.editType = null;
         session.userListCache = [];
-        
-        // 타이머가 남아있다면 제거
         if (hash && this.timers[hash]) {
             clearTimeout(this.timers[hash]);
             delete this.timers[hash];
@@ -564,62 +561,53 @@ var AdminManager = {
     handle: function(msg, session, replier) {
         var screen = session.screen;
 
+        // 1. 메인 메뉴 핸들링
         if (screen === "ADMIN_MAIN") {
             if (msg === "1") return AdminActions.showSysInfo(session, replier);
             if (msg === "2") return AdminActions.showUserList(session, replier);
             if (msg === "3") return AdminActions.showInquiryList(session, replier);
-            return;
+        }
+
+        // 2. 리스트 선택 핸들링
+        if (screen === "ADMIN_USER_LIST") {
+            var idx = parseInt(msg) - 1;
+            if (session.userListCache && session.userListCache[idx]) {
+                session.targetUser = session.userListCache[idx];
+                var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
+                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 번호 선택"));
+            }
         }
 
         if (screen === "ADMIN_INQUIRY_LIST") {
-            var idx = parseInt(msg) - 1;
-            if (Database.inquiries[idx]) {
-                AdminActions.viewInquiryDetail(idx, session, replier);
-            } else {
-                replier.reply(UI.make("번호 오류", "올바른 번호를 입력해주세요.", "목록 확인", false));
+            var iIdx = parseInt(msg) - 1;
+            if (Database.inquiries[iIdx]) {
+                return AdminActions.viewInquiryDetail(iIdx, session, replier);
             }
-            return;
         }
 
-        // [추가] 상세 페이지 내 액션 처리
-        if (screen === "ADMIN_INQUIRY_DETAIL") {
-            if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "회신할 내용을 입력하세요.", "메시지 입력"));
-            if (msg === "2") {
-                Database.inquiries.splice(session.targetInquiryIdx, 1);
-                Database.save();
-                replier.reply(UI.make("삭제 완료", "해당 문의를 삭제했습니다.", "목록으로 복귀", false));
-                return AdminActions.showInquiryList(session, replier);
-            }
-            return;
-        }
-
-        if (screen === "ADMIN_USER_LIST") {
-    var idx = parseInt(msg) - 1;
-    if (session.userListCache && session.userListCache[idx]) {
-        session.targetUser = session.userListCache[idx];
-        // 아래 내용("" 대신 menuText 삽입)을 수정합니다.
-        var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
-        return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 선택"));
-    }
-    return;
-}
-
+        // 3. 상세 액션 (Switch)
         switch(screen) {
             case "ADMIN_USER_DETAIL":
-                // 기존 ""로 비어있던 content 부분을 메뉴 텍스트로 채웁니다.
-                var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
-                
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
-                if (msg === "2") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "계정을 초기화하시겠습니까?", "'확인' 입력"));
-                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "계정을 삭제하시겠습니까?", "'삭제확인' 입력"));
-                
-                // 아무 번호도 입력하지 않았을 때 기본 화면 출력
-                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 번호 선택"));
+                if (msg === "2") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "정말 초기화하시겠습니까?", "'확인' 입력 시 실행"));
+                if (msg === "3") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "정말 삭제하시겠습니까?", "'삭제확인' 입력 시 실행"));
+                break;
+            case "ADMIN_INQUIRY_DETAIL":
+                if (msg === "1") return replier.reply(UI.go(session, "ADMIN_ANSWER_INPUT", "답변 작성", "회신 내용을 입력하세요.", "메시지 입력"));
+                if (msg === "2") {
+                    Database.inquiries.splice(session.targetInquiryIdx, 1);
+                    Database.save();
+                    replier.reply(UI.make("알림", "문의가 삭제되었습니다.", "목록 복귀", false));
+                    return AdminActions.showInquiryList(session, replier);
+                }
                 break;
             case "ADMIN_EDIT_MENU":
-                if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "설정할 골드 값을 입력하세요.", "숫자 입력")); }
-                if (msg === "2") { session.editType = "lp"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "LP 수정", "설정할 LP 값을 입력하세요.", "숫자 입력")); }
-                if (msg === "3") { session.editType = "level"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "레벨 수정", "설정할 레벨을 입력하세요 (1~30).", "숫자 입력")); }
+                var types = { "1": "gold", "2": "lp", "3": "level" };
+                var names = { "1": "골드", "2": "LP", "3": "레벨" };
+                if (types[msg]) {
+                    session.editType = types[msg];
+                    return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", names[msg] + " 수정", "새로운 수치를 입력하세요.", "숫자만 입력"));
+                }
                 break;
             case "ADMIN_ANSWER_INPUT": return AdminActions.submitAnswer(msg, session, replier);
             case "ADMIN_EDIT_INPUT": return AdminActions.editUserData(msg, session, replier);
@@ -687,21 +675,25 @@ SessionManager.load();
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
-        if (!msg) return; 
+        if (!msg) return;
         if (isGroupChat && room !== Config.AdminRoom) return;
-        
-        var session = SessionManager.get(room, String(imageDB.getProfileHash()), replier); 
+
+        var hash = String(imageDB.getProfileHash());
+        var session = SessionManager.get(room, hash, replier);
         msg = msg.trim();
-        
-        // 공통 명령어 처리 (메뉴, 취소, 관리자)
-        if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) { 
-            SessionManager.reset(session, String(imageDB.getProfileHash())); 
-            return replier.reply(UI.renderMenu(session)); 
+
+        // 1. 공통 명령어
+        if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) {
+            SessionManager.reset(session, hash);
+            return replier.reply(UI.renderMenu(session));
         }
-        
-        // 이전 버튼 처리
+
+        // 2. 이전 버튼
         if (msg === "이전") {
             var curr = session.screen;
+            if (curr === "IDLE") return;
+            
+            // 이전 단계 로직 (작성하신 코드 유지)
             if (curr.indexOf("JOIN_") !== -1 || curr.indexOf("LOGIN_") !== -1 || curr === "GUEST_INQUIRY") return replier.reply(UI.go(session, "GUEST_MAIN", "환영합니다", "1. 회원가입\n2. 로그인\n3. 운영진 문의", "메뉴 선택"));
             if (curr === "ADMIN_INQUIRY_DETAIL") return AdminActions.showInquiryList(session, replier);
             if (curr === "ADMIN_INQUIRY_LIST" || curr === "ADMIN_USER_LIST" || curr === "ADMIN_SYS_INFO") return replier.reply(UI.renderMenu(session));
@@ -710,20 +702,17 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
             if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
             if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
-            
-            SessionManager.reset(session, String(imageDB.getProfileHash())); 
+
+            SessionManager.reset(session, hash);
             return replier.reply(UI.renderMenu(session));
         }
 
-        // IDLE 상태 처리 (세션 종료 후 '메뉴' 입력 대기)
-        if (session.screen === "IDLE") { 
-            if (msg === "메뉴") {
-                return replier.reply(UI.renderMenu(session));
-            }
-            return; 
+        // 3. 상태별 핸들러 실행
+        if (session.screen === "IDLE") {
+            if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
+            return;
         }
 
-        // 세션 타입 및 로그인 여부에 따른 핸들러 분기
         if (session.type === "ADMIN") {
             AdminManager.handle(msg, session, replier);
         } else if (!session.data) {
@@ -732,10 +721,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
             UserManager.handle(msg, session, replier);
         }
 
+        // 변경사항 즉시 저장
         SessionManager.save();
-    } catch (e) { 
-        // [수정] 오류 알림에 UI 엔진 적용
-        var errorContent = "⚠️ 오류가 발생했습니다.\n\n[라인] " + e.lineNumber + "\n[내용] " + e.message;
-        Api.replyRoom(Config.AdminRoom, UI.make("시스템 에러", errorContent, "관리자에게 문의하세요.", true)); 
+        Database.save(); 
+
+    } catch (e) {
+        var errorLog = "[Line " + e.lineNumber + "] " + e.message;
+        replier.reply(UI.make("시스템 에러", errorLog, "관리자에게 문의하세요.", true));
     }
 }
