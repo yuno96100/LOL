@@ -103,7 +103,7 @@ var UI = {
 
     // [수정 포인트] = 대신 : 를 사용하여 객체 속성으로 올바르게 선언
 
-    UI.renderCategoryUI = function(session, help, content) {
+    renderCategoryUI = function(session, help, content) {
 
     var id = session.targetUser || session.tempId;
 
