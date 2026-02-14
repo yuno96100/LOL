@@ -136,11 +136,12 @@ var UI = {
 };
     
     go: function(session, screen, title, content, help) {
-        session.screen = screen;
-        var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_DETAIL"];
-        for (var i=0; i<fixedScreens.length; i++) {
-            if (screen.indexOf(fixedScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
-        }
+    session.screen = screen;
+    // STAT_UP 관련 화면도 프로필 UI를 사용하도록 "STAT" 키워드 포함 확인
+    var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_DETAIL"]; 
+    for (var i=0; i<fixedScreens.length; i++) {
+        if (screen.indexOf(fixedScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
+    }
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "SUCCESS_IDLE"].indexOf(screen) !== -1);
         return this.make(title, content, help, isRoot);
     },
