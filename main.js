@@ -120,8 +120,7 @@ var LayoutManager = {
         }
 
         return body ? head + "\n" + div + "\n" + body : head;
-    }
-},
+    },
 
     /**
      * 상점, 컬렉션 등 기타 리스트형 레이아웃 (필요 시 확장)
