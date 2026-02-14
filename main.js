@@ -79,73 +79,61 @@ var UI = {
         return res;
     },
 
-    renderCategoryUI: function(session, help, content) {
-        var id = session.targetUser || session.tempId;
-        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-        var div = Utils.getFixedDivider();
-        var scr = session.screen;
-        
-        var title = "정보", head = "", body = "";
+    renderCategoryUI = function(session, help, content) {
+    var id = session.targetUser || session.tempId;
+    var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
+    var div = Utils.getFixedDivider();
+    var scr = session.screen;
+    
+    var title = (session.targetUser) ? id + " 님" : "프로필";
+    var head = ""; 
+    var body = "";
 
-        // [데이터 바인딩 영역]
-        if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
-            title = (session.targetUser) ? id + " 님" : "프로필";
-            var tier = getTierInfo(data.lp);
-            var win = data.win || 0, lose = data.lose || 0, total = win + lose;
-            var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-            var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
-            
-            head = "👤 계정: " + id + "\n" +
-       "🏅 칭호: [" + data.title + "]\n" +
-       div + "\n" +
-       "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-       "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-       "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
-       div + "\n" +
-       "🆙 레벨: Lv." + data.level + "\n" +
-       "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
-       div + "\n" +
-       "🎯 정확: " + st.acc + "\n" +  // 세로형으로 변경
-       "⚡ 반응: " + st.ref + "\n" +  // 세로형으로 변경
-       "🧘 침착: " + st.com + "\n" +  // 세로형으로 변경
-       "🧠 직관: " + st.int + "\n" +  // 세로형으로 변경
-       "✨ 포인트: " + (data.point || 0) + " P";
-            
-            if (scr === "PROFILE_VIEW") body = "1. 능력치 강화";
-            else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
-            else if (scr === "ADMIN_USER_DETAIL") body = "1. 정보 수정\n2. 초기화\n3. 계정 삭제";
-        }
-        else if (scr === "ADMIN_INQUIRY_DETAIL") {
-            var iq = Database.inquiries[session.targetInquiryIdx];
-            title = "문의 상세";
-            head = "👤 발신: " + iq.sender + "\n" +
-                   "⏰ 시간: " + iq.time + "\n" + 
-                   div + "\n" + 
-                   Utils.wrapText(iq.content);
-            body = "1. 답변하기\n2. 삭제하기"; 
-            help = "원하시는 작업 번호를 입력하세요.";
-        }
-        else if (scr.indexOf("SHOP") !== -1) { 
-            title = "상점";
-            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
-            head = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n📦 보유 챔피언: " + ownedCount + " / " + SystemData.champions.length;
-            if (scr === "SHOP_MAIN") body = "1. 챔피언 영입";
-        }
-        else if (scr.indexOf("COL") !== -1) {
-            title = "컬렉션";
-            var ownedCount = (data.collection && data.collection.champions) ? data.collection.champions.length : 0;
-            head = "🏅 현재 칭호: [" + data.title + "]\n🏆 수집율: " + Math.floor((ownedCount / SystemData.champions.length) * 100) + "%";
-            if (scr === "COL_MAIN") body = "1. 보유 칭호\n2. 보유 챔피언";
-        }
+    // [1. 상단 프로필 정보 고정]
+    var tier = getTierInfo(data.lp);
+    var win = data.win || 0, lose = data.lose || 0, total = win + lose;
+    var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
+    var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
+    
+    head = "👤 계정: " + id + "\n" +
+           "🏅 칭호: [" + data.title + "]\n" +
+           div + "\n" +
+           "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+           "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+           "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
+           div + "\n" +
+           "🆙 레벨: Lv." + data.level + "\n" +
+           "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
+           div + "\n" +
+           "🎯 정확: " + st.acc + "\n" +
+           "⚡ 반응: " + st.ref + "\n" +
+           "🧘 침착: " + st.com + "\n" +
+           "🧠 직관: " + st.int + "\n" +
+           "✨ 포인트: " + (data.point || 0) + " P";
 
-        // 최종 조립
-        var fullContent = head;
-        if (body) fullContent += "\n" + div + "\n" + body;
-        if (content) fullContent += "\n" + div + "\n" + content;
+    // [2. 화면 상태(scr)에 따라 하단 body만 교체]
+    if (scr === "PROFILE_VIEW") {
+        body = "1. 능력치 강화";
+        help = "강화하시려면 1번을 입력하세요.";
+    } 
+    else if (scr === "STAT_UP_MENU") {
+        body = " [ 강화 항목 선택 ]\n" +
+               "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
+        help = "강화할 능력치 번호를 입력하세요.";
+    } 
+    else if (scr === "STAT_UP_INPUT") {
+        body = " [ " + (session.selectedStatName || "능력치") + " 강화 ]\n" +
+               "현재 보유 포인트: " + data.point + "P";
+        help = "투자할 포인트 수치를 입력하세요.";
+    }
 
-        // renderCategoryUI에서도 make를 호출하므로 자동으로 가로형 내비가 적용됩니다.
-        return this.make(title, fullContent, help, false);
-    },
+    // [3. 최종 조립]
+    var fullContent = head;
+    if (body) fullContent += "\n" + div + "\n" + body;
+    if (content) fullContent += "\n" + div + "\n" + content;
+
+    return this.make(title, fullContent, help, false);
+};
     
     go: function(session, screen, title, content, help) {
         session.screen = screen;
