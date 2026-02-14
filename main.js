@@ -98,38 +98,35 @@ var UI = {
                    "🆙 레벨: Lv." + data.level + "\n" +
                    "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
                    div + "\n" +
-                   "🎯 정확: " + st.acc + "\n" +
-                   "⚡ 반응: " + st.ref + "\n" +
-                   "🧘 침착: " + st.com + "\n" +
-                   "🧠 직관: " + st.int + "\n" +
+                   "🎯 정확도: " + st.acc + "\n" +
+                   "⚡ 반응속도: " + st.ref + "\n" +
+                   "🧘 침착함: " + st.com + "\n" +
+                   "🧠 직관력: " + st.int + "\n" +
                    "✨ 포인트: " + (data.point || 0) + " P";
 
-        // [하단 선택지 분기 수정]
         var body = "";
-        
-        // 1. 일반 유저 프로필 관련
+        // help가 인자로 들어오지 않았을 때를 대비한 기본값 설정
+        var defaultHelp = help || "번호를 선택하세요.";
+
         if (scr === "PROFILE_VIEW") {
             body = "1. 능력치 강화";
-            help = "강화하시려면 1번을 입력하세요.";
+            defaultHelp = "강화하시려면 1번을 입력하세요.";
         } else if (scr === "STAT_UP_MENU") {
             body = " [ 강화 항목 선택 ]\n1. 정확\n2. 반응\n3. 침착\n4. 직관";
-            help = "강화할 번호를 입력하세요.";
+            defaultHelp = "강화할 번호를 입력하세요.";
         } else if (scr === "STAT_UP_INPUT") {
             body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
-            help = "투자할 수치를 입력하세요.";
-        }
-        
-        // 2. [추가] 관리자 유저 상세 조회 관련
-        else if (scr === "ADMIN_USER_DETAIL") {
+            defaultHelp = "투자할 수치를 입력하세요.";
+        } else if (scr === "ADMIN_USER_DETAIL") {
             body = " [ 관리자 작업 ]\n1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
-            help = "수행할 작업 번호를 선택하세요.";
+            defaultHelp = "수행할 작업 번호를 선택하세요.";
         }
 
         var fullContent = head;
         if (body) fullContent += "\n" + div + "\n" + body; 
         if (content) fullContent += "\n" + div + "\n" + content; 
 
-        return this.make(title, fullContent, help, false);
+        return this.make(title, fullContent, defaultHelp, false);
     },
     
     go: function(session, screen, title, content, help) {
