@@ -55,25 +55,23 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
-    // 세션에서 사용하는 세로형 내비게이션 생성
-    getVerticalNav: function() {
-        return "◀️ 이전\n" +
-               "✖️ 취소\n" +
-               "🏠 메뉴";
+    // 공백 에러를 방지하기 위해 특수 기호(|)를 사용한 가로형 내비게이션
+    getHorizontalNav: function() {
+        // 스페이스 연타 대신 명확한 구분자를 사용하여 wrapText 에러를 방지합니다.
+        return "[ ◀이전 | ✖취소 | 🏠메뉴 ]";
     },
 
     make: function(title, content, help, isRoot) {
         var div = Utils.getFixedDivider();
         var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content) + "\n" + div + "\n";
         
-        // 1. 선택지/본문 (이미 content에 포함되어 넘어옴)
-        
-        // 2. 내비게이션 (Root가 아닐 때만 세로형으로 추가)
+        // 내비게이션 (Root가 아닐 때만 가로형으로 한 줄 추가)
         if (!isRoot) {
-            res += this.getVerticalNav() + "\n" + div + "\n";
+            // 세로로 3줄 차지하던 것을 깔끔하게 1줄로 변경
+            res += this.getHorizontalNav() + "\n" + div + "\n";
         }
         
-        // 3. 도움말 (최하단)
+        // 도움말 (최하단)
         if (help) {
             res += "💡 " + Utils.wrapText(help);
         }
@@ -89,7 +87,7 @@ var UI = {
         
         var title = "정보", head = "", body = "";
 
-        // [데이터 바인딩 영역] - 기존과 동일
+        // [데이터 바인딩 영역]
         if (scr.indexOf("PROFILE") !== -1 || scr.indexOf("STAT") !== -1 || scr === "ADMIN_USER_DETAIL") {
             title = (session.targetUser) ? id + " 님" : "프로필";
             var tier = getTierInfo(data.lp);
@@ -143,6 +141,7 @@ var UI = {
         if (body) fullContent += "\n" + div + "\n" + body;
         if (content) fullContent += "\n" + div + "\n" + content;
 
+        // renderCategoryUI에서도 make를 호출하므로 자동으로 가로형 내비가 적용됩니다.
         return this.make(title, fullContent, help, false);
     },
     
