@@ -67,34 +67,20 @@ function getTierInfo(lp) {
 }
 
 
-// ━━━━━━━━ [2. 모듈: UI 엔진 (단계별 정보 제어)] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: UI 엔진 (수정 완료)] ━━━━━━━━
 var UI = {
-    /**
-     * UI 프레임 생성기 (세로형 목록 최적화)
-     */
     make: function(top, body, option, isRoot, help) {
         var div = "━━━━━━━━━━━━━━"; 
         var res = "『 " + top + " 』\n" + div + "\n";
-        
-        // 1. 상단 고정 정보 (Body)
         if (body) res += body + "\n" + div + "\n";
-        
-        // 2. 세로형 선택지 (Option)
         if (option) res += option + "\n" + div + "\n";
-        
-        // 3. 내비게이션 (세로형 배치)
         if (!isRoot) {
             res += "⬅️ 이전\n❌ 취소\n" + div + "\n";
         }
-        
-        // 4. 하단 도움말
         if (help) res += "💡 " + help;
         return res;
     },
 
-    /**
-     * 화면 이동 및 데이터 매칭 로직
-     */
     go: function(session, screen, title, content, help) {
         session.screen = screen;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -107,14 +93,12 @@ var UI = {
 
         if (data && !content) {
             switch (screen) {
-                // [메인 메뉴]
                 case "USER_MAIN":
                     top = "🏠 메인 메뉴";
                     body = "👤 계정: " + session.tempId + "\n🏅 칭호: [" + (data.title || "뉴비") + "]";
                     option = "1. 프로필 조회\n2. 컬렉션\n3. 대전 모드\n4. 상점\n5. 관리자 문의\n6. 로그아웃";
                     break;
 
-                // [프로필 뷰]
                 case "PROFILE_VIEW":
                     top = "👤 내 프로필";
                     body = "👤 계정: " + session.tempId + "\n" +
@@ -134,21 +118,18 @@ var UI = {
                     h = "조회 완료";
                     break;
 
-                // [스탯 강화] - 상단 포인트 정보 고정
                 case "STAT_UP_MENU":
                     top = "⚡ 스탯 강화";
                     body = "✨ 보유 포인트: " + (data.point || 0) + " P\n강화할 능력치를 선택하세요.";
                     option = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
                     break;
 
-                // [상점 메인]
                 case "SHOP_MAIN":
                     top = "💰 상점";
                     body = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G";
                     option = "1. 챔피언 영입 (500G)";
                     break;
 
-                // [챔피언 구매] - 상단 잔액 고정, 리스트 세로 전환
                 case "SHOP_BUY_ACTION":
                     top = "🛒 챔피언 영입";
                     body = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n✨ 영입 비용: 500 G";
@@ -159,7 +140,6 @@ var UI = {
                     h = "영입할 번호 입력";
                     break;
 
-                // [컬렉션 메인]
                 case "COL_MAIN":
                     top = "📦 컬렉션";
                     body = "✨ 현재 장착: [" + (data.title || "뉴비") + "]\n🃏 보유 챔피언: " + (data.collection.champions.length) + "명";
@@ -167,16 +147,10 @@ var UI = {
                     break;
             }
         }
-
-        // 시스템 알림(에러 등) 발생 시
         if (content) body = content;
-
         return this.make(top, body, option, isRoot, h);
-    }
-};
+    },
 
-
-    // 초기 메뉴 렌더링
     renderMenu: function(session) {
         if (session.type === "ADMIN") return this.go(session, "ADMIN_MAIN", "관리자 메뉴", null, "번호 선택");
         if (!session.data) return this.go(session, "GUEST_MAIN", "환영합니다", null, "번호 선택");
@@ -220,7 +194,8 @@ var SessionManager = {
             this.timers[hash] = setTimeout(function() {
                 if (s.screen !== "IDLE") { 
                     self.reset(s, hash); self.save(); 
-                    replier.reply(UI.make("⏰ 세션 종료", "입력 시간이 5분을 초과하여\n데이터 보호를 위해 세션을 종료합니다", true, "다시 시작하려면 '메뉴'를 입력하세요")); 
+                    // [수정] UI.make 파라미터 5개 맞춤
+                    replier.reply(UI.make("⏰ 세션 종료", "입력 시간이 5분을 초과하여\n데이터 보호를 위해 세션을 종료합니다", "", true, "다시 시작하려면 '메뉴' 입력")); 
                 }
             }, Config.TIMEOUT);
         }
