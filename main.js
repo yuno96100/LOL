@@ -394,7 +394,6 @@ var AdminActions = {
         
         var targetId = session.targetUser;
         var userData = Database.data[targetId]; 
-        
         if (!userData) return replier.reply(UI.make("오류", "유저 데이터를 찾을 수 없습니다."));
 
         var typeName = { "gold": "골드", "lp": "LP", "level": "레벨" }[session.editType];
@@ -410,19 +409,22 @@ var AdminActions = {
         
         Database.save();
         
-        // 원본 데이터를 세션에 강제 연결 (실시간 반영)
-        for (var h in SessionManager.sessions) {
-            if (SessionManager.sessions[h].tempId === targetId) {
-                SessionManager.sessions[h].data = userData; 
-                break;
-            }
-        }
-        
+        // 상대방에게 알림 전송
         Api.replyRoom(SessionManager.findUserRoom(targetId), 
             UI.make("운영진 조치", "[" + typeName + "] 수치가 " + val + "(으)로 변경되었습니다.", "프로필을 확인해 주세요.", true));
         
-        replier.reply(UI.make("수정 완료", targetId + " 님의 정보가 원본에 반영되었습니다.", "목록으로 돌아갑니다.", false));
-        return this.showUserList(session, replier);
+        // [수정] 내비게이션 없는 상태 알림 출력
+        replier.reply(UI.make("수정 완료", targetId + " 님의 정보가 수정되었습니다.", "잠시 후 상세 화면으로 이동합니다.", true));
+        
+        // 1.5초 대기 후 해당 유저의 상세 프로필로 이동
+        java.lang.Thread.sleep(1500);
+        return this.showUserDetail(session, replier); 
+    },
+
+    // 유저 상세 페이지 호출 함수 (반복 사용을 위해 분리)
+    showUserDetail: function(session, replier) {
+        var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
+        return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 번호 선택"));
     },
 
     resetConfirm: function(msg, session, replier) {
@@ -431,8 +433,11 @@ var AdminActions = {
             Database.data[session.targetUser] = Database.getInitData(pw); 
             Database.save();
             Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "데이터가 초기화되었습니다", "관리자 조치", true));
-            replier.reply(UI.make("초기화 완료", "성공했습니다", "목록 복귀", false));
-            return this.showUserList(session, replier);
+            
+            // [수정] 상태 알림 문구 및 내비 제거
+            replier.reply(UI.make("초기화 완료", "성공적으로 초기화되었습니다.", "상세 정보로 돌아갑니다.", true));
+            java.lang.Thread.sleep(1500);
+            return this.showUserDetail(session, replier);
         }
     },
 
@@ -442,7 +447,10 @@ var AdminActions = {
             delete Database.data[session.targetUser]; 
             Database.save();
             SessionManager.forceLogout(session.targetUser); 
-            replier.reply(UI.make("삭제 완료", "계정이 파기되었습니다.", "목록 복귀", false));
+
+            // [수정] 삭제는 상세로 갈 수 없으므로 목록으로 이동
+            replier.reply(UI.make("삭제 완료", "계정이 파기되었습니다.", "유저 목록으로 돌아갑니다.", true));
+            java.lang.Thread.sleep(1500);
             return this.showUserList(session, replier);
         }
     }
