@@ -54,6 +54,12 @@ function getTierInfo(lp) {
 }
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
+네, 요청하신 대로 [2. 모듈: UI 엔진] 섹션만 전체 출력해 드립니다.
+
+객체 선언 문법을 명확히 하고, 스탯 세로 배열 레이아웃을 완벽하게 적용한 버전입니다.
+
+JavaScript
+// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
     // 공백 에러를 방지하기 위해 특수 기호(|)를 사용한 가로형 내비게이션
     getHorizontalNav: function() {
@@ -77,54 +83,48 @@ var UI = {
         return res;
     },
 
-    // [수정 포인트] = 대신 : 를 사용하여 객체 속성으로 올바르게 선언
     renderCategoryUI: function(session, help, content) {
         var id = session.targetUser || session.tempId;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
         var div = Utils.getFixedDivider();
         var scr = session.screen;
         
-        var title = (session.targetUser) ? id + " 님" : "프로필";
-        var head = ""; 
-        var body = "";
-
-        // [1. 상단 프로필 정보 고정]
+        var title = (session.targetUser) ? id + " 님" : "내 프로필";
+        
+        // 데이터 파싱
         var tier = getTierInfo(data.lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
         
-        head = "👤 계정: " + id + "\n" +
-               "🏅 칭호: [" + data.title + "]\n" +
-               div + "\n" +
-               "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-               "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-               "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
-               div + "\n" +
-               "🆙 레벨: Lv." + data.level + "\n" +
-               "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
-               div + "\n" +
-               "🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n" +
-               "🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n" +
-               "✨ 포인트: " + (data.point || 0) + " P";
+        // [스탯 세로 배열 적용]
+        var head = "👤 계정: " + id + "\n" +
+                   "🏅 칭호: [" + data.title + "]\n" +
+                   div + "\n" +
+                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                   "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
+                   div + "\n" +
+                   "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                   "✨ 포인트: " + (data.point || 0) + " P\n" +
+                   div + "\n" +
+                   "🎯 정확도: " + st.acc + "\n" +
+                   "⚡ 반응속도: " + st.ref + "\n" +
+                   "🧘 침착함: " + st.com + "\n" +
+                   "🧠 직관력: " + st.int;
 
-        // [2. 화면 상태(scr)에 따라 하단 body만 교체]
+        var body = "";
         if (scr === "PROFILE_VIEW") {
             body = "1. 능력치 강화";
-            help = "강화하시려면 1번을 입력하세요.";
-        } 
-        else if (scr === "STAT_UP_MENU") {
-            body = " [ 강화 항목 선택 ]\n" +
-                   "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
-            help = "강화할 능력치 번호를 입력하세요.";
-        } 
-        else if (scr === "STAT_UP_INPUT") {
-            body = " [ " + (session.selectedStatName || "능력치") + " 강화 ]\n" +
-                   "현재 보유 포인트: " + data.point + "P";
-            help = "투자할 포인트 수치를 입력하세요.";
+            help = help || "강화하시려면 1번을 입력하세요.";
+        } else if (scr === "STAT_UP_MENU") {
+            body = " [ 강화 항목 선택 ]\n1. 정확\n2. 반응\n3. 침착\n4. 직관";
+            help = "강화할 번호를 입력하세요.";
+        } else if (scr === "STAT_UP_INPUT") {
+            body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
+            help = "투자할 수치를 입력하세요.";
         }
 
-        // [3. 최종 조립]
         var fullContent = head;
         if (body) fullContent += "\n" + div + "\n" + body;
         if (content) fullContent += "\n" + div + "\n" + content;
@@ -371,7 +371,7 @@ var AdminActions = {
         var typeName = { "gold": "골드", "lp": "LP", "level": "레벨" }[session.editType];
         Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "[" + typeName + "] 정보가 운영진에 의해 조정되었습니다.", "운영 정책 조치", true));
         
-        SessionManager.reset(session, String(session.hash)); 
+        SessionManager.reset(session, String(imageDB.getProfileHash())); 
         replier.reply(UI.make("수정 완료", session.targetUser + " 님의 " + typeName + "이(가) 반영되었습니다.", "관리 센터 복귀", false));
         return this.showUserList(session, replier);
     },
@@ -463,60 +463,46 @@ var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min
             }
         }
     },
-    handleStatUp: function(msg, session, replier) {
-        var d = session.data;
-        
-        // [1단계: 강화할 항목 선택]
-        if (session.screen === "STAT_UP_MENU") {
-            // 메뉴 진입 시점에 포인트가 없으면 여기서 컷 (현재 코드 유지)
-            if (d.point <= 0) {
-                session.screen = "PROFILE_VIEW"; 
-                return replier.reply(UI.make("강화 불가", "보유하신 포인트가 0P입니다.\n레벨업을 통해 포인트를 획득하세요!", "프로필 복귀", true));
-            }
-
-            var keys = ["acc", "ref", "com", "int"], 
-                names = ["정확", "반응", "침착", "직관"];
-            var idx = parseInt(msg) - 1;
-            
-            if (keys[idx]) {
-                session.selectedStat = keys[idx]; 
-                session.selectedStatName = names[idx];
-                return replier.reply(UI.go(session, "STAT_UP_INPUT", "", "", "강화 수치 입력"));
-            }
-            return replier.reply(UI.make("번호 오류", "1~4 사이의 번호를 입력하세요.", "항목 선택"));
+    handleStatUp : function(msg, session, replier) {
+    var d = session.data;
+    
+    if (session.screen === "STAT_UP_MENU") {
+        // 포인트 없을 때 처리
+        if (d.point <= 0) {
+            replier.reply(UI.make("강화 불가", "보유 포인트가 부족합니다 (0P).", "잠시 후 프로필로 돌아갑니다.", true));
+            java.lang.Thread.sleep(2000); // 2초 지연
+            session.screen = "PROFILE_VIEW";
+            return replier.reply(UI.renderCategoryUI(session));
         }
 
-        // [2단계: 강화 수치 입력 및 결과 처리]
-        if (session.screen === "STAT_UP_INPUT") {
-            var amt = parseInt(msg);
-            
-            if (isNaN(amt) || amt <= 0) {
-                return replier.reply(UI.make("입력 오류", "1 이상의 숫자만 입력 가능합니다.", "수치 다시 입력"));
-            }
-
-            // 포인트 부족 알림 (알림창 형식)
-            if (amt > d.point) {
-                return replier.reply(UI.make("포인트 부족", 
-                    "입력하신 포인트가 보유량을 초과했습니다.\n\n" +
-                    "▶ 현재 보유: " + d.point + "P\n" +
-                    "▶ 입력 수치: " + amt + "P", 
-                    "현재 보유량 이내로 입력해주세요."));
-            }
-
-            // 데이터 반영
-            d.stats[session.selectedStat] += amt;
-            d.point -= amt;
-            Database.save();
-
-            // 결과 알림창 출력
-            replier.reply(UI.make("강화 성공 ✨", 
-                "[" + session.selectedStatName + "] 능력치가 " + amt + "만큼 상승했습니다!", 
-                "성공적으로 반영되었습니다.", true));
-
-            // [변경 추천] 화면만 바꾸고 renderCategoryUI를 직접 호출해서 프로필을 다시 뿌려줍니다.
-            session.screen = "PROFILE_VIEW"; 
-            return replier.reply(UI.renderCategoryUI(session, "강화가 완료되었습니다. 추가 강화를 원하시면 1번을 입력하세요."));
+        var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
+        var idx = parseInt(msg) - 1;
+        if (keys[idx]) {
+            session.selectedStat = keys[idx]; 
+            session.selectedStatName = names[idx];
+            return replier.reply(UI.go(session, "STAT_UP_INPUT", "", "", "강화 수치 입력"));
         }
+        return replier.reply(UI.make("번호 오류", "1~4 사이를 입력해주세요.", "항목 선택"));
+    }
+
+    if (session.screen === "STAT_UP_INPUT") {
+        var amt = parseInt(msg);
+        if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "숫자만 입력 가능합니다.", "수치 입력"));
+
+        if (amt > d.point) {
+            replier.reply(UI.make("포인트 부족", "보유량보다 많이 입력했습니다.\n현재: " + d.point + "P", "잠시 후 다시 시도하세요."));
+            java.lang.Thread.sleep(2000); // 2초 지연
+            return replier.reply(UI.renderCategoryUI(session));
+        }
+
+        d.stats[session.selectedStat] += amt;
+        d.point -= amt;
+        Database.save();
+
+        replier.reply(UI.make("강화 성공 ✨", session.selectedStatName + " +" + amt, "성공적으로 반영되었습니다.", true));
+        java.lang.Thread.sleep(2000); // 2초 지연
+        session.screen = "PROFILE_VIEW"; 
+        return replier.reply(UI.renderCategoryUI(session));
     }
 };
         
