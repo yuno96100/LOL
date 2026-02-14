@@ -604,9 +604,15 @@ var AdminManager = {
 
         switch(screen) {
             case "ADMIN_USER_DETAIL":
+                // 기존 ""로 비어있던 content 부분을 메뉴 텍스트로 채웁니다.
+                var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
+                
                 if (msg === "1") return replier.reply(UI.go(session, "ADMIN_EDIT_MENU", "정보 수정", "1. 골드 수정\n2. LP 수정\n3. 레벨 수정", "항목 선택"));
                 if (msg === "2") return replier.reply(UI.go(session, "ADMIN_RESET_CONFIRM", "초기화", "계정을 초기화하시겠습니까?", "'확인' 입력"));
                 if (msg === "3") return replier.reply(UI.go(session, "ADMIN_DELETE_CONFIRM", "계정 삭제", "계정을 삭제하시겠습니까?", "'삭제확인' 입력"));
+                
+                // 아무 번호도 입력하지 않았을 때 기본 화면 출력
+                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 번호 선택"));
                 break;
             case "ADMIN_EDIT_MENU":
                 if (msg === "1") { session.editType = "gold"; return replier.reply(UI.go(session, "ADMIN_EDIT_INPUT", "골드 수정", "설정할 골드 값을 입력하세요.", "숫자 입력")); }
