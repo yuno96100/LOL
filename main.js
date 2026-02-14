@@ -352,11 +352,27 @@ var AdminActions = {
     editUserData: function(msg, session, replier) {
         var val = parseInt(msg);
         if (isNaN(val)) return replier.reply(UI.make("입력 오류", "숫자만 입력해 주십시오", "다시 입력"));
-        Database.data[session.targetUser][session.editType] = val; 
+        
+        var targetData = Database.data[session.targetUser];
+        
+        // 레벨 수정 시 로직 추가
+        if (session.editType === "level") {
+            if (val > MAX_LEVEL) val = MAX_LEVEL; // 최대 레벨 제한
+            if (val < 1) val = 1;
+            targetData.level = val;
+            // 레벨에 따른 포인트 재설정 (예: 레벨당 5포인트)
+            targetData.point = (val - 1) * 5; 
+        } else {
+            targetData[session.editType] = val; 
+        }
+        
         Database.save();
-        Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "[" + (session.editType === "gold" ? "골드" : "LP") + "] 정보가 조정되었습니다", "운영 정책 조치", true));
+        
+        var typeName = { "gold": "골드", "lp": "LP", "level": "레벨" }[session.editType];
+        Api.replyRoom(SessionManager.findUserRoom(session.targetUser), UI.make("알림", "[" + typeName + "] 정보가 운영진에 의해 조정되었습니다.", "운영 정책 조치", true));
+        
         SessionManager.reset(session, String(session.hash)); 
-        replier.reply(UI.make("수정 완료", "유저 정보가 반영되었습니다.", "관리 센터 복귀", false));
+        replier.reply(UI.make("수정 완료", session.targetUser + " 님의 " + typeName + "이(가) 반영되었습니다.", "관리 센터 복귀", false));
         return this.showUserList(session, replier);
     },
 
