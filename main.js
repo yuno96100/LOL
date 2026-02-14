@@ -96,18 +96,20 @@ var UI = {
             var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
             
             head = "👤 계정: " + id + "\n" +
-                   "🏅 칭호: [" + data.title + "]\n" +
-                   div + "\n" +
-                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                   "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
-                   div + "\n" +
-                   "🆙 레벨: Lv." + data.level + "\n" +
-                   "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                   div + "\n" +
-                   "🎯정확:" + st.acc + " | ⚡반응:" + st.ref + "\n" +
-                   "🧘침착:" + st.com + " | 🧠직관:" + st.int + "\n" +
-                   "✨포인트: " + (data.point || 0) + " P";
+       "🏅 칭호: [" + data.title + "]\n" +
+       div + "\n" +
+       "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+       "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+       "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
+       div + "\n" +
+       "🆙 레벨: Lv." + data.level + "\n" +
+       "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
+       div + "\n" +
+       "🎯 정확: " + st.acc + "\n" +  // 세로형으로 변경
+       "⚡ 반응: " + st.ref + "\n" +  // 세로형으로 변경
+       "🧘 침착: " + st.com + "\n" +  // 세로형으로 변경
+       "🧠 직관: " + st.int + "\n" +  // 세로형으로 변경
+       "✨ 포인트: " + (data.point || 0) + " P";
             
             if (scr === "PROFILE_VIEW") body = "1. 능력치 강화";
             else if (scr === "STAT_UP_MENU") body = "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
