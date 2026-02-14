@@ -448,51 +448,60 @@ var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min
         }
     },
     handleStatUp: function(msg, session, replier) {
-    var d = session.data;
-    
-    // [1단계: 강화할 항목 선택]
-    if (session.screen === "STAT_UP_MENU") {
-        var keys = ["acc", "ref", "com", "int"], 
-            names = ["정확", "반응", "침착", "직관"];
-        var idx = parseInt(msg) - 1;
+        var d = session.data;
         
-        if (keys[idx]) {
-            session.selectedStat = keys[idx]; 
-            session.selectedStatName = names[idx];
-            // 포인트 입력 화면으로 이동
-            return replier.reply(UI.go(session, "STAT_UP_INPUT", "", "", "강화 수치 입력"));
+        // [1단계: 강화할 항목 선택]
+        if (session.screen === "STAT_UP_MENU") {
+            // 메뉴 진입 시점에 포인트가 없으면 여기서 컷 (현재 코드 유지)
+            if (d.point <= 0) {
+                session.screen = "PROFILE_VIEW"; 
+                return replier.reply(UI.make("강화 불가", "보유하신 포인트가 0P입니다.\n레벨업을 통해 포인트를 획득하세요!", "프로필 복귀", true));
+            }
+
+            var keys = ["acc", "ref", "com", "int"], 
+                names = ["정확", "반응", "침착", "직관"];
+            var idx = parseInt(msg) - 1;
+            
+            if (keys[idx]) {
+                session.selectedStat = keys[idx]; 
+                session.selectedStatName = names[idx];
+                return replier.reply(UI.go(session, "STAT_UP_INPUT", "", "", "강화 수치 입력"));
+            }
+            return replier.reply(UI.make("번호 오류", "1~4 사이의 번호를 입력하세요.", "항목 선택"));
         }
-        return replier.reply(UI.make("번호 오류", "1~4 사이의 번호를 입력하세요.", "항목 선택"));
+
+        // [2단계: 강화 수치 입력 및 결과 처리]
+        if (session.screen === "STAT_UP_INPUT") {
+            var amt = parseInt(msg);
+            
+            if (isNaN(amt) || amt <= 0) {
+                return replier.reply(UI.make("입력 오류", "1 이상의 숫자만 입력 가능합니다.", "수치 다시 입력"));
+            }
+
+            // 포인트 부족 알림 (알림창 형식)
+            if (amt > d.point) {
+                return replier.reply(UI.make("포인트 부족", 
+                    "입력하신 포인트가 보유량을 초과했습니다.\n\n" +
+                    "▶ 현재 보유: " + d.point + "P\n" +
+                    "▶ 입력 수치: " + amt + "P", 
+                    "현재 보유량 이내로 입력해주세요."));
+            }
+
+            // 데이터 반영
+            d.stats[session.selectedStat] += amt;
+            d.point -= amt;
+            Database.save();
+
+            // 결과 알림창 출력
+            replier.reply(UI.make("강화 성공 ✨", 
+                "[" + session.selectedStatName + "] 능력치가 " + amt + "만큼 상승했습니다!", 
+                "성공적으로 반영되었습니다.", true));
+
+            // [변경 추천] 화면만 바꾸고 renderCategoryUI를 직접 호출해서 프로필을 다시 뿌려줍니다.
+            session.screen = "PROFILE_VIEW"; 
+            return replier.reply(UI.renderCategoryUI(session, "강화가 완료되었습니다. 추가 강화를 원하시면 1번을 입력하세요."));
+        }
     }
-
-    // [2단계: 강화 수치 입력 및 결과 처리]
-    if (session.screen === "STAT_UP_INPUT") {
-        var amt = parseInt(msg);
-        
-        // 유효성 검사
-        if (isNaN(amt) || amt <= 0) {
-            return replier.reply(UI.make("입력 오류", "1 이상의 숫자만 입력 가능합니다.", "수치 다시 입력"));
-        }
-        if (amt > d.point) {
-            return replier.reply(UI.make("실패", "보유 포인트가 부족합니다.", "현재: " + d.point + "P"));
-        }
-
-        // [데이터 반영]
-        d.stats[session.selectedStat] += amt;
-        d.point -= amt;
-        Database.save(); // 변경사항 즉시 저장
-
-        // [결과 출력 방식 변경]
-        // 1. 강화 성공 알림 전송 (상단에 강조)
-        replier.reply(UI.make("강화 성공 ✨", 
-            "[" + session.selectedStatName + "] 능력치가 " + amt + "만큼 상승했습니다!", 
-            "성공적으로 반영되었습니다.", true));
-
-        // 2. 즉시 프로필 화면으로 세션 변경 및 갱신된 정보 출력
-        session.screen = "PROFILE_VIEW"; 
-        return replier.reply(UI.renderCategoryUI(session, "추가 강화를 원하시면 1번을 입력하세요.", ""));
-    }
-}
 
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
