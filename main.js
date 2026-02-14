@@ -54,49 +54,29 @@ function getTierInfo(lp) {
 }
 
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
-
 var UI = {
-
     // 공백 에러를 방지하기 위해 특수 기호(|)를 사용한 가로형 내비게이션
-
     getHorizontalNav: function() {
-
+        // 스페이스 연타 대신 명확한 구분자를 사용하여 wrapText 에러를 방지합니다.
         return "[ ◀이전 | ✖취소 | 🏠메뉴 ]";
-
     },
 
-
-
     make: function(title, content, help, isRoot) {
-
         var div = Utils.getFixedDivider();
-
         var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content) + "\n" + div + "\n";
-
         
-
         // 내비게이션 (Root가 아닐 때만 가로형으로 한 줄 추가)
-
         if (!isRoot) {
-
+            // 세로로 3줄 차지하던 것을 깔끔하게 1줄로 변경
             res += this.getHorizontalNav() + "\n" + div + "\n";
-
         }
-
         
-
         // 도움말 (최하단)
-
         if (help) {
-
             res += "💡 " + Utils.wrapText(help);
-
         }
-
         
-
         return res;
-
     },
 
 
