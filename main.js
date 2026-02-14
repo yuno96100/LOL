@@ -53,9 +53,9 @@ function getTierInfo(lp) {
     return { name: "아이언", icon: "⚫" };
 }
 
+
 // ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
 var UI = {
-    // 공백 에러를 방지하기 위해 특수 기호(|)를 사용한 가로형 내비게이션
     getHorizontalNav: function() {
         return "[ ◀이전 | ✖취소 | 🏠메뉴 ]";
     },
@@ -75,7 +75,6 @@ var UI = {
         return res;
     },
 
-    // [수정 완료] 요청하신 순서: 레벨 -> 경험치 / 스탯들 -> 포인트
     renderCategoryUI: function(session, help, content) {
         var id = session.targetUser || session.tempId;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -89,6 +88,7 @@ var UI = {
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
         
+        // [1. 상단 정보]
         var head = "👤 계정: " + id + "\n" +
                    "🏅 칭호: [" + data.title + "]\n" +
                    div + "\n" +
@@ -105,10 +105,11 @@ var UI = {
                    "🧠 직관력: " + st.int + "\n" +
                    "✨ 포인트: " + (data.point || 0) + " P";
 
+        // [2. 하단 선택지(body) 설정]
         var body = "";
         if (scr === "PROFILE_VIEW") {
             body = "1. 능력치 강화";
-            help = help || "강화하시려면 1번을 입력하세요.";
+            help = "강화하시려면 1번을 입력하세요.";
         } else if (scr === "STAT_UP_MENU") {
             body = " [ 강화 항목 선택 ]\n1. 정확\n2. 반응\n3. 침착\n4. 직관";
             help = "강화할 번호를 입력하세요.";
@@ -117,9 +118,10 @@ var UI = {
             help = "투자할 수치를 입력하세요.";
         }
 
+        // [3. 최종 조립] - body가 누락되지 않도록 순서 조정
         var fullContent = head;
-        if (body) fullContent += "\n" + div + "\n" + body;
-        if (content) fullContent += "\n" + div + "\n" + content;
+        if (body) fullContent += "\n" + div + "\n" + body; 
+        if (content) fullContent += "\n" + div + "\n" + content; // 추가 내용이 있다면 더함
 
         return this.make(title, fullContent, help, false);
     }, 
@@ -128,6 +130,7 @@ var UI = {
         session.screen = screen;
         var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_DETAIL"]; 
         for (var i=0; i<fixedScreens.length; i++) {
+            // 특정 화면들은 renderCategoryUI가 레이아웃을 전담함
             if (screen.indexOf(fixedScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
         }
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "SUCCESS_IDLE"].indexOf(screen) !== -1);
