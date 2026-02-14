@@ -461,7 +461,6 @@ deleteConfirm: function(msg, session, replier) {
     }
     
     return replier.reply(UI.make("입력 확인", "진행하시려면 '삭제확인'을,\n취소하시려면 '아니오'를 입력하세요.", "", true));
-}
     }
 };
 
