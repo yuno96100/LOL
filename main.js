@@ -594,13 +594,15 @@ var AdminManager = {
         }
 
         if (screen === "ADMIN_USER_LIST") {
-            var idx = parseInt(msg) - 1;
-            if (session.userListCache && session.userListCache[idx]) {
-                session.targetUser = session.userListCache[idx];
-                return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", "", "작업 선택"));
-            }
-            return;
-        }
+    var idx = parseInt(msg) - 1;
+    if (session.userListCache && session.userListCache[idx]) {
+        session.targetUser = session.userListCache[idx];
+        // 아래 내용("" 대신 menuText 삽입)을 수정합니다.
+        var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
+        return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 선택"));
+    }
+    return;
+}
 
         switch(screen) {
             case "ADMIN_USER_DETAIL":
