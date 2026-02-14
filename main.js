@@ -96,12 +96,15 @@ var LayoutManager = {
                    "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
                    "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
                    "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
-                   div + "\n" +
                    "🆙 레벨: Lv." + data.level + "\n" +
                    "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
                    div + "\n" +
-                   "🎯 정확도: " + st.acc + " | ⚡ 반응: " + st.ref + "\n" +
-                   "🧘 침착함: " + st.com + " | 🧠 직관: " + st.int + "\n" +
+                   " [ 상세 능력치 ]\n" +
+                   "🎯 정확: " + st.acc + "\n" +
+                   "⚡ 반응: " + st.ref + "\n" +
+                   "🧘 침착: " + st.com + "\n" +
+                   "🧠 직관: " + st.int + "\n" +
+                   div + "\n" +
                    "✨ 포인트: " + (data.point || 0) + " P";
 
         var body = "";
