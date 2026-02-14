@@ -103,39 +103,35 @@ var UI = {
 
     // [수정 포인트] = 대신 : 를 사용하여 객체 속성으로 올바르게 선언
 
-    renderCategoryUI: function(session, help, content) {
+    UI.renderCategoryUI = function(session, help, content) {
 
-        var id = session.targetUser || session.tempId;
+    var id = session.targetUser || session.tempId;
 
-        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
+    var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
 
-        var div = Utils.getFixedDivider();
+    var div = Utils.getFixedDivider();
 
-        var scr = session.screen;
+    var scr = session.screen;
 
-        
+    
 
-        var title = (session.targetUser) ? id + " 님" : "프로필";
+    var title = (session.targetUser) ? id + " 님" : "내 프로필";
 
-        var head = ""; 
+    
 
-        var body = "";
+    // [스탯 세로 배열 및 레이아웃 수정]
 
+    var tier = getTierInfo(data.lp);
 
+    var win = data.win || 0, lose = data.lose || 0, total = win + lose;
 
-        // [1. 상단 프로필 정보 고정]
+    var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
 
-        var tier = getTierInfo(data.lp);
+    var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
 
-        var win = data.win || 0, lose = data.lose || 0, total = win + lose;
+    
 
-        var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-
-        var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
-
-        
-
-        head = "👤 계정: " + id + "\n" +
+    var head = "👤 계정: " + id + "\n" +
 
                "🏅 칭호: [" + data.title + "]\n" +
 
@@ -149,65 +145,57 @@ var UI = {
 
                div + "\n" +
 
-               "🆙 레벨: Lv." + data.level + "\n" +
+               "🆙 레벨: Lv." + data.level + " (" + data.exp + "/" + (data.level * 100) + ")\n" +
 
-               "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
+               "✨ 포인트: " + (data.point || 0) + " P\n" +
 
                div + "\n" +
 
-               "🎯 정확: " + st.acc + " | ⚡ 반응: " + st.ref + "\n" +
+               "🎯 정확도: " + st.acc + "\n" +
 
-               "🧘 침착: " + st.com + " | 🧠 직관: " + st.int + "\n" +
+               "⚡ 반응속도: " + st.ref + "\n" +
 
-               "✨ 포인트: " + (data.point || 0) + " P";
+               "🧘 침착함: " + st.com + "\n" +
 
-
-
-        // [2. 화면 상태(scr)에 따라 하단 body만 교체]
-
-        if (scr === "PROFILE_VIEW") {
-
-            body = "1. 능력치 강화";
-
-            help = "강화하시려면 1번을 입력하세요.";
-
-        } 
-
-        else if (scr === "STAT_UP_MENU") {
-
-            body = " [ 강화 항목 선택 ]\n" +
-
-                   "1. 정확 강화\n2. 반응 강화\n3. 침착 강화\n4. 직관 강화";
-
-            help = "강화할 능력치 번호를 입력하세요.";
-
-        } 
-
-        else if (scr === "STAT_UP_INPUT") {
-
-            body = " [ " + (session.selectedStatName || "능력치") + " 강화 ]\n" +
-
-                   "현재 보유 포인트: " + data.point + "P";
-
-            help = "투자할 포인트 수치를 입력하세요.";
-
-        }
+               "🧠 직관력: " + st.int;
 
 
 
-        // [3. 최종 조립]
+    var body = "";
 
-        var fullContent = head;
+    if (scr === "PROFILE_VIEW") {
 
-        if (body) fullContent += "\n" + div + "\n" + body;
+        body = "1. 능력치 강화";
 
-        if (content) fullContent += "\n" + div + "\n" + content;
+        help = help || "강화하시려면 1번을 입력하세요.";
+
+    } else if (scr === "STAT_UP_MENU") {
+
+        body = " [ 강화 항목 선택 ]\n1. 정확\n2. 반응\n3. 침착\n4. 직관";
+
+        help = "강화할 번호를 입력하세요.";
+
+    } else if (scr === "STAT_UP_INPUT") {
+
+        body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
+
+        help = "투자할 수치를 입력하세요.";
+
+    }
 
 
 
-        return this.make(title, fullContent, help, false);
+    var fullContent = head;
 
-    },
+    if (body) fullContent += "\n" + div + "\n" + body;
+
+    if (content) fullContent += "\n" + div + "\n" + content;
+
+
+
+    return this.make(title, fullContent, help, false);
+
+};
 
     
 
