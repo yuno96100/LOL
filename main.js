@@ -518,7 +518,8 @@ var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min
             return replier.reply(UI.renderCategoryUI(session, "강화가 완료되었습니다. 추가 강화를 원하시면 1번을 입력하세요."));
         }
     }
-
+};
+        
 // ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
