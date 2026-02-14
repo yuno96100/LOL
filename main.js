@@ -75,7 +75,60 @@ function getTierInfo(lp) {
 }
 
 
-// ━━━━━━━━ [2. 모듈: UI 엔진] ━━━━━━━━
+// ━━━━━━━━ [2. 모듈: 레이아웃 매니저] ━━━━━━━━
+var LayoutManager = {
+    /**
+     * 유저 프로필 및 통계 화면 레이아웃
+     */
+    renderProfile: function(session) {
+        var id = session.targetUser || session.tempId;
+        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
+        var div = Utils.getFixedDivider();
+        
+        var tier = getTierInfo(data.lp);
+        var win = data.win || 0, lose = data.lose || 0, total = win + lose;
+        var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
+        var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
+        
+        var head = "👤 계정: " + id + "\n" +
+                   "🏅 칭호: [" + data.title + "]\n" +
+                   div + "\n" +
+                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
+                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
+                   "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
+                   div + "\n" +
+                   "🆙 레벨: Lv." + data.level + "\n" +
+                   "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                   div + "\n" +
+                   "🎯 정확도: " + st.acc + " | ⚡ 반응: " + st.ref + "\n" +
+                   "🧘 침착함: " + st.com + " | 🧠 직관: " + st.int + "\n" +
+                   "✨ 포인트: " + (data.point || 0) + " P";
+
+        var body = "";
+        var scr = session.screen;
+
+        if (scr === "PROFILE_VIEW") {
+            body = "1. 능력치 강화";
+        } else if (scr === "STAT_UP_MENU") {
+            body = " [ 강화 항목 선택 ]\n1. 정확 | 2. 반응 | 3. 침착 | 4. 직관";
+        } else if (scr === "STAT_UP_INPUT") {
+            body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
+        } else if (scr === "ADMIN_USER_DETAIL") {
+            body = " [ 관리자 작업 ]\n1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
+        }
+
+        return body ? head + "\n" + div + "\n" + body : head;
+    },
+
+    /**
+     * 상점, 컬렉션 등 기타 리스트형 레이아웃 (필요 시 확장)
+     */
+    renderList: function(title, listStr) {
+        return " [ " + title + " ]\n" + listStr;
+    }
+};
+
+// ━━━━━━━━ [3. 모듈: UI 엔진 (공통 프레임)] ━━━━━━━━
 var UI = {
     getHorizontalNav: function() {
         return "[ ◀이전 | ✖취소 | 🏠메뉴 ]";
@@ -95,68 +148,23 @@ var UI = {
         
         return res;
     },
-
-    renderCategoryUI: function(session, help, content) {
-        var id = session.targetUser || session.tempId;
-        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-        var div = Utils.getFixedDivider();
-        var scr = session.screen;
-        
-        var title = (session.targetUser) ? id + " 님" : "내 프로필";
-        
-        var tier = getTierInfo(data.lp);
-        var win = data.win || 0, lose = data.lose || 0, total = win + lose;
-        var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-        var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
-        
-        var head = "👤 계정: " + id + "\n" +
-                   "🏅 칭호: [" + data.title + "]\n" +
-                   div + "\n" +
-                   "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-                   "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-                   "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
-                   div + "\n" +
-                   "🆙 레벨: Lv." + data.level + "\n" +
-                   "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
-                   div + "\n" +
-                   "🎯 정확도: " + st.acc + "\n" +
-                   "⚡ 반응속도: " + st.ref + "\n" +
-                   "🧘 침착함: " + st.com + "\n" +
-                   "🧠 직관력: " + st.int + "\n" +
-                   "✨ 포인트: " + (data.point || 0) + " P";
-
-        var body = "";
-        // help가 인자로 들어오지 않았을 때를 대비한 기본값 설정
-        var defaultHelp = help || "번호를 선택하세요.";
-
-        if (scr === "PROFILE_VIEW") {
-            body = "1. 능력치 강화";
-            defaultHelp = "강화하시려면 1번을 입력하세요.";
-        } else if (scr === "STAT_UP_MENU") {
-            body = " [ 강화 항목 선택 ]\n1. 정확\n2. 반응\n3. 침착\n4. 직관";
-            defaultHelp = "강화할 번호를 입력하세요.";
-        } else if (scr === "STAT_UP_INPUT") {
-            body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
-            defaultHelp = "투자할 수치를 입력하세요.";
-        } else if (scr === "ADMIN_USER_DETAIL") {
-            body = " [ 관리자 작업 ]\n1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
-            defaultHelp = "수행할 작업 번호를 선택하세요.";
-        }
-
-        var fullContent = head;
-        if (body) fullContent += "\n" + div + "\n" + body; 
-        if (content) fullContent += "\n" + div + "\n" + content; 
-
-        return this.make(title, fullContent, defaultHelp, false);
-    },
     
     go: function(session, screen, title, content, help) {
         session.screen = screen;
-        var fixedScreens = ["PROFILE", "STAT", "DETAIL", "SHOP", "COL", "INQUIRY_DETAIL"]; 
+        
+        // 특정 화면들은 LayoutManager가 알맹이(content)를 생성함
+        var fixedScreens = ["PROFILE", "STAT", "DETAIL"]; 
         for (var i=0; i<fixedScreens.length; i++) {
-            // 특정 화면들은 renderCategoryUI가 레이아웃을 전담함
-            if (screen.indexOf(fixedScreens[i]) !== -1) return this.renderCategoryUI(session, help, content);
+            if (screen.indexOf(fixedScreens[i]) !== -1) {
+                var layoutContent = LayoutManager.renderProfile(session);
+                // 인자로 받은 content가 있다면 레이아웃 아래에 추가
+                if (content) layoutContent += "\n" + Utils.getFixedDivider() + "\n" + content;
+                
+                var displayTitle = (session.targetUser) ? session.targetUser + " 님" : "내 프로필";
+                return this.make(displayTitle, layoutContent, help, false);
+            }
         }
+
         var isRoot = (["USER_MAIN", "ADMIN_MAIN", "GUEST_MAIN", "SUCCESS_IDLE"].indexOf(screen) !== -1);
         return this.make(title, content, help, isRoot);
     },
@@ -171,7 +179,7 @@ var UI = {
     }
 };
 
-// ━━━━━━━━ [3. DB 및 세션 매니저] ━━━━━━━━
+// ━━━━━━━━ [4. DB 및 세션 매니저] ━━━━━━━━
 var Database = {
     data: {},
     inquiries: [],
@@ -217,7 +225,6 @@ var SessionManager = {
         FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions));
     },
 
-    // [3. DB 및 세션 매니저] 내 수정
 get: function(room, hash, replier) {
     if (!this.sessions[hash]) { 
         this.sessions[hash] = { 
@@ -291,7 +298,7 @@ get: function(room, hash, replier) {
     }
 };
 
-// ━━━━━━━━ [4. 관리자 액션 모듈] ━━━━━━━━
+// ━━━━━━━━ [5. 관리자 액션 모듈] ━━━━━━━━
 var AdminActions = {
     showSysInfo: function(session, replier) {
         var rt = java.lang.Runtime.getRuntime();
@@ -418,7 +425,7 @@ var AdminActions = {
     }
 };
 
-// ━━━━━━━━ [5. 유저 액션 모듈] ━━━━━━━━
+// ━━━━━━━━ [6. 유저 액션 모듈] ━━━━━━━━
 var UserActions = {
     handleInquiry: function(msg, session, replier) {
         var now = new Date();
@@ -526,7 +533,7 @@ var timeStr = (now.getMonth()+1) + "/" + now.getDate() + " " + hours + ":" + min
     }     
 };
         
-// ━━━━━━━━ [6. 매니저: 관리자 핸들러] ━━━━━━━━
+// ━━━━━━━━ [7. 매니저: 관리자 핸들러] ━━━━━━━━
 var AdminManager = {
     handle: function(msg, session, replier) {
         var screen = session.screen;
@@ -582,7 +589,7 @@ var AdminManager = {
     }
 };
 
-// ━━━━━━━━ [7. 매니저: 로그인 핸들러] ━━━━━━━━
+// ━━━━━━━━ [8. 매니저: 로그인 핸들러] ━━━━━━━━
 var LoginManager = {
     handle: function(msg, session, replier) {
         switch(session.screen) {
@@ -611,7 +618,7 @@ var LoginManager = {
     }
 };
 
-// ━━━━━━━━ [8. 매니저: 유저 핸들러] ━━━━━━━━
+// ━━━━━━━━ [9. 매니저: 유저 핸들러] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
         switch(session.screen) {
@@ -634,7 +641,7 @@ var UserManager = {
 };
 
 
-// ━━━━━━━━ [9. 메인 응답 핸들러] ━━━━━━━━
+// ━━━━━━━━ [10. 메인 응답 핸들러] ━━━━━━━━
 Database.load(); 
 SessionManager.load();
 
