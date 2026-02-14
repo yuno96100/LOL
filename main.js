@@ -88,7 +88,6 @@ var UI = {
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
         
-        // [1. 상단 정보]
         var head = "👤 계정: " + id + "\n" +
                    "🏅 칭호: [" + data.title + "]\n" +
                    div + "\n" +
@@ -105,8 +104,10 @@ var UI = {
                    "🧠 직관력: " + st.int + "\n" +
                    "✨ 포인트: " + (data.point || 0) + " P";
 
-        // [2. 하단 선택지(body) 설정]
+        // [하단 선택지 분기 수정]
         var body = "";
+        
+        // 1. 일반 유저 프로필 관련
         if (scr === "PROFILE_VIEW") {
             body = "1. 능력치 강화";
             help = "강화하시려면 1번을 입력하세요.";
@@ -117,14 +118,19 @@ var UI = {
             body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
             help = "투자할 수치를 입력하세요.";
         }
+        
+        // 2. [추가] 관리자 유저 상세 조회 관련
+        else if (scr === "ADMIN_USER_DETAIL") {
+            body = " [ 관리자 작업 ]\n1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
+            help = "수행할 작업 번호를 선택하세요.";
+        }
 
-        // [3. 최종 조립] - body가 누락되지 않도록 순서 조정
         var fullContent = head;
         if (body) fullContent += "\n" + div + "\n" + body; 
-        if (content) fullContent += "\n" + div + "\n" + content; // 추가 내용이 있다면 더함
+        if (content) fullContent += "\n" + div + "\n" + content; 
 
         return this.make(title, fullContent, help, false);
-    }, 
+    },
     
     go: function(session, screen, title, content, help) {
         session.screen = screen;
