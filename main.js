@@ -77,9 +77,6 @@ function getTierInfo(lp) {
 
 // ━━━━━━━━ [2. 모듈: 레이아웃 매니저] ━━━━━━━━
 var LayoutManager = {
-    /**
-     * 유저 프로필 및 통계 화면 레이아웃
-     */
     renderProfile: function(session) {
         var id = session.targetUser || session.tempId;
         var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
@@ -90,6 +87,9 @@ var LayoutManager = {
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var st = data.stats || { acc: 50, ref: 50, com: 50, int: 50 };
         
+        // 만렙 경험치 처리
+        var expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
+        
         var head = "👤 계정: " + id + "\n" +
                    "🏅 칭호: [" + data.title + "]\n" +
                    div + "\n" +
@@ -97,7 +97,7 @@ var LayoutManager = {
                    "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
                    "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
                    "🆙 레벨: Lv." + data.level + "\n" +
-                   "🔷 경험: (" + data.exp + "/" + (data.level * 100) + ")\n" +
+                   "🔷 경험: (" + expDisplay + ")\n" +
                    div + "\n" +
                    " [ 상세 능력치 ]\n" +
                    "🎯 정확: " + st.acc + "\n" +
@@ -113,15 +113,15 @@ var LayoutManager = {
         if (scr === "PROFILE_VIEW") {
             body = "1. 능력치 강화";
         } else if (scr === "STAT_UP_MENU") {
-            body = " [ 강화 항목 선택 ]\n1. 정확 | 2. 반응 | 3. 침착 | 4. 직관";
+            // [변경] 능력치 강화 선택지도 세로형으로 변경
+            body = " [ 강화 항목 선택 ]\n1. 🎯 정확 강화\n2. ⚡ 반응 강화\n3. 🧘 침착 강화\n4. 🧠 직관 강화";
         } else if (scr === "STAT_UP_INPUT") {
             body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
-        } else if (scr === "ADMIN_USER_DETAIL") {
-            body = " [ 관리자 작업 ]\n1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
         }
 
         return body ? head + "\n" + div + "\n" + body : head;
-    },
+    }
+},
 
     /**
      * 상점, 컬렉션 등 기타 리스트형 레이아웃 (필요 시 확장)
@@ -207,10 +207,26 @@ var Database = {
     getInitData: function(pw) { 
         return { pw: pw, gold: 1000, level: 1, exp: 0, lp: 0, win: 0, lose: 0, title: "뉴비", point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, collection: { titles: ["뉴비"], champions: [] } }; 
     },
+    // [수정] 함수 정의 문법 교정
     addExp: function(userId, amount) {
-        var d = this.data[userId]; if (!d || d.level >= MAX_LEVEL) return;
+        var d = this.data[userId]; 
+        if (!d) return;
+        
+        if (d.level >= MAX_LEVEL) {
+            d.exp = 0;
+            return;
+        }
+
         d.exp += amount;
-        while (d.exp >= d.level * 100 && d.level < MAX_LEVEL) { d.exp -= (d.level * 100); d.level++; d.point += 5; }
+        while (d.exp >= d.level * 100 && d.level < MAX_LEVEL) { 
+            d.exp -= (d.level * 100); 
+            d.level++; 
+            d.point += 5; 
+            if (d.level === MAX_LEVEL) {
+                d.exp = 0;
+                break;
+            }
+        }
         this.save();
     }
 };
@@ -380,30 +396,41 @@ var AdminActions = {
     },
 
     editUserData: function(msg, session, replier) {
-    var val = parseInt(msg);
-    if (isNaN(val)) return replier.reply(UI.make("입력 오류", "숫자만 입력해 주십시오", "다시 입력"));
-    
-    var targetData = Database.data[session.targetUser];
-    var typeName = { "gold": "골드", "lp": "LP", "level": "레벨" }[session.editType];
+        var val = parseInt(msg);
+        if (isNaN(val)) return replier.reply(UI.make("입력 오류", "숫자만 입력해 주십시오", "다시 입력"));
+        
+        var targetId = session.targetUser;
+        var userData = Database.data[targetId]; 
+        
+        if (!userData) return replier.reply(UI.make("오류", "유저 데이터를 찾을 수 없습니다."));
 
-    if (session.editType === "level") {
-        val = Math.max(1, Math.min(val, MAX_LEVEL));
-        targetData.level = val;
-        targetData.point = (val - 1) * 5; 
-    } else {
-        targetData[session.editType] = val; 
-    }
-    
-    Database.save();
-    
-    // 유저에게 알림
-    Api.replyRoom(SessionManager.findUserRoom(session.targetUser), 
-        UI.make("알림", "[" + typeName + "] 정보가 운영진에 의해 조정되었습니다.", "운영 정책 조치", true));
-    
-    // [변경] 관리자 세션을 IDLE로 만들지 않고 목록으로 부드럽게 이동
-    replier.reply(UI.make("수정 완료", session.targetUser + " 님의 정보가 반영되었습니다.", "잠시 후 목록으로 이동합니다.", false));
-    return this.showUserList(session, replier);
-},
+        var typeName = { "gold": "골드", "lp": "LP", "level": "레벨" }[session.editType];
+
+        if (session.editType === "level") {
+            val = Math.max(1, Math.min(val, MAX_LEVEL));
+            userData.level = val;
+            userData.point = (val - 1) * 5; 
+            userData.exp = (val === MAX_LEVEL) ? 0 : userData.exp; 
+        } else {
+            userData[session.editType] = val; 
+        }
+        
+        Database.save();
+        
+        // 원본 데이터를 세션에 강제 연결 (실시간 반영)
+        for (var h in SessionManager.sessions) {
+            if (SessionManager.sessions[h].tempId === targetId) {
+                SessionManager.sessions[h].data = userData; 
+                break;
+            }
+        }
+        
+        Api.replyRoom(SessionManager.findUserRoom(targetId), 
+            UI.make("운영진 조치", "[" + typeName + "] 수치가 " + val + "(으)로 변경되었습니다.", "프로필을 확인해 주세요.", true));
+        
+        replier.reply(UI.make("수정 완료", targetId + " 님의 정보가 원본에 반영되었습니다.", "목록으로 돌아갑니다.", false));
+        return this.showUserList(session, replier);
+    },
 
     resetConfirm: function(msg, session, replier) {
         if (msg === "확인") {
