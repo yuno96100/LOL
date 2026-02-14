@@ -252,31 +252,28 @@ var SessionManager = {
                 screen: "IDLE", 
                 tempId: "비회원", 
                 type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
-                data: null 
+                data: null,
+                room: room // 방 이름을 세션에 저장
             }; 
         }
         var s = this.sessions[hash];
-        s.room = room;
+        s.room = room; // 세션 갱신 시마다 방 이름 업데이트
 
-        // 기존 타이머 클리어
         if (this.timers[hash]) {
             clearTimeout(this.timers[hash]);
-            delete this.timers[hash];
         }
 
-        // IDLE이 아닐 때만 5분 타이머 작동
         var self = this;
         if (s.screen !== "IDLE") {
             this.timers[hash] = setTimeout(function() {
-                // 실행 시점에 세션이 여전히 같은 상태라면 종료 처리
+                // 저장된 s.room을 사용하여 replier가 만료되어도 응답 가능하게 처리
                 if (self.sessions[hash] && self.sessions[hash].screen !== "IDLE") {
+                    var targetRoom = self.sessions[hash].room;
                     self.reset(self.sessions[hash], hash);
                     self.save();
-                    try {
-                        replier.reply(UI.make("세션 자동 종료", 
-                            "입력 시간이 초과되어\n세션이 안전하게 종료되었습니다.", 
-                            "다시 시작하려면 '메뉴'를 입력하세요.", true));
-                    } catch(e) { /* replier 만료 대비 */ }
+                    Api.replyRoom(targetRoom, UI.make("세션 자동 종료", 
+                        "입력 시간이 초과되어\n세션이 안전하게 종료되었습니다.", 
+                        "다시 시작하려면 '메뉴'를 입력하세요.", true));
                 }
             }, 300000); 
         }
@@ -516,14 +513,11 @@ var UserActions = {
         }
     },
     handleStatUp: function(msg, session, replier) {
-        var d = session.data;
-        
-        if (session.screen === "STAT_UP_MENU") {
-            if (d.point <= 0) {
-                replier.reply(UI.make("강화 불가", "보유 포인트가 부족합니다.", "잠시 후 프로필로 돌아갑니다.", true));
-                java.lang.Thread.sleep(1500);
-                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "강화 불가"));
-            }
+    var d = session.data;
+    if (session.screen === "STAT_UP_MENU") {
+        if (d.point <= 0) {
+            return replier.reply(UI.make("강화 불가", "보유 포인트가 부족합니다.", "['이전']을 입력하여 돌아가세요.", false));
+        }
 
             var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
             var idx = parseInt(msg) - 1;
