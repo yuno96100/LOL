@@ -321,12 +321,35 @@ var SessionManager = {
     forceLogout: function(userId) {
         for (var h in this.sessions) { 
             if (this.sessions[h].tempId === userId) { 
-                this.sessions[h].data = null; 
+                this.sessions[h].data = null;
                 this.sessions[h].tempId = "비회원"; 
                 this.reset(this.sessions[h], h); 
             } 
         }
         this.save();
+    }, // <--- 쉼표(,)를 반드시 확인하세요!
+
+    // [추가] 세션 불러오기 함수
+    load: function() {
+        try {
+            var content = FileStream.read(Config.SESSION_PATH);
+            if (content) {
+                this.sessions = JSON.parse(content);
+            } else {
+                this.sessions = {};
+            }
+        } catch(e) { 
+            this.sessions = {}; 
+        }
+    },
+
+    // [추가] 세션 저장하기 함수
+    save: function() {
+        try {
+            FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions, null, 4));
+        } catch(e) {
+            Log.e("세션 저장 에러: " + e);
+        }
     }
 };
 
