@@ -708,8 +708,12 @@ var UserManager = {
 
 
 // ━━━━━━━━ [10. 메인 응답 핸들러] ━━━━━━━━
-Database.load(); 
-SessionManager.load();
+try {
+    Database.load();
+    SessionManager.load();
+} catch (e) {
+    Log.e("초기 로딩 에러: " + e);
+}
 
 function response(room, msg, sender, isGroupChat, replier, imageDB) {
     try {
