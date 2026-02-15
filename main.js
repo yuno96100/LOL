@@ -122,7 +122,14 @@ var LayoutManager = {
             // [변경] 능력치 강화 선택지도 세로형으로 변경
             body = " [ 강화 항목 선택 ]\n1. 🎯 정확 강화\n2. ⚡ 반응 강화\n3. 🧘 침착 강화\n4. 🧠 직관 강화";
         } else if (scr === "STAT_UP_INPUT") {
-            body = " [ " + (session.selectedStatName || "") + " 강화 중 ]\n잔여 포인트: " + data.point + "P";
+            // 현재 세션에 저장된 스탯 키(acc, ref 등)를 사용하여 현재 수치 추출
+            var statKey = session.selectedStatKey || "acc"; 
+            var currentStat = st[statKey] || 0;
+            
+            body = "  [ " + (session.selectedStatName || "") + " 강화 진행 중 ]\n\n" +
+                   "  현재 수치 : " + currentStat + "\n" +
+                   "  남은 포인트 : " + (data.point || 0) + " P\n\n" +
+                   "  정말 강화를 진행하시겠습니까?";
         }
 
         return body ? head + "\n" + div + "\n" + body : head;
@@ -720,7 +727,28 @@ var UserManager = {
                 if (msg === "6") { SessionManager.forceLogout(session.tempId); return replier.reply(UI.make("알림", "로그아웃되었습니다", "종료", true)); }
                 break;
             case "PROFILE_VIEW": if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "", "", "강화 항목 선택")); break;
-            case "STAT_UP_MENU": case "STAT_UP_INPUT": return UserActions.handleStatUp(msg, session, replier);
+            case "STAT_UP_MENU":
+    var statMap = { "1": "정확", "2": "반응", "3": "침착", "4": "직관" };
+    var keyMap = { "1": "acc", "2": "ref", "3": "com", "4": "int" };
+
+    if (statMap[msg]) {
+        session.screen = "STAT_UP_INPUT";
+        session.selectedStatName = statMap[msg];
+        session.selectedStatKey = keyMap[msg];
+        
+        var content = LayoutManager.renderProfile(session); // 수정된 renderProfile 호출
+        
+        // UI.make(제목, 본문, 도움말, 루트여부)
+        var fullUI = UI.make(
+            "강화 수치 입력", 
+            content, 
+            "투자할 포인트 숫자를 입력해 주세요.", // 도움말 구간 활용
+            false
+        );
+        
+        replier.reply(fullUI);
+    }
+    break;
             case "USER_INQUIRY": return UserActions.handleInquiry(msg, session, replier);
             case "COL_MAIN": case "COL_TITLE_ACTION": return UserActions.showCollection(msg, session, replier);
             case "SHOP_MAIN": case "SHOP_BUY_ACTION": return UserActions.handleShop(msg, session, replier);
