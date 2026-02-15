@@ -206,7 +206,7 @@ var Database = {
             this.data = {}; 
             this.inquiries = []; 
         } 
-    };
+    },
     save: function() { 
         var obj = { users: this.data, inquiries: this.inquiries };
         FileStream.write(Config.DB_PATH, JSON.stringify(obj, null, 4)); 
