@@ -1,13 +1,6 @@
-/**
- * [main.js] v0.0.23
- * 1. 문의 목록 날짜별 그룹화 적용 (오전/오후 표기)
- * 2. 모든 알림 문구 UI 엔진(UI.make) 적용
- * 3. 카테고리 및 내비게이션 이동 로직 정교화
- */
-
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
-    Version: "v0.0.23",
+    Version: "v0.0.24",
     Prefix: ".",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
@@ -248,16 +241,7 @@ var Database = {
 var SessionManager = {
     sessions: {},
     timers: {},
-
-    load: function() {
-        try {
-            this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH));
-        } catch(e) { this.sessions = {}; }
-    },
-
-    save: function() {
-        FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions));
-    },
+    TIMEOUT_MS: 300000, // 5분 (설정값)
 
     get: function(room, hash, replier) {
         if (!this.sessions[hash]) { 
@@ -266,20 +250,39 @@ var SessionManager = {
                 tempId: "비회원", 
                 type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
                 data: null,
-                room: room // 방 이름을 세션에 저장
+                room: room,
+                lastTime: Date.now() // [추가] 마지막 활동 시간 기록
             }; 
         }
-        var s = this.sessions[hash];
-        s.room = room; // 세션 갱신 시마다 방 이름 업데이트
+        
+       var now = Date.now();
+var isExpired = false;
 
-        if (this.timers[hash]) {
-            clearTimeout(this.timers[hash]);
-        }
+// [만료 체크] IDLE이 아닌 상태에서 마지막 활동 후 5분(TIMEOUT_MS)이 지났는지 확인
+if (s.screen !== "IDLE" && s.lastTime && (now - s.lastTime) > this.TIMEOUT_MS) {
+    this.reset(s, hash); // 세션 초기화
+    isExpired = true;
+}
 
+// 활동 시간 갱신 (만료되었더라도 다음 활동을 위해 현재 시간 기록)
+s.lastTime = now;
+
+if (isExpired) {
+    this.save(); // 초기화된 상태 저장
+    replier.reply(UI.make(
+        "세션 만료 알림", 
+        "보안 및 리소스 관리를 위해\n입력이 없던 세션을 종료했습니다.", 
+        "다시 시작하려면 '메뉴'를 입력해 주세요.", 
+        true
+    ));
+    return s; // IDLE 상태가 된 세션 반환
+}
+
+        // 기존 setTimeout 로직 (실시간 알림용)
+        if (this.timers[hash]) clearTimeout(this.timers[hash]);
         var self = this;
         if (s.screen !== "IDLE") {
             this.timers[hash] = setTimeout(function() {
-                // 저장된 s.room을 사용하여 replier가 만료되어도 응답 가능하게 처리
                 if (self.sessions[hash] && self.sessions[hash].screen !== "IDLE") {
                     var targetRoom = self.sessions[hash].room;
                     self.reset(self.sessions[hash], hash);
@@ -288,7 +291,7 @@ var SessionManager = {
                         "입력 시간이 초과되어\n세션이 안전하게 종료되었습니다.", 
                         "다시 시작하려면 '메뉴'를 입력하세요.", true));
                 }
-            }, 300000); 
+            }, this.TIMEOUT_MS); 
         }
         return s;
     },
@@ -713,6 +716,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB) {
         var hash = String(imageDB.getProfileHash());
         var session = SessionManager.get(room, hash, replier);
         msg = msg.trim();
+
+        // [추가] 만약 get 과정에서 세션이 방금 만료(IDLE)되었다면 로직 중단
+        // 유저가 6분 만에 메시지를 보냈을 때, 만료 알림만 띄우고 명령은 실행 안 함
+        if (session.screen === "IDLE" && msg !== "메뉴" && msg !== "관리자") {
+            return;
+        }
 
         // 1. 공통 명령어
         if (msg === "메뉴" || msg === "취소" || (room === Config.AdminRoom && msg === "관리자")) {
