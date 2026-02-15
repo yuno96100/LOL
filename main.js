@@ -1,6 +1,6 @@
 // ━━━━━━━━ [1. 설정 및 상수] ━━━━━━━━
 var Config = {
-    Version: "v0.0.25",
+    Version: "v0.0.26",
     Prefix: ".",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
