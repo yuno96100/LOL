@@ -745,58 +745,42 @@ var UserManager = {
             }
             if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
             if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
-            if (curr === "ADMIN_USER_DETAIL") return AdminActions.showUserList(session, replier);
-            if (curr.indexOf("ADMIN_EDIT") !== -1 || curr === "ADMIN_ANSWER_INPUT" || curr.indexOf("CONFIRM") !== -1) return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", "", "", "상세 정보 복귀"));
 
             SessionManager.reset(session, hash);
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 2. 상태별 핸들러 실행 전 예외 처리
-        if (session.screen === "IDLE") {
-            if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
-            return;
-        }
+        // 2. 일반 사용자 화면 상태(Screen)별 분기 처리
+        switch (session.screen) {
+            case "PROFILE_VIEW":
+                if (msg === "1") {
+                    session.screen = "STAT_UP_MENU";
+                    return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "", "강화할 항목의 번호를 입력하세요."));
+                }
+                break;
 
-        // 3. 권한 및 가입 여부에 따른 핸들러 분기
-        if (session.type === "ADMIN") {
-            AdminManager.handle(msg, session, replier);
-        } else if (!session.data) {
-            LoginManager.handle(msg, session, replier);
-        } else {
-            // 일반 사용자용 상태(Screen) 분기
-            switch (session.screen) {
-                case "PROFILE_VIEW":
-                    if (msg === "1") {
-                        session.screen = "STAT_UP_MENU";
-                        return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "", "강화할 항목의 번호를 입력하세요."));
-                    }
-                    break;
+            case "STAT_UP_MENU":
+                // 1~4번 중 어떤 스탯을 강화할지 선택하는 단계
+                UserActions.handleStatUp(msg, session, replier);
+                break;
 
-                case "STAT_UP_MENU":
-                    // 1~4번 중 어떤 스탯을 강화할지 선택하는 단계
-                    UserActions.handleStatUp(msg, session, replier);
-                    break;
+            case "STAT_UP_INPUT":
+                // [수정 포인트] 실제 강화 수치(숫자)를 입력했을 때 
+                // UserActions의 강화 로직(포인트 체크 및 반영)을 실행합니다.
+                UserActions.handleStatUp(msg, session, replier);
+                break;
 
-                case "STAT_UP_INPUT":
-                    // [핵심 수정] 실제 수치(숫자)를 입력하여 강화를 진행하는 단계
-                    // 유저가 숫자를 입력하면 UserActions.handleStatUp 내부의 포인트 체크 및 강화 로직이 실행됩니다.
-                    UserActions.handleStatUp(msg, session, replier);
-                    break;
+            case "COL_MAIN":
+                // 컬렉션 메인 로직 처리 (필요 시)
+                break;
 
-                case "COL_MAIN":
-                    // 컬렉션 메인 핸들링 필요 시 추가
-                    break;
+            case "SHOP_MAIN":
+                // 상점 메인 로직 처리 (필요 시)
+                break;
 
-                case "SHOP_MAIN":
-                    // 상점 메인 핸들링 필요 시 추가
-                    break;
-
-                default:
-                    // 정의되지 않은 화면에서 "메뉴" 입력 시 대응
-                    if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
-                    break;
-            }
+            default:
+                if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
+                break;
         }
     }
 };
