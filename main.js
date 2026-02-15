@@ -251,32 +251,34 @@ var SessionManager = {
                 type: (room === Config.AdminRoom ? "ADMIN" : "USER"),
                 data: null,
                 room: room,
-                lastTime: Date.now() // [추가] 마지막 활동 시간 기록
-            }; 
+                lastTime: Date.now() 
+            };
         }
         
-       var now = Date.now();
-var isExpired = false;
+        // [수정] s 변수를 명시적으로 선언해야 합니다.
+        var s = this.sessions[hash];
+        var now = Date.now();
+        var isExpired = false;
 
-// [만료 체크] IDLE이 아닌 상태에서 마지막 활동 후 5분(TIMEOUT_MS)이 지났는지 확인
-if (s.screen !== "IDLE" && s.lastTime && (now - s.lastTime) > this.TIMEOUT_MS) {
-    this.reset(s, hash); // 세션 초기화
-    isExpired = true;
-}
+        // [만료 체크]
+        if (s.screen !== "IDLE" && s.lastTime && (now - s.lastTime) > this.TIMEOUT_MS) {
+            this.reset(s, hash);
+            isExpired = true;
+        }
 
-// 활동 시간 갱신 (만료되었더라도 다음 활동을 위해 현재 시간 기록)
-s.lastTime = now;
+        // 활동 시간 갱신
+        s.lastTime = now;
 
-if (isExpired) {
-    this.save(); // 초기화된 상태 저장
-    replier.reply(UI.make(
-        "세션 만료 알림", 
-        "보안 및 리소스 관리를 위해\n입력이 없던 세션을 종료했습니다.", 
-        "다시 시작하려면 '메뉴'를 입력해 주세요.", 
-        true
-    ));
-    return s; // IDLE 상태가 된 세션 반환
-}
+        if (isExpired) {
+            this.save();
+            replier.reply(UI.make(
+                "세션 만료 알림", 
+                "보안 및 리소스 관리를 위해\n입력이 없던 세션을 종료했습니다.", 
+                "다시 시작하려면 '메뉴'를 입력해 주세요.", 
+                true
+            ));
+            return s; 
+        }
 
         // 기존 setTimeout 로직 (실시간 알림용)
         if (this.timers[hash]) clearTimeout(this.timers[hash]);
@@ -285,13 +287,14 @@ if (isExpired) {
             this.timers[hash] = setTimeout(function() {
                 if (self.sessions[hash] && self.sessions[hash].screen !== "IDLE") {
                     var targetRoom = self.sessions[hash].room;
-                    self.reset(self.sessions[hash], hash);
+                    var targetSession = self.sessions[hash]; // 클로저 안전성 확보
+                    self.reset(targetSession, hash);
                     self.save();
                     Api.replyRoom(targetRoom, UI.make("세션 자동 종료", 
                         "입력 시간이 초과되어\n세션이 안전하게 종료되었습니다.", 
                         "다시 시작하려면 '메뉴'를 입력하세요.", true));
                 }
-            }, this.TIMEOUT_MS); 
+            }, this.TIMEOUT_MS);
         }
         return s;
     },
