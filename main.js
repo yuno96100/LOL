@@ -241,7 +241,7 @@ var Database = {
 var SessionManager = {
     sessions: {},
     timers: {},
-    TIMEOUT_MS: 300000, // 5분 (설정값)
+    TIMEOUT_MS: 10000, // 5분 (설정값)
 
     get: function(room, hash, replier) {
         if (!this.sessions[hash]) { 
