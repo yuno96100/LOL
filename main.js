@@ -78,10 +78,23 @@ function getTierInfo(lp) {
 // ━━━━━━━━ [2. 모듈: 레이아웃 매니저] ━━━━━━━━
 var LayoutManager = {
     renderProfile: function(session) {
-        var id = session.targetUser || session.tempId;
-        var data = (session.targetUser) ? Database.data[session.targetUser] : session.data;
-        var div = Utils.getFixedDivider();
+        var targetId;
         
+        // [수정 포인트] 화면 이름에 'ADMIN'이 포함되어 있을 때만 targetUser를 참조합니다.
+        // 그 외(일반 유저 메인, 프로필 조회 등)에는 무조건 본인(tempId)을 참조합니다.
+        if (session.screen.indexOf("ADMIN") !== -1 && session.targetUser) {
+            targetId = session.targetUser;
+        } else {
+            targetId = session.tempId;
+        }
+
+        // 실시간 DB에서 해당 ID의 데이터를 가져옵니다.
+        var data = Database.data[targetId];
+        
+        // 가입 정보가 없는 경우 예외 처리
+        if (!data) return "『 시스템 알림 』\n\n존재하지 않는 사용자이거나\n로그인 정보가 유실되었습니다.";
+        
+        var div = Utils.getFixedDivider();
         var tier = getTierInfo(data.lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
@@ -90,7 +103,7 @@ var LayoutManager = {
         // 만렙 경험치 처리
         var expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
         
-        var head = "👤 계정: " + id + "\n" +
+        var head = "👤 대상: " + targetId + "\n" +
                    "🏅 칭호: [" + data.title + "]\n" +
                    div + "\n" +
                    "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
@@ -423,9 +436,10 @@ var AdminActions = {
 
     // 유저 상세 페이지 호출 함수 (반복 사용을 위해 분리)
     showUserDetail: function(session, replier) {
-        var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
-        return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 번호 선택"));
-    },
+    session.screen = "ADMIN_USER_DETAIL"; // 명시적 상태 정의
+    var menuText = "1. 정보 수정\n2. 데이터 초기화\n3. 계정 삭제";
+    return replier.reply(UI.go(session, "ADMIN_USER_DETAIL", session.targetUser + " 관리", menuText, "작업 번호 선택"));
+},
 
    resetConfirm: function(msg, session, replier) {
     // 거절 대답 처리
