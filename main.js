@@ -119,10 +119,9 @@ var LayoutManager = {
         if (scr === "PROFILE_VIEW") {
             body = "1. 능력치 강화";
         } else if (scr === "STAT_UP_MENU") {
-            // [변경] 능력치 강화 선택지도 세로형으로 변경
             body = " [ 강화 항목 선택 ]\n1. 🎯 정확 강화\n2. ⚡ 반응 강화\n3. 🧘 침착 강화\n4. 🧠 직관 강화";
         } else if (scr === "STAT_UP_INPUT") {
-            // 현재 세션에 저장된 스탯 키(acc, ref 등)를 사용하여 현재 수치 추출
+            // [수정] 현재 수치와 남은 포인트를 직관적으로 보여주도록 변경 
             var statKey = session.selectedStatKey || "acc"; 
             var currentStat = st[statKey] || 0;
             
@@ -133,6 +132,18 @@ var LayoutManager = {
         }
 
         return body ? head + "\n" + div + "\n" + body : head;
+    },
+
+    // [추가] 강화 결과(성공/부족) 전용 레이아웃 (관리자 알림 스타일)
+    renderStatResult: function(statName, diff, current, isSuccess, msg) {
+        var res = " [ 강화 결과: " + (isSuccess ? "성공 ✨" : "알림 ⚠️") + " ]\n\n";
+        res += " " + msg + "\n\n";
+        if (isSuccess) {
+            res += " 🎯 강화 항목: " + statName + "\n";
+            res += " 🆙 능력치: " + (current - diff) + " ➔ " + current + " (+" + diff + ")\n";
+        }
+        res += "\n" + Utils.getFixedDivider();
+        return res;
     },
 
     /**
@@ -579,39 +590,44 @@ var UserActions = {
         }
     },
     handleStatUp: function(msg, session, replier) {
-    var d = session.data;
-    if (session.screen === "STAT_UP_MENU") {
-        if (d.point <= 0) {
-            return replier.reply(UI.make("강화 불가", "보유 포인트가 부족합니다.", "['이전']을 입력하여 돌아가세요.", false));
-        }
-
+        var d = session.data;
+        
+        if (session.screen === "STAT_UP_MENU") {
             var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
             var idx = parseInt(msg) - 1;
             if (keys[idx]) {
-                session.selectedStat = keys[idx]; 
+                session.selectedStatKey = keys[idx]; // 키 저장 
                 session.selectedStatName = names[idx];
-                return replier.reply(UI.go(session, "STAT_UP_INPUT", "", "", "강화 수치 입력"));
+                session.screen = "STAT_UP_INPUT";
+                
+                // 도움말에 입력 가이드 출력 [cite: 483, 490]
+                return replier.reply(UI.go(session, "STAT_UP_INPUT", "강화 수치 입력", "", "투자할 포인트 숫자를 입력해 주세요.\n(취소: '이전' 입력)"));
             }
-            return replier.reply(UI.make("번호 오류", "1~4 사이를 입력해주세요.", "항목 선택"));
-        }
-
+        } 
+        
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
             if (isNaN(amt) || amt <= 0) return replier.reply(UI.make("오류", "숫자만 입력 가능합니다.", "수치 입력"));
 
+            // [수정] 포인트 부족 시 관리자 스타일 알림창 [cite: 335, 341]
             if (amt > d.point) {
-                replier.reply(UI.make("포인트 부족", "보유량보다 많이 입력했습니다.\n현재: " + d.point + "P", "잠시 후 다시 시도하세요."));
-                java.lang.Thread.sleep(2000);
-                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "포인트 부족"));
+                var failBody = LayoutManager.renderStatResult(session.selectedStatName, 0, 0, false, "보유하신 포인트가 부족합니다.\n현재: " + d.point + "P / 입력: " + amt + "P");
+                return replier.reply(UI.make("강화 실패", failBody, "다시 입력하거나 '이전'을 입력하세요.", true));
             }
 
-            d.stats[session.selectedStat] += amt;
+            // [수정] 강화 성공 및 자동 복귀 로직 [cite: 379, 565]
+            d.stats[session.selectedStatKey] += amt;
             d.point -= amt;
             Database.save();
 
-            replier.reply(UI.make("강화 성공 ✨", session.selectedStatName + " +" + amt, "반영되었습니다.", true));
-            java.lang.Thread.sleep(1500);
-            return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "강화 완료"));
+            var successBody = LayoutManager.renderStatResult(session.selectedStatName, amt, d.stats[session.selectedStatKey], true, "성공적으로 강화를 완료했습니다!");
+            
+            // 관리자 기능처럼 세션 미리 전환 후 알림
+            session.screen = "PROFILE_VIEW"; 
+            replier.reply(UI.make("강화 완료", successBody, "잠시 후 프로필 화면으로 이동합니다.", true));
+            
+            java.lang.Thread.sleep(1500); // 1.5초 대기 후 이동 효과 
+            return replier.reply(UI.go(session, "PROFILE_VIEW"));
         }
     }
 };
