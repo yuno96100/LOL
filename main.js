@@ -733,61 +733,47 @@ var LoginManager = {
 // ━━━━━━━━ [9. 매니저: 유저 핸들러] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
-        var hash = session.hash;
-        var data = session.data;
-
-        // 1. 공통 네비게이션 처리 (이전, 취소, 메뉴 등)
+        // [수정] 네비게이션(이전/취소) 로직 추가
         if (Config.NAV_ITEMS.indexOf(msg) !== -1) {
             var curr = session.screen;
-            
-            // 강화 단계에서 '이전' 시 프로필로 복귀
             if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") {
-                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 화면으로 돌아갑니다."));
+                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 복귀"));
             }
-            
-            // 상점/컬렉션 복귀 로직
-            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
-            if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
-
-            SessionManager.reset(session, hash);
+            SessionManager.reset(session, session.hash);
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 2. 화면 상태(Screen)별 분기 처리
-        switch (session.screen) {
-            case "MAIN_MENU": // [추가] 메인 메뉴 상태에서 입력 처리
-                if (msg === "1") {
-                    session.screen = "PROFILE_VIEW";
-                    return replier.reply(UI.go(session, "PROFILE_VIEW", "내 프로필", "", "1. 능력치 강화"));
-                }
-                // 다른 메뉴 번호(2, 3...)가 있다면 여기에 추가
+        switch(session.screen) {
+            // [수정] MAIN_MENU 또는 USER_MAIN (상태명 통일)
+            case "MAIN_MENU":
+            case "USER_MAIN":
+                if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "조회 완료"));
+                // ... (생략) ...
                 break;
 
-            case "PROFILE_VIEW":
-                // 프로필 화면에서 1번을 누르면 강화 항목 선택 메뉴로 이동
-                if (msg === "1") {
-                    session.screen = "STAT_UP_MENU";
-                    return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "", "강화할 항목의 번호를 입력하세요."));
-                }
+            case "PROFILE_VIEW": 
+                if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "", "", "강화 항목 선택")); 
                 break;
 
             case "STAT_UP_MENU":
-                // 1~4번 중 어떤 스탯을 강화할지 선택
-                UserActions.handleStatUp(msg, session, replier);
-                break;
-
-            case "STAT_UP_INPUT":
-                // 실제 강화 수치(숫자)를 입력하여 강화 실행
-                UserActions.handleStatUp(msg, session, replier);
-                break;
-
-            default:
-                // 상태가 없거나 기본 상태일 때 '메뉴' 대응
-                if (msg === "메뉴") {
-                    session.screen = "MAIN_MENU";
-                    return replier.reply(UI.renderMenu(session));
+                var statMap = { "1": "정확", "2": "반응", "3": "침착", "4": "직관" };
+                var keyMap = { "1": "acc", "2": "ref", "3": "com", "4": "int" };
+                if (statMap[msg]) {
+                    session.screen = "STAT_UP_INPUT";
+                    session.selectedStatName = statMap[msg];
+                    session.selectedStatKey = keyMap[msg];
+                    return replier.reply(UI.go(session, "STAT_UP_INPUT", "강화 수치 입력", LayoutManager.renderProfile(session), "투자할 포인트 숫자를 입력해 주세요."));
                 }
                 break;
+
+            // [가장 큰 변화] 이 케이스가 새로 추가되어야 강화가 진행됩니다!
+            case "STAT_UP_INPUT":
+                return UserActions.handleStatUp(msg, session, replier);
+
+            case "USER_INQUIRY": return UserActions.handleInquiry(msg, session, replier);
+            case "COL_MAIN": case "COL_TITLE_ACTION": return UserActions.showCollection(msg, session, replier);
+            case "SHOP_MAIN": case "SHOP_BUY_ACTION": return UserActions.handleShop(msg, session, replier);
+            case "BATTLE_MAIN": if (msg === "1") replier.reply(UI.make("알림", "전투 시스템은 현재 점검 중입니다", "메인 복귀", true)); break;
         }
     }
 };
