@@ -779,14 +779,18 @@ var UserManager = {
                     session.screen = "STAT_UP_INPUT";
                     session.selectedStatName = statMap[msg];
                     session.selectedStatKey = keyMap[msg];
+                    
+                    var currentStat = session.data.stats[keyMap[msg]];
+                    var myPoint = session.data.point || 0;
+                    
+                    // [최종 수정] 불필요한 공백과 줄바꿈을 제거하여 딱 한 세트만 나오게 합니다.
+                    var displayBody = " [ " + statMap[msg] + " 강화 진행 중 ]\n\n" +
+                                      " 현재 수치 : " + currentStat + "\n" +
+                                      " 남은 포인트 : " + myPoint + " P\n\n" +
+                                      " 정말 강화를 진행하시겠습니까?";
 
-                    // [중복 해결] renderProfile을 본문에 넣지 않습니다. 
-                    // UI.go가 이미 상단에 프로필을 그려주기 때문입니다.
-                    var displayBody = "\n  [ " + statMap[msg] + " 강화 진행 중 ]\n\n" +
-                                      "  현재 수치 : " + data.stats[keyMap[msg]] + "\n" +
-                                      "  남은 포인트 : " + (data.point || 0) + " P\n\n" +
-                                      "  정말 강화를 진행하시겠습니까?";
-
+                    // UI.go 내부에서 이미 프로필 레이아웃을 가져오므로, 
+                    // 여기서는 안내 문구만 깔끔하게 전달합니다.
                     return replier.reply(UI.go(session, "STAT_UP_INPUT", "강화 수치 입력", displayBody, "투자할 포인트 숫자를 입력하세요."));
                 }
                 break;
