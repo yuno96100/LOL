@@ -736,25 +736,32 @@ var UserManager = {
         var hash = session.hash;
         var data = session.data;
 
-        // 1. 공통 네비게이션 처리 (이전, 취소, 메뉴)
+        // 1. 공통 네비게이션 처리 (이전, 취소, 메뉴 등)
         if (Config.NAV_ITEMS.indexOf(msg) !== -1) {
             var curr = session.screen;
-            // 강화 메뉴나 입력창에서 '이전' 시 프로필로 복귀
+            
+            // 강화 단계에서 '이전' 입력 시 프로필로 복귀
             if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") {
-                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 복귀"));
+                return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 화면으로 돌아갑니다."));
             }
             
-            // 상점/컬렉션 복귀 로직 (기존 유지)
-            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
-            if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
+            // 컬렉션 또는 상점 단계에서 복귀 처리
+            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") {
+                return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 목록으로 돌아갑니다."));
+            }
+            if (curr === "SHOP_BUY_ACTION") {
+                return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 목록으로 돌아갑니다."));
+            }
 
+            // 그 외 상황은 세션 초기화 후 기본 메뉴 출력
             SessionManager.reset(session, hash);
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 2. 화면 상태(Screen)별 분기 처리
+        // 2. 일반 사용자 화면 상태(Screen)별 분기 처리
         switch (session.screen) {
             case "PROFILE_VIEW":
+                // [수정 포인트] 프로필 화면에서 1번을 누르면 강화 메뉴로 이동
                 if (msg === "1") {
                     session.screen = "STAT_UP_MENU";
                     return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "", "강화할 항목의 번호를 입력하세요."));
@@ -762,26 +769,28 @@ var UserManager = {
                 break;
 
             case "STAT_UP_MENU":
-                // 1~4번 항목 선택 처리 (UserActions로 전달)
+                // 1~4번 중 어떤 스탯을 강화할지 선택
                 UserActions.handleStatUp(msg, session, replier);
                 break;
 
-            case "STAT_UP_INPUT": 
-                // [수정 포인트] 유저가 강화 수치(숫자)를 입력했을 때 
-                // 실제 강화 로직이 실행되도록 UserActions로 메시지를 넘겨줍니다.
+            case "STAT_UP_INPUT":
+                // 실제 강화 수치(숫자)를 입력하여 강화 실행
                 UserActions.handleStatUp(msg, session, replier);
                 break;
 
             case "COL_MAIN":
-                // 컬렉션 로직 (필요 시 추가)
+                // 컬렉션 관련 로직 (필요 시 연결)
                 break;
 
             case "SHOP_MAIN":
-                // 상점 로직 (필요 시 추가)
+                // 상점 관련 로직 (필요 시 연결)
                 break;
 
             default:
-                if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
+                // 기본 상태(메뉴 선택 전 등)에서 '메뉴' 입력 시 대응
+                if (msg === "메뉴") {
+                    return replier.reply(UI.renderMenu(session));
+                }
                 break;
         }
     }
