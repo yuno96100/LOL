@@ -733,51 +733,89 @@ var LoginManager = {
 // ━━━━━━━━ [9. 매니저: 유저 핸들러] ━━━━━━━━
 var UserManager = {
     handle: function(msg, session, replier) {
-        // [수정] 네비게이션(이전/취소) 로직 추가
+        var hash = session.hash;
+        var data = session.data;
+
+        // 1. 공통 네비게이션(이전/취소/메뉴) 처리
         if (Config.NAV_ITEMS.indexOf(msg) !== -1) {
             var curr = session.screen;
+            // 강화 단계에서 '이전' 입력 시 프로필로 복귀
             if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") {
                 return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 복귀"));
             }
-            SessionManager.reset(session, session.hash);
+            // 컬렉션/상점 등 복귀 처리
+            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
+            if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
+
+            SessionManager.reset(session, hash);
             return replier.reply(UI.renderMenu(session));
         }
 
-        switch(session.screen) {
-            // [수정] MAIN_MENU 또는 USER_MAIN (상태명 통일)
+        // 2. 화면 상태(Screen)별 분기 처리
+        switch (session.screen) {
+            // [메인 메뉴] 생략되었던 2~6번 로직 모두 포함
             case "MAIN_MENU":
             case "USER_MAIN":
-                if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "조회 완료"));
-                // ... (생략) ...
+                if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", "내 정보", "", "1. 능력치 강화"));
+                if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "", "", "항목 선택"));
+                if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전 모드", "1. AI 대전 시작", "모드 선택"));
+                if (msg === "4") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "이용할 번호 입력"));
+                if (msg === "5") return replier.reply(UI.go(session, "USER_INQUIRY", "문의 접수", "내용 입력", "운영진 전송"));
+                if (msg === "6") { 
+                    SessionManager.forceLogout(session.tempId); 
+                    return replier.reply(UI.make("알림", "로그아웃되었습니다", "종료", true)); 
+                }
                 break;
 
-            case "PROFILE_VIEW": 
-                if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "", "", "강화 항목 선택")); 
+            case "PROFILE_VIEW":
+                if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "강화 메뉴", "1.정확  2.반응\n3.침착  4.직관", "강화할 항목 번호 입력"));
                 break;
 
             case "STAT_UP_MENU":
                 var statMap = { "1": "정확", "2": "반응", "3": "침착", "4": "직관" };
                 var keyMap = { "1": "acc", "2": "ref", "3": "com", "4": "int" };
+
                 if (statMap[msg]) {
                     session.screen = "STAT_UP_INPUT";
                     session.selectedStatName = statMap[msg];
                     session.selectedStatKey = keyMap[msg];
-                    return replier.reply(UI.go(session, "STAT_UP_INPUT", "강화 수치 입력", LayoutManager.renderProfile(session), "투자할 포인트 숫자를 입력해 주세요."));
+
+                    // [중복 해결] renderProfile을 본문에 넣지 않습니다. 
+                    // UI.go가 이미 상단에 프로필을 그려주기 때문입니다.
+                    var displayBody = "\n  [ " + statMap[msg] + " 강화 진행 중 ]\n\n" +
+                                      "  현재 수치 : " + data.stats[keyMap[msg]] + "\n" +
+                                      "  남은 포인트 : " + (data.point || 0) + " P\n\n" +
+                                      "  정말 강화를 진행하시겠습니까?";
+
+                    return replier.reply(UI.go(session, "STAT_UP_INPUT", "강화 수치 입력", displayBody, "투자할 포인트 숫자를 입력하세요."));
                 }
                 break;
 
-            // [가장 큰 변화] 이 케이스가 새로 추가되어야 강화가 진행됩니다!
             case "STAT_UP_INPUT":
+                // 숫자를 입력했을 때 실제 강화 기능을 실행하는 핵심 연결 로직
                 return UserActions.handleStatUp(msg, session, replier);
 
-            case "USER_INQUIRY": return UserActions.handleInquiry(msg, session, replier);
-            case "COL_MAIN": case "COL_TITLE_ACTION": return UserActions.showCollection(msg, session, replier);
-            case "SHOP_MAIN": case "SHOP_BUY_ACTION": return UserActions.handleShop(msg, session, replier);
-            case "BATTLE_MAIN": if (msg === "1") replier.reply(UI.make("알림", "전투 시스템은 현재 점검 중입니다", "메인 복귀", true)); break;
+            case "USER_INQUIRY": 
+                return UserActions.handleInquiry(msg, session, replier);
+
+            case "COL_MAIN": 
+            case "COL_TITLE_ACTION": 
+                return UserActions.showCollection(msg, session, replier);
+
+            case "SHOP_MAIN": 
+            case "SHOP_BUY_ACTION": 
+                return UserActions.handleShop(msg, session, replier);
+
+            case "BATTLE_MAIN": 
+                if (msg === "1") replier.reply(UI.make("알림", "전투 시스템은 현재 점검 중입니다", "메인 복귀", true)); 
+                break;
+
+            default:
+                if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
+                break;
         }
     }
 };
-
 
 // ━━━━━━━━ [10. 메인 응답 핸들러] ━━━━━━━━
 try {
