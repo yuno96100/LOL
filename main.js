@@ -740,28 +740,31 @@ var UserManager = {
         if (Config.NAV_ITEMS.indexOf(msg) !== -1) {
             var curr = session.screen;
             
-            // 강화 단계에서 '이전' 입력 시 프로필로 복귀
+            // 강화 단계에서 '이전' 시 프로필로 복귀
             if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") {
                 return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 화면으로 돌아갑니다."));
             }
             
-            // 컬렉션 또는 상점 단계에서 복귀 처리
-            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") {
-                return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 목록으로 돌아갑니다."));
-            }
-            if (curr === "SHOP_BUY_ACTION") {
-                return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 목록으로 돌아갑니다."));
-            }
+            // 상점/컬렉션 복귀 로직
+            if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
+            if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
 
-            // 그 외 상황은 세션 초기화 후 기본 메뉴 출력
             SessionManager.reset(session, hash);
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 2. 일반 사용자 화면 상태(Screen)별 분기 처리
+        // 2. 화면 상태(Screen)별 분기 처리
         switch (session.screen) {
+            case "MAIN_MENU": // [추가] 메인 메뉴 상태에서 입력 처리
+                if (msg === "1") {
+                    session.screen = "PROFILE_VIEW";
+                    return replier.reply(UI.go(session, "PROFILE_VIEW", "내 프로필", "", "1. 능력치 강화"));
+                }
+                // 다른 메뉴 번호(2, 3...)가 있다면 여기에 추가
+                break;
+
             case "PROFILE_VIEW":
-                // [수정 포인트] 프로필 화면에서 1번을 누르면 강화 메뉴로 이동
+                // 프로필 화면에서 1번을 누르면 강화 항목 선택 메뉴로 이동
                 if (msg === "1") {
                     session.screen = "STAT_UP_MENU";
                     return replier.reply(UI.go(session, "STAT_UP_MENU", "능력치 강화", "", "강화할 항목의 번호를 입력하세요."));
@@ -778,17 +781,10 @@ var UserManager = {
                 UserActions.handleStatUp(msg, session, replier);
                 break;
 
-            case "COL_MAIN":
-                // 컬렉션 관련 로직 (필요 시 연결)
-                break;
-
-            case "SHOP_MAIN":
-                // 상점 관련 로직 (필요 시 연결)
-                break;
-
             default:
-                // 기본 상태(메뉴 선택 전 등)에서 '메뉴' 입력 시 대응
+                // 상태가 없거나 기본 상태일 때 '메뉴' 대응
                 if (msg === "메뉴") {
+                    session.screen = "MAIN_MENU";
                     return replier.reply(UI.renderMenu(session));
                 }
                 break;
