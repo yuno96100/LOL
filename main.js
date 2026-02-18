@@ -736,14 +736,12 @@ var UserManager = {
         var hash = session.hash;
         var data = session.data;
 
-        // 1. 공통 네비게이션(이전/취소/메뉴) 처리
+        // 1. 공통 네비게이션 처리
         if (Config.NAV_ITEMS.indexOf(msg) !== -1) {
             var curr = session.screen;
-            // 강화 단계에서 '이전' 입력 시 프로필로 복귀
             if (curr === "STAT_UP_MENU" || curr === "STAT_UP_INPUT") {
                 return replier.reply(UI.go(session, "PROFILE_VIEW", "", "", "프로필 복귀"));
             }
-            // 컬렉션/상점 등 복귀 처리
             if (curr === "COL_TITLE_ACTION" || curr === "COL_CHAR_VIEW") return replier.reply(UI.go(session, "COL_MAIN", "", "", "컬렉션 복귀"));
             if (curr === "SHOP_BUY_ACTION") return replier.reply(UI.go(session, "SHOP_MAIN", "", "", "상점 복귀"));
 
@@ -751,11 +749,10 @@ var UserManager = {
             return replier.reply(UI.renderMenu(session));
         }
 
-        // 2. 화면 상태(Screen)별 분기 처리
+        // 2. 화면 상태별 분기
         switch (session.screen) {
-            // [메인 메뉴] 생략되었던 2~6번 로직 모두 포함
-            case "MAIN_MENU":
             case "USER_MAIN":
+            case "MAIN_MENU":
                 if (msg === "1") return replier.reply(UI.go(session, "PROFILE_VIEW", "내 정보", "", "1. 능력치 강화"));
                 if (msg === "2") return replier.reply(UI.go(session, "COL_MAIN", "", "", "항목 선택"));
                 if (msg === "3") return replier.reply(UI.go(session, "BATTLE_MAIN", "대전 모드", "1. AI 대전 시작", "모드 선택"));
@@ -768,7 +765,8 @@ var UserManager = {
                 break;
 
             case "PROFILE_VIEW":
-                if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "강화 메뉴", "1.정확  2.반응\n3.침착  4.직관", "강화할 항목 번호 입력"));
+                // [수정1] 본문을 비워두어 UI.go가 프로필만 깔끔하게 보여주도록 함
+                if (msg === "1") return replier.reply(UI.go(session, "STAT_UP_MENU", "강화 메뉴", "", "강화할 항목 번호 입력 (1~4)"));
                 break;
 
             case "STAT_UP_MENU":
@@ -779,44 +777,25 @@ var UserManager = {
                     session.screen = "STAT_UP_INPUT";
                     session.selectedStatName = statMap[msg];
                     session.selectedStatKey = keyMap[msg];
-                    
-                    var currentStat = session.data.stats[keyMap[msg]];
-                    var myPoint = session.data.point || 0;
-                    
-                    // [최종 수정] 불필요한 공백과 줄바꿈을 제거하여 딱 한 세트만 나오게 합니다.
-                    var displayBody = " [ " + statMap[msg] + " 강화 진행 중 ]\n\n" +
-                                      " 현재 수치 : " + currentStat + "\n" +
-                                      " 남은 포인트 : " + myPoint + " P\n\n" +
-                                      " 정말 강화를 진행하시겠습니까?";
 
-                    // UI.go 내부에서 이미 프로필 레이아웃을 가져오므로, 
-                    // 여기서는 안내 문구만 깔끔하게 전달합니다.
-                    return replier.reply(UI.go(session, "STAT_UP_INPUT", "강화 수치 입력", displayBody, "투자할 포인트 숫자를 입력하세요."));
+                    // [수정2] 중복 출력을 방지하기 위해 필요한 정보만 본문에 담음
+                    var body = "\n [ " + statMap[msg] + " 강화 진행 ]\n\n" +
+                               " 현재 수치 : " + data.stats[keyMap[msg]] + "\n" +
+                               " 보유 포인트 : " + (data.point || 0) + " P\n\n" +
+                               " 투자할 포인트 숫자를 입력하세요.";
+
+                    return replier.reply(UI.go(session, "STAT_UP_INPUT", "수치 입력", body, "숫자만 입력해 주세요."));
                 }
                 break;
 
             case "STAT_UP_INPUT":
-                // 숫자를 입력했을 때 실제 강화 기능을 실행하는 핵심 연결 로직
+                // [수정3] UserActions.handleStatUp만 실행하고 중복 응답이 나가지 않도록 return 처리
                 return UserActions.handleStatUp(msg, session, replier);
 
-            case "USER_INQUIRY": 
-                return UserActions.handleInquiry(msg, session, replier);
-
-            case "COL_MAIN": 
-            case "COL_TITLE_ACTION": 
-                return UserActions.showCollection(msg, session, replier);
-
-            case "SHOP_MAIN": 
-            case "SHOP_BUY_ACTION": 
-                return UserActions.handleShop(msg, session, replier);
-
-            case "BATTLE_MAIN": 
-                if (msg === "1") replier.reply(UI.make("알림", "전투 시스템은 현재 점검 중입니다", "메인 복귀", true)); 
-                break;
-
-            default:
-                if (msg === "메뉴") return replier.reply(UI.renderMenu(session));
-                break;
+            case "USER_INQUIRY": return UserActions.handleInquiry(msg, session, replier);
+            case "COL_MAIN": case "COL_TITLE_ACTION": return UserActions.showCollection(msg, session, replier);
+            case "SHOP_MAIN": case "SHOP_BUY_ACTION": return UserActions.handleShop(msg, session, replier);
+            case "BATTLE_MAIN": if (msg === "1") replier.reply(UI.make("알림", "전투 시스템은 현재 점검 중입니다", "메인 복귀", true)); break;
         }
     }
 };
