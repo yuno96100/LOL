@@ -1,13 +1,13 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL VERSION (v1.2.1)
- * - 버그 수정: 관리자/메뉴 진입 시 첫 입력 무시되는 현상 완벽 해결 (참조 끊김 수정)
- * - 안정성: 모든 긴 문자열 배열 처리로 에러 차단
- * - 기능: 로그인/상점/강화/관리자/자동복귀 등 모든 기능 포함
+ * 🏰 소환사의 협곡 Bot - FINAL VERSION (v1.2.2)
+ * - 오류 수정: 'Unterminated string literal' 원천 차단 (긴 텍스트 배열화)
+ * - 기능 포함: 로그인/가입, 상점(아이템/챔피언), 강화, 컬렉션, 관리자, 자동복귀
+ * - UI: 모든 화면 프레임 통일 및 하단 도움말 적용
  */
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.2.1 BugFix",
+    Version: "v1.2.2 FinalFix",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -28,8 +28,6 @@ var Utils = {
     wrapText: function(str) {
         if (!str) return "";
         var lines = str.split("\n"), result = [];
-        var punctuation = [".", "!", "?", ","]; 
-
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
             if (line.length <= Config.WRAP_LIMIT) { 
@@ -37,13 +35,8 @@ var Utils = {
             } else { 
                 var currentLine = "";
                 for (var j = 0; j < line.length; j++) {
-                    var char = line[j];
-                    currentLine += char;
+                    currentLine += line[j];
                     if (currentLine.length >= Config.WRAP_LIMIT) {
-                        while (j + 1 < line.length && punctuation.indexOf(line[j + 1]) !== -1) {
-                            currentLine += line[j + 1];
-                            j++;
-                        }
                         result.push(currentLine);
                         currentLine = "";
                     }
@@ -111,24 +104,20 @@ var Database = {
 
 var SessionManager = {
     sessions: {},
-    
     get: function(sender) {
         if (!this.sessions[sender]) {
             this.sessions[sender] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
         }
         var s = this.sessions[sender];
         
-        // 타임아웃 체크 (5분)
         var now = Date.now();
         if (s.screen !== "IDLE" && (now - s.lastTime > Config.TIMEOUT_MS)) {
             this.reset(sender);
-            return { screen: "TIMEOUT", temp: {} }; // 만료 신호
+            return { screen: "TIMEOUT", temp: {} }; 
         }
         s.lastTime = now;
         return s;
     },
-
-    // [중요 수정] 객체를 교체하지 않고 속성만 초기화 (참조 유지)
     reset: function(sender) {
         if (!this.sessions[sender]) {
             this.sessions[sender] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
@@ -141,7 +130,7 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [3. 콘텐츠 매니저] ━━━━━━━━
+// ━━━━━━━━ [3. 콘텐츠 매니저 (배열 방식 적용)] ━━━━━━━━
 var ContentManager = {
     menus: {
         guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
@@ -154,18 +143,27 @@ var ContentManager = {
             "6. 로그아웃"
         ],
         stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
-        shopMain: ["1. 아이템 상점 (소모품)", "2. 챔피언 상점 (영입)"],
+        shopMain: ["1. 아이템 상점", "2. 챔피언 상점"],
         shopItems: ["1. 닉네임 변경권 (500G)", "2. 스탯 초기화권 (1500G)"],
         adminMain: ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리"],
         adminUser: ["1. 정보 수정", "2. 데이터 초기화", "3. 계정 삭제", "4. 차단/해제"],
         adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"]
     },
     msg: {
-        welcome: ["소환사의 협곡에 오신 것을 환영합니다.", "원하시는 기능을 선택해 주세요."].join("\n"),
+        welcome: [
+            "소환사의 협곡에 오신 것을 환영합니다.", 
+            "원하시는 기능을 선택해 주세요."
+        ].join("\n"),
+        
         inputID_Join: "사용하실 아이디를 입력해 주세요. (최대 10자)",
         inputID_Login: "로그인할 아이디를 입력해 주세요.",
         inputPW: "비밀번호를 입력해 주세요.",
-        registerComplete: ["가입이 완료되었습니다!", "자동으로 로그인됩니다."].join("\n"),
+        
+        registerComplete: [
+            "가입이 완료되었습니다!", 
+            "자동으로 로그인됩니다."
+        ].join("\n"),
+        
         loginFail: "정보가 일치하지 않습니다.",
         notEnoughGold: "골드가 부족합니다.",
         onlyNumber: "숫자만 입력해 주세요.",
@@ -173,7 +171,13 @@ var ContentManager = {
         battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다.",
         adminSelectUser: "관리할 유저의 번호를 입력하세요."
     },
-    champions: ["알리스타", "말파이트", "레오나", "가렌", "다리우스", "잭스", "제드", "카타리나", "탈론", "럭스", "아리", "빅토르", "애쉬", "베인", "카이사", "소라카", "유미", "쓰레쉬"]
+    // 긴 목록은 줄바꿈 에러 방지를 위해 여러 줄로 작성
+    champions: [
+        "알리스타", "말파이트", "레오나", "가렌", "다리우스", 
+        "잭스", "제드", "카타리나", "탈론", "럭스", 
+        "아리", "빅토르", "애쉬", "베인", "카이사", 
+        "소라카", "유미", "쓰레쉬"
+    ]
 };
 
 // ━━━━━━━━ [4. 레이아웃 매니저] ━━━━━━━━
@@ -182,14 +186,12 @@ var LayoutManager = {
         var div = Utils.getFixedDivider();
         var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content);
 
-        // 네비게이션 바
         if (showNav === true) {
             res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
         } else if (Array.isArray(showNav)) {
             res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
         }
 
-        // 하단 도움말
         if (footer) {
             res += "\n" + div + "\n💡 " + footer;
         }
@@ -197,7 +199,6 @@ var LayoutManager = {
         return res;
     },
 
-    // 알림창 (네비 X, 도움말은 잠시만 기다려주세요)
     renderAlert: function(title, content) {
         return this.renderFrame(title, content, false, "잠시만 기다려주세요...");
     },
@@ -254,7 +255,7 @@ var LayoutManager = {
 var SystemAction = {
     go: function(replier, title, msg, nextFunc) {
         replier.reply(LayoutManager.renderAlert(title, msg));
-        java.lang.Thread.sleep(1200); // 1.2초 대기
+        java.lang.Thread.sleep(1200); 
         if (nextFunc) nextFunc();
     }
 };
@@ -264,7 +265,6 @@ var SystemAction = {
 // 6-1. 인증 컨트롤러
 var AuthController = {
     handle: function(msg, session, sender, replier) {
-        // 진입 화면
         if (session.screen === "IDLE" || session.screen === "GUEST_MAIN") {
             session.screen = "GUEST_MAIN";
             if (msg === "1") { 
@@ -283,7 +283,6 @@ var AuthController = {
             return replier.reply(LayoutManager.renderFrame("게스트 모드", body, false, "번호를 선택하세요.")); 
         }
 
-        // 회원가입
         if (session.screen === "JOIN_ID") {
             if (msg.length > 10) return SystemAction.go(replier, "오류", "아이디는 10자 이내여야 합니다."); 
             if (Database.data[msg]) return SystemAction.go(replier, "오류", "이미 존재하는 아이디입니다.");
@@ -305,7 +304,6 @@ var AuthController = {
             });
         }
 
-        // 로그인
         if (session.screen === "LOGIN_ID") {
             if (!Database.data[msg]) return SystemAction.go(replier, "오류", "존재하지 않는 아이디입니다.");
             session.temp.id = msg;
@@ -448,11 +446,9 @@ var UserController = {
             if (price > 0) {
                 if (data.gold < price) return SystemAction.go(replier, "실패", ContentManager.msg.notEnoughGold);
                 data.gold -= price;
-                
                 var resText = name + " 구매 완료!";
                 if (action === "name") { data.gold += price; resText = "관리자 문의 필요 (골드 반환)"; }
                 else if (action === "reset_stat") { data.stats = { acc: 10, ref: 10, com: 10, int: 10 }; resText += "\n(스탯 초기화)"; }
-
                 Database.save();
                 return SystemAction.go(replier, "구매 성공", resText + "\n남은 골드: " + data.gold + " G", function() { UserController.handle("4", session, sender, replier); });
             }
@@ -463,29 +459,17 @@ var UserController = {
             if (ContentManager.champions[idx]) {
                 var target = ContentManager.champions[idx];
                 if (!data.inventory.champions) data.inventory.champions = [];
-                
-                if (data.inventory.champions.indexOf(target) !== -1) {
-                    return SystemAction.go(replier, "알림", "이미 보유중인 챔피언입니다.");
-                }
-                if (data.gold < 500) {
-                    return SystemAction.go(replier, "실패", ContentManager.msg.notEnoughGold);
-                }
-                
-                data.gold -= 500;
-                data.inventory.champions.push(target);
-                Database.save();
-                
-                return SystemAction.go(replier, "영입 성공", "[" + target + "] 영입 완료!\n남은 골드: " + data.gold + " G", function() {
-                    var cList = ContentManager.champions.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); }).join("\n");
-                    replier.reply(LayoutManager.renderFrame("챔피언 상점 (500G)", cList + "\n\n영입할 번호 입력", true, "번호 선택"));
-                });
+                if (data.inventory.champions.indexOf(target) !== -1) return SystemAction.go(replier, "알림", "이미 보유중인 챔피언입니다.");
+                if (data.gold < 500) return SystemAction.go(replier, "실패", ContentManager.msg.notEnoughGold);
+                data.gold -= 500; data.inventory.champions.push(target); Database.save();
+                return SystemAction.go(replier, "영입 성공", target + " 합류!", function(){ UserController.handle("4", session, sender, replier); });
             }
         }
 
         // [5] 문의
         if (session.screen === "MAIN" && msg === "5") {
             session.screen = "USER_INQUIRY";
-            return replier.reply(LayoutManager.renderFrame("문의 접수", "운영진에게 보낼 내용을 입력하세요.", true, "내용 입력"));
+            return replier.reply(LayoutManager.renderFrame("문의 접수", "내용을 입력하세요.", true, "내용 입력"));
         }
         if (session.screen === "USER_INQUIRY") {
             Database.inquiries.push({ sender: session.tempId, content: msg, time: new Date().toLocaleString(), read: false });
@@ -600,7 +584,6 @@ var AdminController = {
              if(!isNaN(val)) {
                  Database.data[session.temp.targetUser][session.temp.editType] = val;
                  Database.save();
-                 
                  return SystemAction.go(replier, "완료", "수정되었습니다.", function() {
                      session.screen = "ADMIN_USER_DETAIL";
                      AdminController.handle("menu_refresh", session, sender, replier);
@@ -615,7 +598,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     try {
         Database.load(); 
         var realMsg = msg.trim();
-        var session = SessionManager.get(sender, room, replier);
+        var session = SessionManager.get(sender);
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
