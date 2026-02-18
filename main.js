@@ -603,20 +603,25 @@ var UserActions = {
         return replier.reply(UI.go(session, "STAT_UP_INPUT", "수치 입력", "", ""));
     }
 
-        // 데이터 처리 (Model)
-        data.point -= amount;
-        data.stats[session.selectedStatKey] += amount;
-        Database.save();
+// 1. 실제 데이터 반영
+    data.point -= amount;
+    data.stats[session.selectedStatKey] += amount;
+    Database.save(); // 데이터 즉시 저장
 
-        // 화면에 뿌릴 데이터 가공 (Controller)
-        var resultBody = "\n [ 강화 성공 ]\n" + 
-                         " " + session.selectedStatName + " 수치가 " + amount + " 상승했습니다.\n" +
-                         " 현재 포인트: " + data.point + " P";
+    // 2. [핵심] 여기서 UI.go를 호출하지 마세요! 
+    // UI.go를 호출하면 이전 단계의 STAT_UP_INPUT 레이아웃이 다시 그려지며 중복이 생깁니다.
+    
+    // 3. 대신 결과 레이아웃만 깔끔하게 보냅니다.
+    var resultView = LayoutManager.renderStatResult(
+        session.selectedStatName, 
+        amount, 
+        data.stats[session.selectedStatKey]
+    );
 
-        // 상태 변경 후 출력 (View 호출)
-        session.screen = "PROFILE_VIEW";
-        return replier.reply(UI.go(session, "PROFILE_VIEW", "결과 알림", resultBody, "1. 다시 강화하기"));
-    }
+    // 상태를 프로필 조회로 변경만 하고 결과값 전송
+    session.screen = "PROFILE_VIEW"; 
+    return replier.reply(resultView); 
+}
         
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
