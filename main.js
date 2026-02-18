@@ -590,11 +590,18 @@ var UserActions = {
         }
     },
     handleStatUp: function(msg, session, replier) {
-        var amount = parseInt(msg);
-        if (isNaN(amount) || amount <= 0) return replier.reply("숫자만 입력해 주세요.");
-
-        var data = session.data;
-        if (data.point < amount) return replier.reply("포인트가 부족합니다.");
+    var amount = parseInt(msg);
+    if (isNaN(amount) || amount <= 0) {
+        // [수정] 경고창을 띄운 후 다시 입력창으로 보낼 때 인자를 비웁니다.
+        replier.reply("❌ 숫자만 입력해 주세요.");
+        return replier.reply(UI.go(session, "STAT_UP_INPUT", "수치 입력", "", ""));
+    }
+    
+    var data = session.data;
+    if (data.point < amount) {
+        replier.reply("❌ 포인트가 부족합니다.");
+        return replier.reply(UI.go(session, "STAT_UP_INPUT", "수치 입력", "", ""));
+    }
 
         // 데이터 처리 (Model)
         data.point -= amount;
@@ -776,28 +783,18 @@ var UserManager = {
                 break;
 
             case "STAT_UP_MENU":
-                var statMap = { "1": "정확", "2": "반응", "3": "침착", "4": "직관" };
-                var keyMap = { "1": "acc", "2": "ref", "3": "com", "4": "int" };
+    var statMap = { "1": "정확", "2": "반응", "3": "침착", "4": "직관" };
+    var keyMap = { "1": "acc", "2": "ref", "3": "com", "4": "int" };
 
-                if (statMap[msg]) {
-                    // 1. 데이터 처리 및 세션 저장
-                    session.screen = "STAT_UP_INPUT";
-                    session.selectedStatName = statMap[msg];
-                    session.selectedStatKey = keyMap[msg];
-
-                    // 2. 레이아웃에 주입할 데이터 구성
-                    var currentVal = data.stats[keyMap[msg]];
-                    var myPoint = data.point || 0;
-                    
-                    var body = "\n [ " + statMap[msg] + " 강화 진행 ]\n\n" +
-                               " 현재 수치 : " + currentVal + "\n" +
-                               " 보유 포인트 : " + myPoint + " P\n\n" +
-                               " 투자할 포인트 숫자를 입력하세요.";
-
-                    // 3. 출력 (여기서 딱 한 번만 실행)
-                    return replier.reply(UI.go(session, "STAT_UP_INPUT", "수치 입력", body, "숫자만 입력해 주세요."));
-                }
-                break;
+    if (statMap[msg]) {
+        session.selectedStatName = statMap[msg];
+        session.selectedStatKey = keyMap[msg];
+        
+        // [수정] content(4번째 인자)와 help(5번째 인자)를 비워줍니다. 
+        // LayoutManager가 이미 해당 문구들을 가지고 있기 때문입니다.
+        return replier.reply(UI.go(session, "STAT_UP_INPUT", "수치 입력", "", ""));
+    }
+    break;
 
             case "STAT_UP_INPUT":
                 // 중복 응답 방지를 위해 return을 사용하여 이 함수에서 처리를 끝냅니다.
