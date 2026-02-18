@@ -590,20 +590,33 @@ var UserActions = {
         }
     },
     handleStatUp: function(msg, session, replier) {
-        var d = session.data;
-        
-        if (session.screen === "STAT_UP_MENU") {
-            var keys = ["acc", "ref", "com", "int"], names = ["정확", "반응", "침착", "직관"];
-            var idx = parseInt(msg) - 1;
-            if (keys[idx]) {
-                session.selectedStatKey = keys[idx]; // 키 저장 
-                session.selectedStatName = names[idx];
-                session.screen = "STAT_UP_INPUT";
-                
-                // 도움말에 입력 가이드 출력 [cite: 483, 490]
-                return replier.reply(UI.go(session, "STAT_UP_INPUT", "강화 수치 입력", "", "투자할 포인트 숫자를 입력해 주세요.\n(취소: '이전' 입력)"));
-            }
-        } 
+    var amount = parseInt(msg);
+    if (isNaN(amount) || amount <= 0) {
+        return replier.reply("숫자만 입력해 주세요.");
+    }
+
+    var data = session.data;
+    if (data.point < amount) {
+        return replier.reply("포인트가 부족합니다. (보유: " + data.point + "P)");
+    }
+
+    // 실제 데이터 반영
+    data.point -= amount;
+    data.stats[session.selectedStatKey] += amount;
+    Database.save(); // 저장
+
+    // [수정 포인트] 강화 성공 후 화면을 다시 UI.go로 호출하지 않고, 
+    // 결과 안내만 깔끔하게 보낸 뒤 프로필로 이동시키거나 상태를 유지합니다.
+    
+    var resultText = "\n [ 강화 성공! ]\n\n" +
+                     " " + session.selectedStatName + " 수치가 " + amount + " 만큼 상승했습니다.\n" +
+                     " 현재 수치: " + data.stats[session.selectedStatKey] + "\n" +
+                     " 남은 포인트: " + data.point + " P";
+
+    // 상태를 다시 입력창으로 두지 않고 메뉴나 프로필로 돌려보내는 것이 중복을 막는 가장 좋은 방법입니다.
+    session.screen = "PROFILE_VIEW"; 
+    return replier.reply(UI.go(session, "PROFILE_VIEW", "강화 완료", resultText, "1. 추가 강화하기"));
+}
         
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
@@ -789,7 +802,7 @@ var UserManager = {
                 break;
 
             case "STAT_UP_INPUT":
-                // [수정3] UserActions.handleStatUp만 실행하고 중복 응답이 나가지 않도록 return 처리
+                // 중복 응답 방지를 위해 return을 사용하여 이 함수에서 처리를 끝냅니다.
                 return UserActions.handleStatUp(msg, session, replier);
 
             case "USER_INQUIRY": return UserActions.handleInquiry(msg, session, replier);
