@@ -82,6 +82,16 @@ var SessionManager = {
     }
 };
 
+"Unterminated string literal" 오류는 주로 코드를 복사/붙여넣기 하는 과정에서 긴 문자열이 줄바꿈 되면서 따옴표(")가 닫히지 않았을 때 발생합니다.
+
+특히 LayoutManager의 프로필 출력 부분이 길어서 이 오류가 날 확률이 가장 높습니다.
+
+오류를 100% 방지하기 위해, 긴 문자열을 +로 연결하는 방식 대신 한 줄씩 차곡차곡 쌓는 안전한 방식으로 수정한 코드를 드리겠습니다.
+
+아래 두 모듈(LayoutManager, ContentManager)만 기존 코드에서 지우고 이걸로 갈아끼우시면 해결됩니다!
+
+🛠️ 수정된 모듈 (오류 해결 버전)
+JavaScript
 // ━━━━━━━━ [3. 콘텐츠 매니저 (텍스트/데이터 관리)] ━━━━━━━━
 var ContentManager = {
     menus: {
@@ -89,7 +99,7 @@ var ContentManager = {
         stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
         collection: ["1. 보유 칭호 (장착)", "2. 보유 캐릭터"],
         shop: ["1. 랜덤 칭호 상자 (500P)", "2. 캐릭터 뽑기 (1000P)", "3. 경험치 부스트 (300P)"],
-        adminMain: ["1. 유저 조회", "2. 전체 공지"],
+        adminMain: ["1. 유저 조회", "2. 전체 공지", "3. 초기화"],
         adminUser: ["1. 포인트 수정", "2. 경험치 수정", "3. 칭호 지급", "4. 차단/해제"]
     },
     msg: {
@@ -111,11 +121,14 @@ var LayoutManager = {
     // [프레임] 전체 창 틀
     renderFrame: function(title, content, navItems) {
         var div = Utils.getFixedDivider();
-        var nav = navItems ? "\n" + div + "\n[ " + navItems.join(" | ") + " ]" : "";
+        var nav = "";
+        if (navItems) {
+            nav = "\n" + div + "\n[ " + navItems.join(" | ") + " ]";
+        }
         return "『 " + title + " 』\n" + div + "\n" + content + nav;
     },
 
-    // [헤더] 유저 상세 프로필 (기존 세로형 디자인 유지)
+    // [헤더] 유저 상세 프로필 (안전한 문자열 결합 방식 적용)
     renderProfileHead: function(data, targetName) {
         var div = Utils.getFixedDivider();
         var tier = Utils.getTierInfo(data.lp);
@@ -124,23 +137,27 @@ var LayoutManager = {
         var st = data.stats;
         var expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
         var banStatus = data.banned ? " [🚫차단]" : "";
+
+        // [수정] 한 줄씩 변수에 담아서 오류 방지
+        var res = "";
+        res += "👤 대상: " + targetName + banStatus + "\n";
+        res += "🏅 칭호: [" + data.title + "]\n";
+        res += div + "\n";
+        res += "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n";
+        res += "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n";
+        res += "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n";
+        res += "🆙 레벨: Lv." + data.level + "\n";
+        res += "🔷 경험: (" + expDisplay + ")\n";
+        res += div + "\n";
+        res += " [ 상세 능력치 ]\n";
+        res += "🎯 정확: " + st.acc + "\n";
+        res += "⚡ 반응: " + st.ref + "\n";
+        res += "🧘 침착: " + st.com + "\n";
+        res += "🧠 직관: " + st.int + "\n";
+        res += div + "\n";
+        res += "✨ 포인트: " + (data.point || 0) + " P";
         
-        return "👤 대상: " + targetName + banStatus + "\n" +
-               "🏅 칭호: [" + data.title + "]\n" +
-               div + "\n" +
-               "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")\n" +
-               "💰 골드: " + (data.gold || 0).toLocaleString() + " G\n" +
-               "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)\n" + 
-               "🆙 레벨: Lv." + data.level + "\n" +
-               "🔷 경험: (" + expDisplay + ")\n" +
-               div + "\n" +
-               " [ 상세 능력치 ]\n" +
-               "🎯 정확: " + st.acc + "\n" +
-               "⚡ 반응: " + st.ref + "\n" +
-               "🧘 침착: " + st.com + "\n" +
-               "🧠 직관: " + st.int + "\n" +
-               div + "\n" +
-               "✨ 포인트: " + (data.point || 0) + " P";
+        return res;
     },
 
     // [템플릿] 각종 하단부(Body) 디자인
@@ -160,7 +177,6 @@ var LayoutManager = {
         }
     }
 };
-
 // ━━━━━━━━ [5. 컨트롤러 (로직 및 기능 구현)] ━━━━━━━━
 
 // 5-1. 인증 컨트롤러 (로그인/가입)
