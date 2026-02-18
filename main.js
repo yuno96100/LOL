@@ -82,16 +82,6 @@ var SessionManager = {
     }
 };
 
-"Unterminated string literal" 오류는 주로 코드를 복사/붙여넣기 하는 과정에서 긴 문자열이 줄바꿈 되면서 따옴표(")가 닫히지 않았을 때 발생합니다.
-
-특히 LayoutManager의 프로필 출력 부분이 길어서 이 오류가 날 확률이 가장 높습니다.
-
-오류를 100% 방지하기 위해, 긴 문자열을 +로 연결하는 방식 대신 한 줄씩 차곡차곡 쌓는 안전한 방식으로 수정한 코드를 드리겠습니다.
-
-아래 두 모듈(LayoutManager, ContentManager)만 기존 코드에서 지우고 이걸로 갈아끼우시면 해결됩니다!
-
-🛠️ 수정된 모듈 (오류 해결 버전)
-JavaScript
 // ━━━━━━━━ [3. 콘텐츠 매니저 (텍스트/데이터 관리)] ━━━━━━━━
 var ContentManager = {
     menus: {
