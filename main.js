@@ -590,33 +590,26 @@ var UserActions = {
         }
     },
     handleStatUp: function(msg, session, replier) {
-    var amount = parseInt(msg);
-    if (isNaN(amount) || amount <= 0) {
-        return replier.reply("숫자만 입력해 주세요.");
+        var amount = parseInt(msg);
+        if (isNaN(amount) || amount <= 0) return replier.reply("숫자만 입력해 주세요.");
+
+        var data = session.data;
+        if (data.point < amount) return replier.reply("포인트가 부족합니다.");
+
+        // 데이터 처리 (Model)
+        data.point -= amount;
+        data.stats[session.selectedStatKey] += amount;
+        Database.save();
+
+        // 화면에 뿌릴 데이터 가공 (Controller)
+        var resultBody = "\n [ 강화 성공 ]\n" + 
+                         " " + session.selectedStatName + " 수치가 " + amount + " 상승했습니다.\n" +
+                         " 현재 포인트: " + data.point + " P";
+
+        // 상태 변경 후 출력 (View 호출)
+        session.screen = "PROFILE_VIEW";
+        return replier.reply(UI.go(session, "PROFILE_VIEW", "결과 알림", resultBody, "1. 다시 강화하기"));
     }
-
-    var data = session.data;
-    if (data.point < amount) {
-        return replier.reply("포인트가 부족합니다. (보유: " + data.point + "P)");
-    }
-
-    // 실제 데이터 반영
-    data.point -= amount;
-    data.stats[session.selectedStatKey] += amount;
-    Database.save(); // 저장
-
-    // [수정 포인트] 강화 성공 후 화면을 다시 UI.go로 호출하지 않고, 
-    // 결과 안내만 깔끔하게 보낸 뒤 프로필로 이동시키거나 상태를 유지합니다.
-    
-    var resultText = "\n [ 강화 성공! ]\n\n" +
-                     " " + session.selectedStatName + " 수치가 " + amount + " 만큼 상승했습니다.\n" +
-                     " 현재 수치: " + data.stats[session.selectedStatKey] + "\n" +
-                     " 남은 포인트: " + data.point + " P";
-
-    // 상태를 다시 입력창으로 두지 않고 메뉴나 프로필로 돌려보내는 것이 중복을 막는 가장 좋은 방법입니다.
-    session.screen = "PROFILE_VIEW"; 
-    return replier.reply(UI.go(session, "PROFILE_VIEW", "강화 완료", resultText, "1. 추가 강화하기"));
-}
         
         if (session.screen === "STAT_UP_INPUT") {
             var amt = parseInt(msg);
@@ -787,16 +780,21 @@ var UserManager = {
                 var keyMap = { "1": "acc", "2": "ref", "3": "com", "4": "int" };
 
                 if (statMap[msg]) {
+                    // 1. 데이터 처리 및 세션 저장
                     session.screen = "STAT_UP_INPUT";
                     session.selectedStatName = statMap[msg];
                     session.selectedStatKey = keyMap[msg];
 
-                    // [수정2] 중복 출력을 방지하기 위해 필요한 정보만 본문에 담음
+                    // 2. 레이아웃에 주입할 데이터 구성
+                    var currentVal = data.stats[keyMap[msg]];
+                    var myPoint = data.point || 0;
+                    
                     var body = "\n [ " + statMap[msg] + " 강화 진행 ]\n\n" +
-                               " 현재 수치 : " + data.stats[keyMap[msg]] + "\n" +
-                               " 보유 포인트 : " + (data.point || 0) + " P\n\n" +
+                               " 현재 수치 : " + currentVal + "\n" +
+                               " 보유 포인트 : " + myPoint + " P\n\n" +
                                " 투자할 포인트 숫자를 입력하세요.";
 
+                    // 3. 출력 (여기서 딱 한 번만 실행)
                     return replier.reply(UI.go(session, "STAT_UP_INPUT", "수치 입력", body, "숫자만 입력해 주세요."));
                 }
                 break;
