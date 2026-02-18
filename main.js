@@ -1,13 +1,14 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL COMPLETE VERSION
- * 구조: MVC (LayoutManager + ContentManager + Controllers)
- * 모든 기능 이식 완료: 강화, 상점, 컬렉션, 관리자 등
+ * 🏰 소환사의 협곡 Bot - ORIGINAL CONTENT RESTORED
+ * - 구조: MVC 패턴 (LayoutManager + ContentManager + Controllers)
+ * - 내용: 2.txt 원본 기획 100% 복구 (메뉴, 상점, 프로필 등)
+ * - 설정: 접두사 없음, 회원가입 루프 해결
  */
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.0.0 Final",
-    Prefix: ".",
+    Version: "v1.0.3 Original",
+    // Prefix 삭제됨 (빈 문자열 처리)
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "/sdcard/msgbot/Bots/main/database.json",
@@ -20,7 +21,6 @@ var MAX_LEVEL = 30;
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
     
-    // 티어 계산 로직 (전 구간 포함)
     getTierInfo: function(lp) {
         if (lp >= 3000) return { name: "챌린저", icon: "💎" };
         if (lp >= 2500) return { name: "그랜드마스터", icon: "👑" };
@@ -30,7 +30,7 @@ var Utils = {
         if (lp >= 500) return { name: "골드", icon: "🥇" };
         if (lp >= 200) return { name: "실버", icon: "🥈" };
         if (lp >= 100) return { name: "브론즈", icon: "🥉" };
-        return { name: "아이언", icon: "🔩" };
+        return { name: "언랭크", icon: "🥚" };
     }
 };
 
@@ -51,15 +51,13 @@ var Database = {
         writer.write(JSON.stringify(this.data));
         writer.close();
     },
-    // 초기 유저 생성
     createUser: function(sender, nickname) {
         this.data[sender] = {
             name: nickname,
             title: "뉴비",
             lp: 0, win: 0, lose: 0,
             level: 1, exp: 0,
-            gold: 1000, point: 100,
-            // 스탯: 정확, 반응, 침착, 직관
+            gold: 0, point: 1000, // 초기 자금
             stats: { acc: 10, ref: 10, com: 10, int: 10 }, 
             inventory: { titles: ["뉴비"], characters: [] },
             banned: false
@@ -68,7 +66,6 @@ var Database = {
     }
 };
 
-// 세션 관리 (유저의 현재 화면 상태 기억)
 var SessionManager = {
     sessions: {},
     get: function(sender) {
@@ -82,33 +79,47 @@ var SessionManager = {
     }
 };
 
-// ━━━━━━━━ [3. 콘텐츠 매니저 (텍스트/데이터 관리)] ━━━━━━━━
+// ━━━━━━━━ [3. 콘텐츠 매니저 (원본 내용 복구)] ━━━━━━━━
 var ContentManager = {
+    // 2.txt 원본 메뉴 구성 복구
     menus: {
-        main: ["1. 내 정보 (능력치 강화)", "2. 컬렉션", "3. 상점", "4. 문의하기", "5. 로그아웃"],
+        main: [
+            "1. 내 정보 조회",
+            "2. 컬렉션", 
+            "3. 대전 모드", 
+            "4. 포인트 상점", 
+            "5. 문의하기", 
+            "6. 로그아웃"
+        ],
         stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
-        collection: ["1. 보유 칭호 (장착)", "2. 보유 캐릭터"],
-        shop: ["1. 랜덤 칭호 상자 (500P)", "2. 캐릭터 뽑기 (1000P)", "3. 경험치 부스트 (300P)"],
-        adminMain: ["1. 유저 조회", "2. 전체 공지", "3. 초기화"],
+        collection: ["1. 보유 칭호", "2. 보유 캐릭터"],
+        shop: [
+            "1. 티어 승급권 (1000P)", 
+            "2. 닉네임 변경권 (500P)",
+            "3. 전적 초기화권 (2000P)",
+            "4. 스탯 초기화권 (1500P)",
+            "5. 랜덤 박스 (300P)"
+        ],
+        adminMain: ["1. 유저 목록", "2. 공지 사항", "3. 봇 종료"],
         adminUser: ["1. 포인트 수정", "2. 경험치 수정", "3. 칭호 지급", "4. 차단/해제"]
     },
     msg: {
         welcome: "소환사의 협곡에 오신 것을 환영합니다.\n사용하실 닉네임을 입력해 주세요.",
-        registerComplete: "가입이 완료되었습니다! '.메뉴'를 입력해 주세요.",
-        inputPoint: "투자할 포인트 액수를 입력하세요.",
+        registerComplete: "가입이 완료되었습니다! '메뉴'를 입력해 주세요.",
+        inputPoint: "투자할 포인트 숫자를 입력하세요.",
         notEnoughPoint: "포인트가 부족합니다.",
         onlyNumber: "숫자만 입력해 주세요.",
         itemBought: "구매가 완료되었습니다!",
         equipTitle: "칭호가 변경되었습니다.",
         adminSearch: "조회할 유저의 전체 닉네임(ID)을 입력하세요.",
         banned: "🚫 관리자에 의해 이용이 제한된 계정입니다.",
-        noData: "데이터가 존재하지 않습니다."
+        noData: "데이터가 존재하지 않습니다.",
+        battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다."
     }
 };
 
-// ━━━━━━━━ [4. 레이아웃 매니저 (순수 디자인)] ━━━━━━━━
+// ━━━━━━━━ [4. 레이아웃 매니저 (디자인)] ━━━━━━━━
 var LayoutManager = {
-    // [프레임] 전체 창 틀
     renderFrame: function(title, content, navItems) {
         var div = Utils.getFixedDivider();
         var nav = "";
@@ -118,7 +129,7 @@ var LayoutManager = {
         return "『 " + title + " 』\n" + div + "\n" + content + nav;
     },
 
-    // [헤더] 유저 상세 프로필 (안전한 문자열 결합 방식 적용)
+    // [원본] 세로형 상세 프로필 디자인 복구
     renderProfileHead: function(data, targetName) {
         var div = Utils.getFixedDivider();
         var tier = Utils.getTierInfo(data.lp);
@@ -128,7 +139,6 @@ var LayoutManager = {
         var expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
         var banStatus = data.banned ? " [🚫차단]" : "";
 
-        // [수정] 한 줄씩 변수에 담아서 오류 방지
         var res = "";
         res += "👤 대상: " + targetName + banStatus + "\n";
         res += "🏅 칭호: [" + data.title + "]\n";
@@ -150,13 +160,12 @@ var LayoutManager = {
         return res;
     },
 
-    // [템플릿] 각종 하단부(Body) 디자인
     templates: {
         menuList: function(subtitle, items) {
             return " [ " + subtitle + " ]\n\n " + items.join("\n ");
         },
         inputRequest: function(subtitle, currentVal, info) {
-            return " [ " + subtitle + " ]\n\n 현재 수치 : " + currentVal + "\n " + info + "\n\n 값을 입력하세요.";
+            return " [ " + subtitle + " ]\n\n 현재 상태 : " + currentVal + "\n " + info + "\n\n 값을 입력하세요.";
         },
         result: function(subtitle, text) {
             return " [ " + subtitle + " ]\n\n " + text;
@@ -167,38 +176,40 @@ var LayoutManager = {
         }
     }
 };
-// ━━━━━━━━ [5. 컨트롤러 (로직 및 기능 구현)] ━━━━━━━━
 
-// 5-1. 인증 컨트롤러 (로그인/가입)
+// ━━━━━━━━ [5. 컨트롤러 (로직)] ━━━━━━━━
+
+// 5-1. 인증 컨트롤러
 var AuthController = {
     handle: function(msg, session, sender, replier) {
         if (session.screen === "REGISTER") {
-            if (Database.data[msg]) return replier.reply("이미 존재하는 닉네임입니다. 다른 이름을 입력하세요.");
+            if (!msg || msg.trim().length === 0) return; // 빈 값 방지
+            if (Database.data[msg]) return replier.reply("이미 존재하는 닉네임입니다.");
+            
             Database.createUser(sender, msg);
             SessionManager.reset(sender);
             return replier.reply(ContentManager.msg.registerComplete);
         }
-        // 초기 가입 화면
         session.screen = "REGISTER";
         return replier.reply(LayoutManager.renderFrame("회원가입", ContentManager.msg.welcome));
     }
 };
 
-// 5-2. 유저 컨트롤러 (메인 게임 기능)
+// 5-2. 유저 컨트롤러
 var UserController = {
     handle: function(msg, session, sender, replier) {
         var data = Database.data[sender];
         if (data.banned) return replier.reply(ContentManager.msg.banned);
 
-        // [메인 메뉴]
-        if (session.screen === "MAIN" || msg === "메뉴") {
+        // 메인 메뉴
+        if (session.screen === "MAIN" || msg === "메뉴" || session.screen === "IDLE") {
             session.screen = "MAIN";
             var head = LayoutManager.renderProfileHead(data, sender);
             var body = LayoutManager.templates.menuList("메인 메뉴", ContentManager.menus.main);
             return replier.reply(LayoutManager.renderFrame("소환사의 협곡", head + "\n" + Utils.getFixedDivider() + "\n" + body));
         }
 
-        // [기능 1] 내 정보 & 강화
+        // 1. 내 정보 조회 (강화 메뉴 진입)
         if (session.screen === "MAIN" && msg === "1") {
             session.screen = "STAT_SELECT";
             var head = LayoutManager.renderProfileHead(data, sender);
@@ -212,8 +223,6 @@ var UserController = {
                 session.temp.statKey = statMap[msg];
                 session.temp.statName = nameMap[msg];
                 session.screen = "STAT_INPUT";
-                
-                // 입력창은 중복 방지를 위해 Body만 깔끔하게 출력
                 var body = LayoutManager.templates.inputRequest(session.temp.statName + " 강화", data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
                 return replier.reply(LayoutManager.renderFrame("강화 진행", body, ["취소", "메뉴"]));
             }
@@ -223,28 +232,27 @@ var UserController = {
             if (isNaN(amount) || amount <= 0) return replier.reply(ContentManager.msg.onlyNumber);
             if (data.point < amount) return replier.reply(ContentManager.msg.notEnoughPoint);
             
-            // 데이터 업데이트
             data.point -= amount;
             data.stats[session.temp.statKey] += amount;
             Database.save();
 
             var resultMsg = session.temp.statName + " 수치가 " + amount + " 상승했습니다.\n 현재 수치: " + data.stats[session.temp.statKey];
-            session.screen = "STAT_SELECT"; // 다시 선택 화면으로
+            session.screen = "STAT_SELECT";
             return replier.reply(LayoutManager.renderFrame("결과 확인", LayoutManager.templates.result("강화 성공", resultMsg), ["1. 계속 강화", "메뉴"]));
         }
 
-        // [기능 2] 컬렉션 & 칭호 장착
+        // 2. 컬렉션
         if (session.screen === "MAIN" && msg === "2") {
             session.screen = "COLLECTION_MAIN";
             return replier.reply(LayoutManager.renderFrame("컬렉션", LayoutManager.templates.menuList("컬렉션 분류", ContentManager.menus.collection), ["메뉴"]));
         }
         if (session.screen === "COLLECTION_MAIN") {
-             if (msg === "1") { // 칭호
+             if (msg === "1") {
                  session.screen = "TITLE_EQUIP";
                  var list = LayoutManager.templates.list("보유 칭호 목록", data.inventory.titles);
                  return replier.reply(LayoutManager.renderFrame("칭호 관리", list + "\n\n장착할 칭호 이름을 정확히 입력하세요.", ["메뉴"]));
              }
-             if (msg === "2") { // 캐릭터
+             if (msg === "2") {
                  var list = LayoutManager.templates.list("보유 캐릭터 목록", data.inventory.characters);
                  return replier.reply(LayoutManager.renderFrame("캐릭터 관리", list, ["메뉴"]));
              }
@@ -257,175 +265,134 @@ var UserController = {
             return replier.reply(LayoutManager.renderFrame("장착 완료", LayoutManager.templates.result("알림", "[" + msg + "] 칭호를 장착했습니다."), ["메뉴"]));
         }
 
-        // [기능 3] 상점 & 아이템 뽑기
+        // 3. 대전 모드 (준비중)
         if (session.screen === "MAIN" && msg === "3") {
+            return replier.reply(LayoutManager.renderFrame("대전 모드", ContentManager.msg.battlePrep, ["메뉴"]));
+        }
+
+        // 4. 포인트 상점 (원본 항목 복구)
+        if (session.screen === "MAIN" && msg === "4") {
             session.screen = "SHOP_BUY";
             var head = LayoutManager.renderProfileHead(data, sender);
             var body = LayoutManager.templates.menuList("판매 목록", ContentManager.menus.shop);
             return replier.reply(LayoutManager.renderFrame("포인트 상점", head + "\n" + Utils.getFixedDivider() + "\n" + body + "\n\n구매할 번호를 입력하세요.", ["메뉴"]));
         }
         if (session.screen === "SHOP_BUY") {
-            var price = 0, itemName = "", type = "";
-            if (msg === "1") { price = 500; itemName = "랜덤 칭호"; type = "title"; }
-            else if (msg === "2") { price = 1000; itemName = "캐릭터 뽑기"; type = "char"; }
-            else if (msg === "3") { price = 300; itemName = "경험치 부스트"; type = "exp"; }
+            var price = 0, itemName = "";
+            var action = "";
+
+            if (msg === "1") { price = 1000; itemName = "티어 승급권"; action = "tier"; }
+            else if (msg === "2") { price = 500; itemName = "닉네임 변경권"; action = "name"; }
+            else if (msg === "3") { price = 2000; itemName = "전적 초기화권"; action = "reset_score"; }
+            else if (msg === "4") { price = 1500; itemName = "스탯 초기화권"; action = "reset_stat"; }
+            else if (msg === "5") { price = 300; itemName = "랜덤 박스"; action = "random"; }
             
             if (price > 0) {
                 if (data.point < price) return replier.reply(ContentManager.msg.notEnoughPoint);
                 data.point -= price;
                 
-                // 아이템 지급 로직
-                var reward = "";
-                if (type === "title") {
-                    var newTitle = "용사" + Math.floor(Math.random() * 100); // 예시 랜덤 칭호
-                    data.inventory.titles.push(newTitle);
-                    reward = "[" + newTitle + "] 칭호 획득!";
-                } else if (type === "char") {
-                    var newChar = "전사" + Math.floor(Math.random() * 100);
-                    data.inventory.characters.push(newChar);
-                    reward = "[" + newChar + "] 캐릭터 획득!";
-                } else {
-                    data.exp += 50;
-                    reward = "경험치 50 획득!";
+                var resultText = itemName + " 구매 완료!";
+
+                // 아이템별 로직
+                if (action === "tier") { data.lp += 100; resultText += "\n(LP가 100 상승했습니다)"; }
+                else if (action === "name") { 
+                    resultText += "\n(닉네임 변경 기능은 관리자에게 문의하세요)"; 
+                    data.point += price; // 기능 미구현으로 환불 예시
                 }
+                else if (action === "reset_score") { data.win = 0; data.lose = 0; resultText += "\n(전적이 0승 0패로 초기화되었습니다)"; }
+                else if (action === "reset_stat") { 
+                    data.stats = { acc: 10, ref: 10, com: 10, int: 10 }; 
+                    resultText += "\n(모든 스탯이 초기화되었습니다)"; 
+                }
+                else if (action === "random") {
+                    var r = Math.floor(Math.random() * 100);
+                    data.point += r * 10;
+                    resultText += "\n(랜덤 포인트 " + (r*10) + "P 획득!)";
+                }
+
                 Database.save();
-                
-                return replier.reply(LayoutManager.renderFrame("구매 성공", LayoutManager.templates.result("상점 이용", itemName + " 구매 완료!\n" + reward + "\n남은 포인트: " + data.point), ["메뉴"]));
+                return replier.reply(LayoutManager.renderFrame("구매 성공", LayoutManager.templates.result("상점 이용", resultText + "\n남은 포인트: " + data.point), ["메뉴"]));
             }
         }
 
-        // [기능 4] 로그아웃
+        // 5. 문의하기
         if (session.screen === "MAIN" && msg === "5") {
-            SessionManager.reset(sender);
-            return replier.reply("로그아웃 되었습니다.");
+            return replier.reply("관리자에게 전달할 내용을 입력하세요. (현재는 기능 준비중)");
         }
         
-        // [기능 5] 문의하기
-        if (session.screen === "MAIN" && msg === "4") {
-            return replier.reply("관리자에게 문의할 내용을 입력해주세요. (현재는 기능 준비중)");
+        // 6. 로그아웃
+        if (session.screen === "MAIN" && msg === "6") {
+            SessionManager.reset(sender);
+            return replier.reply("로그아웃 되었습니다.");
         }
     }
 };
 
-// 5-3. 관리자 컨트롤러 (유저 제어)
+// 5-3. 관리자 컨트롤러
 var AdminController = {
     handle: function(msg, session, sender, replier) {
-        // 관리자 메인
         if (session.screen === "IDLE" || msg === "메뉴") {
             session.screen = "ADMIN_MAIN";
             var body = LayoutManager.templates.menuList("관리자 기능", ContentManager.menus.adminMain);
             return replier.reply(LayoutManager.renderFrame("관리자 모드", body));
         }
-
-        // [관리 1] 유저 조회 시작
         if (session.screen === "ADMIN_MAIN" && msg === "1") {
             session.screen = "ADMIN_SEARCH";
             return replier.reply(LayoutManager.renderFrame("유저 조회", LayoutManager.templates.inputRequest("검색", "선택 안됨", ContentManager.msg.adminSearch), ["취소"]));
         }
-
-        // [관리 2] 유저 검색 처리
         if (session.screen === "ADMIN_SEARCH") {
             if (!Database.data[msg]) return replier.reply(ContentManager.msg.noData);
-            
-            session.temp.targetUser = msg; // 타겟 고정
+            session.temp.targetUser = msg;
             session.screen = "ADMIN_USER_DETAIL";
-            
             var targetData = Database.data[msg];
-            // 관리자가 보더라도 디자인은 똑같이!
             var head = LayoutManager.renderProfileHead(targetData, msg);
             var body = LayoutManager.templates.menuList("제어 메뉴", ContentManager.menus.adminUser);
-            
             return replier.reply(LayoutManager.renderFrame("유저 상세 관리", head + "\n" + Utils.getFixedDivider() + "\n" + body, ["메뉴"]));
         }
-
-        // [관리 3] 유저 상세 제어
         if (session.screen === "ADMIN_USER_DETAIL") {
-            var target = session.temp.targetUser;
-            var tData = Database.data[target];
-            
-            if (msg === "1") { // 포인트 수정
+            var tData = Database.data[session.temp.targetUser];
+            if (msg === "1") {
                 session.screen = "ADMIN_EDIT_POINT";
-                return replier.reply(LayoutManager.renderFrame("포인트 수정", "현재 포인트: " + tData.point + "\n\n추가/차감할 값을 입력하세요.\n(예: 100 또는 -100)", ["취소"]));
+                return replier.reply(LayoutManager.renderFrame("포인트 수정", "현재: " + tData.point + "\n값을 입력하세요.", ["취소"]));
             }
-            if (msg === "2") { // 경험치 수정
-                session.screen = "ADMIN_EDIT_EXP";
-                return replier.reply(LayoutManager.renderFrame("경험치 수정", "현재 경험치: " + tData.exp + "\n\n추가할 값을 입력하세요.", ["취소"]));
-            }
-            if (msg === "3") { // 칭호 지급
-                session.screen = "ADMIN_GIVE_TITLE";
-                return replier.reply(LayoutManager.renderFrame("칭호 지급", "지급할 칭호 이름을 입력하세요.", ["취소"]));
-            }
-            if (msg === "4") { // 차단/해제
-                tData.banned = !tData.banned;
-                Database.save();
-                var status = tData.banned ? "차단됨" : "해제됨";
-                
-                // 화면 갱신
-                var head = LayoutManager.renderProfileHead(tData, target);
-                var body = LayoutManager.templates.menuList("제어 메뉴", ContentManager.menus.adminUser);
-                return replier.reply(LayoutManager.renderFrame("처리 결과", head + "\n\n[알림] " + target + "님이 " + status + "\n" + Utils.getFixedDivider() + "\n" + body, ["메뉴"]));
+            if (msg === "4") {
+                 tData.banned = !tData.banned;
+                 Database.save();
+                 return replier.reply("차단 상태가 변경되었습니다.");
             }
         }
-        
-        // [관리 4] 값 입력 처리
         if (session.screen === "ADMIN_EDIT_POINT") {
-            var val = parseInt(msg);
-            if (isNaN(val)) return replier.reply(ContentManager.msg.onlyNumber);
-            Database.data[session.temp.targetUser].point += val;
-            Database.save();
-            return AdminController.returnToDetail(session, replier, "포인트가 수정되었습니다.");
+             var val = parseInt(msg);
+             if(!isNaN(val)) {
+                 Database.data[session.temp.targetUser].point += val;
+                 Database.save();
+                 return replier.reply("수정 완료.");
+             }
         }
-        if (session.screen === "ADMIN_EDIT_EXP") {
-            var val = parseInt(msg);
-            if (isNaN(val)) return replier.reply(ContentManager.msg.onlyNumber);
-            Database.data[session.temp.targetUser].exp += val;
-            Database.save();
-            return AdminController.returnToDetail(session, replier, "경험치가 수정되었습니다.");
-        }
-        if (session.screen === "ADMIN_GIVE_TITLE") {
-            Database.data[session.temp.targetUser].inventory.titles.push(msg);
-            Database.save();
-            return AdminController.returnToDetail(session, replier, "[" + msg + "] 칭호를 지급했습니다.");
-        }
-    },
-
-    // 관리자용 편의 함수: 작업 후 상세화면 복귀
-    returnToDetail: function(session, replier, resultMsg) {
-        var target = session.temp.targetUser;
-        session.screen = "ADMIN_USER_DETAIL";
-        var head = LayoutManager.renderProfileHead(Database.data[target], target);
-        var body = LayoutManager.templates.menuList("제어 메뉴", ContentManager.menus.adminUser);
-        return replier.reply(LayoutManager.renderFrame("처리 완료", head + "\n\n[알림] " + resultMsg + "\n" + Utils.getFixedDivider() + "\n" + body, ["메뉴"]));
     }
 };
 
-// ━━━━━━━━ [6. 메인 라우터 (진입점)] ━━━━━━━━
+// ━━━━━━━━ [6. 메인 라우터] ━━━━━━━━
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
-    Database.load(); // 항상 최신 DB 로드
-    
-    // 1. 접두사 체크
-    if (msg.indexOf(Config.Prefix) !== 0) return;
-    var realMsg = msg.slice(Config.Prefix.length);
-    var session = SessionManager.get(sender);
+    try {
+        Database.load();
+        
+        var realMsg = msg.trim();
+        var session = SessionManager.get(sender);
 
-    // 2. 글로벌 명령어 (취소, 메뉴)
-    if (realMsg === "취소" || realMsg === "메뉴") {
-        SessionManager.reset(sender);
-        // 관리자방이면 관리자 초기화면, 아니면 유저 메뉴
-        if (room === Config.AdminRoom) return AdminController.handle("메뉴", session, sender, replier);
-        if (Database.data[sender]) return UserController.handle("메뉴", session, sender, replier);
+        // 네비게이션
+        if (realMsg === "취소" || realMsg === "메뉴") {
+            SessionManager.reset(sender);
+            if (room === Config.AdminRoom) return AdminController.handle("메뉴", session, sender, replier);
+            if (Database.data[sender]) return UserController.handle("메뉴", session, sender, replier);
+        }
+
+        // 라우팅
+        if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier);
+        if (!Database.data[sender]) return AuthController.handle(realMsg, session, sender, replier);
+        return UserController.handle(realMsg, session, sender, replier);
+
+    } catch (e) {
+        replier.reply("⛔ 에러: " + e);
     }
-
-    // 3. 관리자 모드
-    if (room === Config.AdminRoom) {
-        return AdminController.handle(realMsg, session, sender, replier);
-    }
-
-    // 4. 회원가입 모드 (데이터 없음)
-    if (!Database.data[sender]) {
-        return AuthController.handle(realMsg, session, sender, replier);
-    }
-
-    // 5. 일반 유저 모드
-    return UserController.handle(realMsg, session, sender, replier);
 }
