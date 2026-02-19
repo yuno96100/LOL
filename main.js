@@ -696,7 +696,16 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         if (!session.data) return AuthController.handle(realMsg, session, sender, replier);
         return UserController.handle(realMsg, session, sender, replier);
 
-    } catch (e) {
-        replier.reply("⛔ 에러: " + e);
+   } catch (e) {
+        // [수정] 상세한 에러 로그 출력 (Error Name, Message, Stack Trace)
+        var errorLog = [
+            "⛔ 시스템 오류 발생!",
+            "━━━━━━━━━━━━━━",
+            "📌 종류: " + e.name,
+            "💬 내용: " + e.message,
+            "📍 위치: " + e.lineNumber + "줄 (추정)",
+            "🔎 상세: " + e.stack
+        ].join("\n");
+        replier.reply(LayoutManager.renderFrame("시스템 오류", errorLog, false, "관리자에게 문의하세요."));
     }
 }
