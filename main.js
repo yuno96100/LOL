@@ -628,84 +628,74 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     try {
         Database.load(); 
         var realMsg = msg.trim();
-        var session = SessionManager.get(sender, replier);
+        var session = SessionManager.get(sender);
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
-        
-        if (SessionManager.checkTimeout(sender, replier)) return;
 
-        if (realMsg === "취소") {
-            SessionManager.reset(sender);
-            return replier.reply(LayoutManager.renderFrame("알림", "대기 상태로 돌아갑니다.", false, "재실행은 '메뉴'"));
-        }
+        // [핵심 수정] 타임아웃 체크보다 '메뉴' 처리를 먼저 수행하여 즉시 복구 가능하게 함
         if (realMsg === "메뉴") {
             if (session.data) session.screen = "MAIN"; 
-            else session.screen = "GUEST_MAIN"; 
+            else session.screen = "GUEST_MAIN";
             
             if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier);
             if (session.data) return UserController.handle("menu_refresh", session, sender, replier);
             return AuthController.handle("menu_refresh", session, sender, replier);
         }
-        
+
+        // 그 다음 타임아웃 체크 (메뉴가 아닐 때만 작동)
+        if (SessionManager.checkTimeout(sender, replier)) return;
+
+        if (realMsg === "취소") { 
+            SessionManager.reset(sender); 
+            return replier.reply(LayoutManager.renderFrame("알림", "대기 상태로 돌아갑니다.", false, "재실행은 '메뉴'")); 
+        }
+
         if (realMsg === "이전") {
-             // [수정] 네비게이션 트리 완벽 매핑
-             var parentMap = {
-                 "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN",
-                 "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
-                 "GUEST_INQUIRY": "GUEST_MAIN",
-                 
-                 "PROFILE_MAIN": "MAIN", 
-                 "STAT_SELECT": "PROFILE_MAIN", "STAT_INPUT": "STAT_SELECT",
-                 
-                 "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN",
-                 "SHOP_MAIN": "MAIN", 
-                 "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_MAIN",
-                 "USER_INQUIRY": "MAIN",
-                 
-                 "ADMIN_SYS_INFO": "ADMIN_MAIN", "ADMIN_INQUIRY": "ADMIN_MAIN",
-                 "ADMIN_USER_SELECT": "ADMIN_MAIN", "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT",
-                 "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT"
-             };
-             
-             if (parentMap[session.screen]) {
-                 session.screen = parentMap[session.screen];
-                 
-                 if (room === Config.AdminRoom) {
-                     if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier);
-                     if (session.screen === "ADMIN_USER_DETAIL") return AdminController.handle("refresh_detail", session, sender, replier);
-                     if (session.screen === "ADMIN_USER_SELECT") return AdminController.handle("2", session, sender, replier);
-                     if (session.screen === "ADMIN_EDIT_SELECT") return AdminController.handle("1", session, sender, replier);
-                     return AdminController.handle("menu_refresh", session, sender, replier);
-                 }
-                 
-                 if (session.data) {
-                     if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
-                     if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
-                     if (session.screen === "STAT_SELECT") return UserController.handle("1", session, sender, replier);
-                     if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier);
-                     return UserController.handle("menu_refresh", session, sender, replier);
-                 }
-                 
-                 return AuthController.handle("menu_refresh", session, sender, replier);
-             } else {
-                 return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 없습니다.", false, null));
-             }
+            var pLines = [];
+            pLines.push("JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,");
+            pLines.push("GUEST_INQUIRY:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,");
+            pLines.push("STAT_INPUT:STAT_SELECT,COLLECTION_MAIN:MAIN,TITLE_EQUIP:COLLECTION_MAIN,");
+            pLines.push("SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,");
+            pLines.push("ADMIN_SYS_INFO:ADMIN_MAIN,ADMIN_INQUIRY:ADMIN_MAIN,ADMIN_USER_SEL:ADMIN_MAIN,");
+            pLines.push("ADMIN_USER_DETAIL:ADMIN_USER_SEL,ADMIN_EDIT_SEL:ADMIN_USER_DETAIL,ADMIN_EDIT_IN:ADMIN_EDIT_SEL");
+            
+            var pData = pLines.join("").split(",");
+            var pMap = {};
+            for(var i=0; i<pData.length; i++) {
+                var pair = pData[i].split(":");
+                pMap[pair[0]] = pair[1];
+            }
+
+            if (pMap[session.screen]) {
+                session.screen = pMap[session.screen];
+                if (room === Config.AdminRoom) {
+                    if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier);
+                    if (session.screen === "ADMIN_USER_SEL") return AdminController.handle("2", session, sender, replier);
+                    if (session.screen === "ADMIN_USER_DETAIL") return AdminController.handle("refresh_detail", session, sender, replier);
+                    return AdminController.handle("menu_refresh", session, sender, replier);
+                }
+                if (session.data) {
+                    if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
+                    if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
+                    if (session.screen === "STAT_SELECT") return UserController.handle("1", session, sender, replier);
+                    if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier);
+                    return UserController.handle("menu_refresh", session, sender, replier);
+                }
+                return AuthController.handle("menu_refresh", session, sender, replier);
+            }
+            return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 없습니다.", false, null));
         }
 
         if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier);
-        if (!session.data) return AuthController.handle(realMsg, session, sender, replier);
-        return UserController.handle(realMsg, session, sender, replier);
+        return (session.data ? UserController : AuthController).handle(realMsg, session, sender, replier);
 
-   } catch (e) {
-        // [수정] 상세한 에러 로그 출력 (Error Name, Message, Stack Trace)
-        var errorLog = [
-            "⛔ 시스템 오류 발생!",
-            "━━━━━━━━━━━━━━",
-            "📌 종류: " + e.name,
-            "💬 내용: " + e.message,
-            "📍 위치: " + e.lineNumber + "줄 (추정)",
-            "🔎 상세: " + e.stack
-        ].join("\n");
-        replier.reply(LayoutManager.renderFrame("시스템 오류", errorLog, false, "관리자에게 문의하세요."));
+    } catch (e) {
+        var errLines = [];
+        errLines.push("⛔ 시스템 오류!");
+        errLines.push("📌 종류: " + e.name);
+        errLines.push("💬 내용: " + e.message);
+        errLines.push("📍 위치: " + (e.lineNumber || "알수없음") + "줄");
+        errLines.push("🔎 상세: " + (e.stack ? e.stack.substring(0, 100) : "없음"));
+        replier.reply(LayoutManager.renderFrame("오류 로그", errLines.join("\n"), false, "관리자 문의"));
     }
 }
