@@ -1,13 +1,13 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE UX (v1.4.5)
- * - UX 강화: 행동 성공 후 각 카테고리 메인 화면으로 자동 복귀 (강화->프로필, 구매->상점)
- * - UI 개선: 관리자 알림을 전용 템플릿으로 출력 & 컬렉션/상점 상단 전용 헤더 추가
- * - 디자인: 본문 하단의 안내 텍스트를 모두 💡도움말(Footer) 영역으로 분리하여 깔끔하게 정리
- */  
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.4.6)
+ * - UI 개선: 줄바꿈 시 마침표, 쉼표 등(.,!?) 고립 방지 로직 적용
+ * - 기능 복구: 유저->관리자 문의 및 관리자->유저 1:1 답변 기능 완벽 구현
+ * - 디테일: 보유 챔피언 목록 숫자(넘버링) 표기 추가
+ */ 
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.4.5 UX Update",
+    Version: "v1.4.6 Ultimate",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -15,7 +15,7 @@ var Config = {
     LINE_CHAR: "━",
     FIXED_LINE: 14,
     WRAP_LIMIT: 20, 
-    TIMEOUT_MS: 300000 // 5분
+    TIMEOUT_MS: 300000 
 };
 
 var MAX_LEVEL = 30;
@@ -37,7 +37,12 @@ var Utils = {
                 var currentLine = "";
                 for (var j = 0; j < line.length; j++) {
                     currentLine += line[j];
+                    // [수정] 줄바꿈 한계에 도달했을 때, 다음 문자가 특수기호(.,!?)라면 같이 묶어서 내림
                     if (currentLine.length >= Config.WRAP_LIMIT) {
+                        while (j + 1 < line.length && /^[.,!?]$/.test(line[j + 1])) {
+                            currentLine += line[j + 1];
+                            j++;
+                        }
                         result.push(currentLine);
                         currentLine = "";
                     }
@@ -61,7 +66,6 @@ var Utils = {
         return { name: "아이언", icon: "⚫" };
     },
     
-    // [추가] 관리자 알림도 UI 템플릿을 입혀서 전송하도록 개선
     sendNotify: function(target, msg) {
         try {
             var frame = LayoutManager.renderFrame(ContentManager.title.notice, msg, false, "시스템 알림");
@@ -250,7 +254,8 @@ var SystemAction = {
 
 // 6-1. 인증 컨트롤러
 var AuthController = {
-    handle: function(msg, session, sender, replier) {
+    // [수정] 인자에 room 추가
+    handle: function(msg, session, sender, replier, room) {
         if (session.screen === "IDLE" || session.screen === "GUEST_MAIN" || msg === "menu_refresh") {
             session.screen = "GUEST_MAIN";
             if (msg === "1") { session.screen = "JOIN_ID"; return replier.reply(LayoutManager.renderFrame("회원가입", ContentManager.msg.inputID_Join, true, "아이디 입력")); }
@@ -260,20 +265,20 @@ var AuthController = {
         }
 
         if (session.screen === "JOIN_ID") {
-            if (msg.length > 10) return SystemAction.go(replier, ContentManager.title.error, "아이디는 10자 이내여야 합니다.", function(){ AuthController.handle("1", session, sender, replier); });
-            if (Database.data[msg]) return SystemAction.go(replier, ContentManager.title.error, "이미 존재하는 아이디입니다.", function(){ AuthController.handle("1", session, sender, replier); });
+            if (msg.length > 10) return SystemAction.go(replier, ContentManager.title.error, "아이디는 10자 이내여야 합니다.", function(){ AuthController.handle("1", session, sender, replier, room); });
+            if (Database.data[msg]) return SystemAction.go(replier, ContentManager.title.error, "이미 존재하는 아이디입니다.", function(){ AuthController.handle("1", session, sender, replier, room); });
             session.temp.id = msg; session.screen = "JOIN_PW";
             return replier.reply(LayoutManager.renderFrame("비밀번호 설정", ContentManager.msg.inputPW, true, "비밀번호 입력"));
         }
         if (session.screen === "JOIN_PW") {
             Database.createUser(session.temp.id, msg); Database.load(); 
             session.tempId = session.temp.id; session.screen = "MAIN"; SessionManager.save(); 
-            try { Api.replyRoom(Config.AdminRoom, "📢 [신규 유저] " + session.temp.id + "님이 가입했습니다."); } catch(e) {}
-            return SystemAction.go(replier, ContentManager.title.success, ContentManager.msg.registerComplete, function() { UserController.handle("menu_refresh", session, sender, replier); });
+            try { Utils.sendNotify(Config.AdminRoom, "📢 [신규 유저] " + session.temp.id + "님이 가입했습니다."); } catch(e) {}
+            return SystemAction.go(replier, ContentManager.title.success, ContentManager.msg.registerComplete, function() { UserController.handle("menu_refresh", session, sender, replier, room); });
         }
 
         if (session.screen === "LOGIN_ID") {
-            if (!Database.data[msg]) return SystemAction.go(replier, ContentManager.title.error, "존재하지 않는 아이디입니다.", function(){ AuthController.handle("2", session, sender, replier); });
+            if (!Database.data[msg]) return SystemAction.go(replier, ContentManager.title.error, "존재하지 않는 아이디입니다.", function(){ AuthController.handle("2", session, sender, replier, room); });
             session.temp.id = msg; session.screen = "LOGIN_PW";
             return replier.reply(LayoutManager.renderFrame("로그인", ContentManager.msg.inputPW, true, "비밀번호 입력"));
         }
@@ -281,28 +286,30 @@ var AuthController = {
             var userData = Database.data[session.temp.id];
             if (userData && userData.pw === msg) {
                 session.tempId = session.temp.id; SessionManager.save(); 
-                return SystemAction.go(replier, ContentManager.title.success, session.tempId + "님 환영합니다!", function() { UserController.handle("menu_refresh", session, sender, replier); });
+                return SystemAction.go(replier, ContentManager.title.success, session.tempId + "님 환영합니다!", function() { UserController.handle("menu_refresh", session, sender, replier, room); });
             } else {
-                return SystemAction.go(replier, ContentManager.title.fail, ContentManager.msg.loginFail, function(){ AuthController.handle("2", session, sender, replier); });
+                return SystemAction.go(replier, ContentManager.title.fail, ContentManager.msg.loginFail, function(){ AuthController.handle("2", session, sender, replier, room); });
             }
         }
         
+        // [수정] 비회원 문의 
         if (session.screen === "GUEST_INQUIRY") {
-            Database.inquiries.push({ sender: "비회원", content: msg, time: new Date().toLocaleString(), read: false });
+            Database.inquiries.push({ sender: "비회원(" + sender + ")", room: room, content: msg, time: new Date().toLocaleString(), read: false });
             Database.save(); SessionManager.reset(sender);
-            return SystemAction.go(replier, ContentManager.title.complete, "문의가 접수되었습니다.", function(){ AuthController.handle("menu_refresh", SessionManager.get(sender, replier), sender, replier); });
+            try { Utils.sendNotify(Config.AdminRoom, "🔔 새 문의가 접수되었습니다.\n보낸이: 비회원(" + sender + ")"); } catch(e){}
+            return SystemAction.go(replier, ContentManager.title.complete, "문의가 접수되었습니다.", function(){ AuthController.handle("menu_refresh", SessionManager.get(sender, replier), sender, replier, room); });
         }
     }
 };
 
 // 6-2. 유저 컨트롤러
 var UserController = {
-    handle: function(msg, session, sender, replier) {
+    handle: function(msg, session, sender, replier, room) {
         var data = Database.data[session.tempId]; 
         
         if (data && !data.items) { data.items = { statReset: 0, nameChange: 0 }; Database.save(); }
         
-        if (!data) return AuthController.handle(msg, session, sender, replier);
+        if (!data) return AuthController.handle(msg, session, sender, replier, room);
         if (data.banned) return replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.banned, false, null));
 
         if (session.screen === "MAIN" || msg === "메뉴" || msg === "menu_refresh") {
@@ -327,7 +334,7 @@ var UserController = {
             }
             if (msg === "2") { 
                 session.screen = "STAT_RESET_CONFIRM";
-                return UserController.handle("refresh_reset", session, sender, replier);
+                return UserController.handle("refresh_reset", session, sender, replier, room);
             }
         }
 
@@ -339,18 +346,18 @@ var UserController = {
             }
             
             if (msg === "1") {
-                if ((data.items.statReset || 0) <= 0) return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.noItem, function() { UserController.handle("refresh_reset", session, sender, replier); });
+                if ((data.items.statReset || 0) <= 0) return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.noItem, function() { UserController.handle("refresh_reset", session, sender, replier, room); });
                 data.items.statReset -= 1;
                 data.stats = { acc: 50, ref: 50, com: 50, int: 50 };
                 data.point = (data.level - 1) * POINT_PER_LEVEL; 
                 Database.save();
                 
                 return SystemAction.go(replier, ContentManager.title.success, ContentManager.msg.statResetSuccess, function() {
-                    session.screen = "MAIN"; UserController.handle("1", session, sender, replier);
+                    session.screen = "MAIN"; UserController.handle("1", session, sender, replier, room);
                 });
             } else if (msg === "2") {
                 return SystemAction.go(replier, ContentManager.title.notice, "초기화를 취소합니다.", function() {
-                    session.screen = "MAIN"; UserController.handle("1", session, sender, replier);
+                    session.screen = "MAIN"; UserController.handle("1", session, sender, replier, room);
                 });
             }
         }
@@ -360,7 +367,7 @@ var UserController = {
                 session.temp.statKey = ContentManager.statMap.keys[msg]; 
                 session.temp.statName = ContentManager.statMap.names[msg]; 
                 session.screen = "STAT_INPUT";
-                return UserController.handle("refresh_input", session, sender, replier);
+                return UserController.handle("refresh_input", session, sender, replier, room);
             }
         }
 
@@ -371,13 +378,13 @@ var UserController = {
             }
 
             var amt = parseInt(msg);
-            if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_input", session, sender, replier); }); 
-            if (data.point < amt) return SystemAction.go(replier, ContentManager.title.fail, "포인트가 부족합니다.", function() { UserController.handle("refresh_input", session, sender, replier); });
+            if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_input", session, sender, replier, room); }); 
+            if (data.point < amt) return SystemAction.go(replier, ContentManager.title.fail, "포인트가 부족합니다.", function() { UserController.handle("refresh_input", session, sender, replier, room); });
             
             data.point -= amt; data.stats[session.temp.statKey] += amt; Database.save(); 
             
             return SystemAction.go(replier, ContentManager.title.success, session.temp.statName + " 수치가 " + amt + " 상승했습니다.", function() { 
-                session.screen = "MAIN"; UserController.handle("1", session, sender, replier);
+                session.screen = "MAIN"; UserController.handle("1", session, sender, replier, room);
             });
         }
 
@@ -390,11 +397,11 @@ var UserController = {
         if (session.screen === "COLLECTION_MAIN") {
              if (msg === "1") {
                  session.screen = "TITLE_EQUIP";
-                 return UserController.handle("refresh_title", session, sender, replier);
+                 return UserController.handle("refresh_title", session, sender, replier, room);
              }
              if (msg === "2") {
                  session.screen = "CHAMP_LIST";
-                 return UserController.handle("refresh_champs", session, sender, replier);
+                 return UserController.handle("refresh_champs", session, sender, replier, room);
              }
         }
         if (session.screen === "TITLE_EQUIP") {
@@ -403,17 +410,18 @@ var UserController = {
                  var list = data.inventory.titles.map(function(t, i) { return (i+1) + ". " + t + (t === data.title ? " [장착중]" : ""); }).join("\n");
                  return replier.reply(LayoutManager.renderFrame("칭호 관리", head + "\n" + Utils.getFixedDivider() + "\n" + list, true, "장착할 칭호 이름을 정확히 입력해 주세요."));
             }
-            if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(replier, ContentManager.title.error, "보유하지 않은 칭호입니다.", function() { UserController.handle("refresh_title", session, sender, replier); });
+            if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(replier, ContentManager.title.error, "보유하지 않은 칭호입니다.", function() { UserController.handle("refresh_title", session, sender, replier, room); });
             data.title = msg; Database.save();
             return SystemAction.go(replier, ContentManager.title.complete, "칭호가 [" + msg + "](으)로 변경되었습니다.", function() { 
-                session.screen = "MAIN"; UserController.handle("2", session, sender, replier); 
+                session.screen = "MAIN"; UserController.handle("2", session, sender, replier, room); 
             });
         }
         if (session.screen === "CHAMP_LIST") {
             if (msg === "refresh_champs") {
                  if (!data.inventory.champions) data.inventory.champions = [];
                  var head = "📊 수집 챔피언: " + data.inventory.champions.length + "명";
-                 var list = (data.inventory.champions.length > 0) ? data.inventory.champions.join("\n") : "보유한 챔피언이 없습니다.";
+                 // [수정] 챔피언 목록 넘버링 적용
+                 var list = (data.inventory.champions.length > 0) ? data.inventory.champions.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유한 챔피언이 없습니다.";
                  return replier.reply(LayoutManager.renderFrame("챔피언 목록", head + "\n" + Utils.getFixedDivider() + "\n" + list, true, "목록 확인 완료"));
             }
         }
@@ -431,11 +439,11 @@ var UserController = {
         if (session.screen === "SHOP_MAIN") {
             if (msg === "1") { 
                 session.screen = "SHOP_ITEMS";
-                return UserController.handle("refresh_shop_i", session, sender, replier); 
+                return UserController.handle("refresh_shop_i", session, sender, replier, room); 
             }
             if (msg === "2") { 
                 session.screen = "SHOP_CHAMPS";
-                return UserController.handle("refresh_shop_c", session, sender, replier); 
+                return UserController.handle("refresh_shop_c", session, sender, replier, room); 
             }
         }
         if (session.screen === "SHOP_ITEMS") {
@@ -450,14 +458,14 @@ var UserController = {
             else if (msg === "2") { p = 1500; n = "스탯 초기화권"; act = "reset"; }
             
             if (p > 0) {
-                if (data.gold < p) return SystemAction.go(replier, ContentManager.title.fail, ContentManager.msg.notEnoughGold, function(){ UserController.handle("refresh_shop_i", session, sender, replier); });
+                if (data.gold < p) return SystemAction.go(replier, ContentManager.title.fail, ContentManager.msg.notEnoughGold, function(){ UserController.handle("refresh_shop_i", session, sender, replier, room); });
                 data.gold -= p; 
                 if (act === "reset") data.items.statReset = (data.items.statReset || 0) + 1;
                 if (act === "name") data.items.nameChange = (data.items.nameChange || 0) + 1;
                 
                 Database.save();
                 return SystemAction.go(replier, ContentManager.title.success, ContentManager.msg.buySuccess(n), function(){ 
-                    session.screen = "MAIN"; UserController.handle("4", session, sender, replier); 
+                    session.screen = "MAIN"; UserController.handle("4", session, sender, replier, room); 
                 });
             }
         }
@@ -473,33 +481,32 @@ var UserController = {
             if (ContentManager.champions[idx]) {
                 var target = ContentManager.champions[idx];
                 if (data.inventory.champions.indexOf(target) !== -1 || data.gold < 500) {
-                    return SystemAction.go(replier, ContentManager.title.fail, "이미 보유 중이거나 골드가 부족합니다.", function(){ UserController.handle("refresh_shop_c", session, sender, replier); });
+                    return SystemAction.go(replier, ContentManager.title.fail, "이미 보유 중이거나 골드가 부족합니다.", function(){ UserController.handle("refresh_shop_c", session, sender, replier, room); });
                 }
                 data.gold -= 500; data.inventory.champions.push(target); Database.save();
                 return SystemAction.go(replier, ContentManager.title.success, target + "님이 합류했습니다!", function(){ 
-                    session.screen = "MAIN"; UserController.handle("4", session, sender, replier); 
+                    session.screen = "MAIN"; UserController.handle("4", session, sender, replier, room); 
                 });
             }
         }
 
-        // [5] 문의
+        // [5] 문의 (회원)
         if (session.screen === "MAIN" && msg === "5") {
             session.screen = "USER_INQUIRY";
             return replier.reply(LayoutManager.renderFrame("문의 접수", "운영진에게 보낼 내용을 입력해 주세요.", true, "내용 입력"));
         }
         if (session.screen === "USER_INQUIRY") {
-            Database.inquiries.push({ sender: session.tempId, content: msg, time: new Date().toLocaleString(), read: false });
-            Database.save();
-            return SystemAction.go(replier, ContentManager.title.complete, "접수되었습니다.", function() { 
-                session.screen = "MAIN"; UserController.handle("menu_refresh", session, sender, replier); 
-            });
+            Database.inquiries.push({ sender: session.tempId, room: room, content: msg, time: new Date().toLocaleString(), read: false });
+            Database.save(); session.screen = "MAIN";
+            try { Utils.sendNotify(Config.AdminRoom, "🔔 새 문의가 접수되었습니다.\n보낸이: " + session.tempId); } catch(e){}
+            return SystemAction.go(replier, ContentManager.title.complete, "접수되었습니다.", function() { UserController.handle("menu_refresh", session, sender, replier, room); });
         }
         
         // [6] 로그아웃
         if (session.screen === "MAIN" && msg === "6") { 
             SessionManager.reset(sender); 
             return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.logout, function() {
-                AuthController.handle("menu_refresh", SessionManager.get(sender, replier), sender, replier);
+                AuthController.handle("menu_refresh", SessionManager.get(sender, replier), sender, replier, room);
             });
         }
     }
@@ -507,7 +514,7 @@ var UserController = {
 
 // 6-3. 관리자 컨트롤러
 var AdminController = {
-    handle: function(msg, session, sender, replier) {
+    handle: function(msg, session, sender, replier, room) {
         if (session.screen === "IDLE" || msg === "menu_refresh" || msg === "메뉴") {
             session.screen = "ADMIN_MAIN";
             return replier.reply(LayoutManager.renderFrame("관리 센터", LayoutManager.templates.menuList(null, ContentManager.menus.adminMain), false, "관리 메뉴 선택"));
@@ -523,7 +530,7 @@ var AdminController = {
 
         if (session.screen === "ADMIN_MAIN" && msg === "2") {
             var users = Object.keys(Database.data);
-            if (users.length === 0) return SystemAction.go(replier, ContentManager.title.notice, "등록된 유저가 없습니다.", function(){ AdminController.handle("메뉴", session, sender, replier); });
+            if (users.length === 0) return SystemAction.go(replier, ContentManager.title.notice, "등록된 유저가 없습니다.", function(){ AdminController.handle("메뉴", session, sender, replier, room); });
             session.temp.userList = users; session.screen = "ADMIN_USER_SELECT";
             var listText = users.map(function(u, i) { return (i+1) + ". " + u; }).join("\n");
             return replier.reply(LayoutManager.renderFrame("유저 목록", listText, true, "번호 선택"));
@@ -540,10 +547,62 @@ var AdminController = {
             }
         }
 
+        // [복구] 관리자 문의 관리 시스템
         if (session.screen === "ADMIN_MAIN" && msg === "3") {
-            session.screen = "ADMIN_INQUIRY";
-            var list = Database.inquiries.map(function(iq, i) { return (i+1) + ". " + iq.sender + ": " + iq.content; }).join("\n");
-            return replier.reply(LayoutManager.renderFrame("문의 목록", list || "문의가 없습니다.", true, "목록 확인"));
+            session.screen = "ADMIN_INQUIRY_LIST";
+            return AdminController.handle("refresh_inquiry", session, sender, replier, room);
+        }
+        
+        if (session.screen === "ADMIN_INQUIRY_LIST") {
+            if (msg === "refresh_inquiry") {
+                if (Database.inquiries.length === 0) return SystemAction.go(replier, ContentManager.title.notice, "접수된 문의가 없습니다.", function(){ AdminController.handle("메뉴", session, sender, replier, room); });
+                var list = Database.inquiries.map(function(iq, i) { 
+                    return (i+1) + ". [" + iq.sender + "] " + iq.content.substring(0, 10) + "..."; 
+                }).join("\n");
+                return replier.reply(LayoutManager.renderFrame("문의 목록", list + "\n\n확인할 문의 번호를 입력하세요.", true, "번호 선택"));
+            }
+            
+            var iIdx = parseInt(msg) - 1;
+            if (Database.inquiries[iIdx]) {
+                session.temp.inqIdx = iIdx;
+                session.screen = "ADMIN_INQUIRY_DETAIL";
+                return AdminController.handle("refresh_inq_detail", session, sender, replier, room);
+            }
+        }
+        
+        if (session.screen === "ADMIN_INQUIRY_DETAIL") {
+            var idx = session.temp.inqIdx;
+            var iq = Database.inquiries[idx];
+            if (!iq) return AdminController.handle("이전", session, sender, replier, room);
+            
+            if (msg === "refresh_inq_detail") {
+                var content = "👤 보낸이: " + iq.sender + "\n⏰ 시간: " + iq.time + "\n" + Utils.getFixedDivider() + "\n" + iq.content;
+                var body = LayoutManager.templates.menuList(null, ["1. 답변 전송", "2. 문의 삭제"]);
+                return replier.reply(LayoutManager.renderFrame("문의 상세 내용", content + "\n\n" + body, true, "작업 선택"));
+            }
+            if (msg === "1") {
+                session.screen = "ADMIN_INQUIRY_REPLY";
+                return replier.reply(LayoutManager.renderFrame("답변 작성", "유저에게 전송할 답변 내용을 입력하세요.", true, "내용 입력"));
+            }
+            if (msg === "2") {
+                Database.inquiries.splice(idx, 1); Database.save();
+                return SystemAction.go(replier, ContentManager.title.complete, "문의가 삭제되었습니다.", function(){ 
+                    session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_inquiry", session, sender, replier, room); 
+                });
+            }
+        }
+        
+        if (session.screen === "ADMIN_INQUIRY_REPLY") {
+            var idx = session.temp.inqIdx;
+            var iq = Database.inquiries[idx];
+            if (iq && iq.room) {
+                var replyMsg = "🔔 [운영진 답변 도착]\n" + Utils.getFixedDivider() + "\n" + msg;
+                try { Api.replyRoom(iq.room, replyMsg); } catch(e){}
+                Database.inquiries.splice(idx, 1); Database.save();
+                return SystemAction.go(replier, ContentManager.title.complete, "답변이 성공적으로 전송되었습니다.", function(){
+                    session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_inquiry", session, sender, replier, room);
+                });
+            }
         }
 
         if (session.screen === "ADMIN_USER_DETAIL") {
@@ -563,18 +622,18 @@ var AdminController = {
                 };
                 Database.save(); 
                 Utils.sendNotify(target, ContentManager.msg.adminNotifyInit);
-                return SystemAction.go(replier, ContentManager.title.complete, "모든 데이터가 완벽하게 초기화되었습니다.", function() { AdminController.handle("refresh_detail", session, sender, replier); });
+                return SystemAction.go(replier, ContentManager.title.complete, "모든 데이터가 완벽하게 초기화되었습니다.", function() { AdminController.handle("refresh_detail", session, sender, replier, room); });
             }
             if (msg === "3") {
                 delete Database.data[target]; Database.save();
                 Utils.sendNotify(target, ContentManager.msg.adminNotifyDelete);
-                return SystemAction.go(replier, ContentManager.title.complete, "계정이 삭제되었습니다.", function() { AdminController.handle("메뉴", session, sender, replier); });
+                return SystemAction.go(replier, ContentManager.title.complete, "계정이 삭제되었습니다.", function() { AdminController.handle("메뉴", session, sender, replier, room); });
             }
             if (msg === "4") {
                  tData.banned = !tData.banned; Database.save();
                  var notifyMsg = tData.banned ? ContentManager.msg.adminNotifyBan : ContentManager.msg.adminNotifyUnban;
                  Utils.sendNotify(target, notifyMsg);
-                 return SystemAction.go(replier, ContentManager.title.complete, "차단 상태가 변경되었습니다.", function() { AdminController.handle("refresh_detail", session, sender, replier); });
+                 return SystemAction.go(replier, ContentManager.title.complete, "차단 상태가 변경되었습니다.", function() { AdminController.handle("refresh_detail", session, sender, replier, room); });
             }
         }
         
@@ -613,7 +672,7 @@ var AdminController = {
                  
                  return SystemAction.go(replier, ContentManager.title.complete, "수정되었습니다.", function() {
                      session.screen = "ADMIN_USER_DETAIL";
-                     AdminController.handle("refresh_detail", session, sender, replier);
+                     AdminController.handle("refresh_detail", session, sender, replier, room);
                  });
              }
         }
@@ -636,9 +695,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             if (isLogged) session.screen = "MAIN"; 
             else session.screen = "GUEST_MAIN"; 
             
-            if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier);
-            if (isLogged) return UserController.handle("menu_refresh", session, sender, replier);
-            return AuthController.handle("menu_refresh", session, sender, replier);
+            if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier, room);
+            if (isLogged) return UserController.handle("menu_refresh", session, sender, replier, room);
+            return AuthController.handle("menu_refresh", session, sender, replier, room);
         }
 
         if (SessionManager.checkTimeout(sender, replier)) return;
@@ -647,8 +706,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             SessionManager.reset(sender); 
             return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.cancel, function() {
                 var newSession = SessionManager.get(sender, replier);
-                if (room === Config.AdminRoom) AdminController.handle("menu_refresh", newSession, sender, replier);
-                else AuthController.handle("menu_refresh", newSession, sender, replier);
+                if (room === Config.AdminRoom) AdminController.handle("menu_refresh", newSession, sender, replier, room);
+                else AuthController.handle("menu_refresh", newSession, sender, replier, room);
             });
         }
 
@@ -659,8 +718,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 "STAT_INPUT:STAT_SELECT,STAT_RESET_CONFIRM:PROFILE_MAIN,COLLECTION_MAIN:MAIN,",
                 "TITLE_EQUIP:COLLECTION_MAIN,CHAMP_LIST:COLLECTION_MAIN,SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,",
                 "SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,ADMIN_SYS_INFO:ADMIN_MAIN,",
-                "ADMIN_INQUIRY:ADMIN_MAIN,ADMIN_USER_SEL:ADMIN_MAIN,ADMIN_USER_DETAIL:ADMIN_USER_SEL,",
-                "ADMIN_EDIT_SEL:ADMIN_USER_DETAIL,ADMIN_EDIT_IN:ADMIN_EDIT_SEL"
+                "ADMIN_INQUIRY_LIST:ADMIN_MAIN,ADMIN_USER_SEL:ADMIN_MAIN,ADMIN_USER_DETAIL:ADMIN_USER_SEL,",
+                "ADMIN_EDIT_SEL:ADMIN_USER_DETAIL,ADMIN_EDIT_IN:ADMIN_EDIT_SEL,",
+                "ADMIN_INQUIRY_DETAIL:ADMIN_INQUIRY_LIST,ADMIN_INQUIRY_REPLY:ADMIN_INQUIRY_DETAIL"
             ].join("").split(",");
 
             var pMap = {};
@@ -672,32 +732,35 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             if (pMap[session.screen]) {
                 session.screen = pMap[session.screen];
                 if (room === Config.AdminRoom) {
-                    if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier);
-                    if (session.screen === "ADMIN_USER_SEL") return AdminController.handle("2", session, sender, replier);
-                    if (session.screen === "ADMIN_USER_DETAIL") return AdminController.handle("refresh_detail", session, sender, replier);
-                    return AdminController.handle("menu_refresh", session, sender, replier);
+                    if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier, room);
+                    if (session.screen === "ADMIN_USER_SEL") return AdminController.handle("2", session, sender, replier, room);
+                    if (session.screen === "ADMIN_USER_DETAIL") return AdminController.handle("refresh_detail", session, sender, replier, room);
+                    if (session.screen === "ADMIN_INQUIRY_LIST") return AdminController.handle("refresh_inquiry", session, sender, replier, room);
+                    if (session.screen === "ADMIN_INQUIRY_DETAIL") return AdminController.handle("refresh_inq_detail", session, sender, replier, room);
+                    return AdminController.handle("menu_refresh", session, sender, replier, room);
                 }
                 if (isLogged) {
-                    if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
-                    if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
-                    if (session.screen === "STAT_SELECT") return UserController.handle("1", session, sender, replier);
-                    if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier);
-                    return UserController.handle("menu_refresh", session, sender, replier);
+                    if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier, room);
+                    if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier, room);
+                    if (session.screen === "STAT_SELECT") return UserController.handle("1", session, sender, replier, room);
+                    if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier, room);
+                    if (session.screen === "COLLECTION_MAIN") return UserController.handle("2", session, sender, replier, room);
+                    return UserController.handle("menu_refresh", session, sender, replier, room);
                 }
-                return AuthController.handle("menu_refresh", session, sender, replier);
+                return AuthController.handle("menu_refresh", session, sender, replier, room);
             }
             
             return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.noPrevious, function() {
-                if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier);
-                if (isLogged) return UserController.handle("menu_refresh", session, sender, replier);
-                return AuthController.handle("menu_refresh", session, sender, replier);
+                if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier, room);
+                if (isLogged) return UserController.handle("menu_refresh", session, sender, replier, room);
+                return AuthController.handle("menu_refresh", session, sender, replier, room);
             });
         }
 
-        if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier);
+        if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier, room);
         
-        if (isLogged) return UserController.handle(realMsg, session, sender, replier);
-        else return AuthController.handle(realMsg, session, sender, replier);
+        if (isLogged) return UserController.handle(realMsg, session, sender, replier, room);
+        else return AuthController.handle(realMsg, session, sender, replier, room);
 
     } catch (e) {
         var errLog = [
