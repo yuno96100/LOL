@@ -361,7 +361,7 @@ var UserController = {
             if (["1","2","3","4","5","6"].indexOf(msg) === -1) return;
         }
 
-        // [1] 내 정보
+       // [1] 내 정보
         if (session.screen === "MAIN" && msg === "1") {
             session.screen = "PROFILE_MAIN";
             var head = LayoutManager.renderProfileHead(data, session.tempId);
@@ -391,29 +391,31 @@ var UserController = {
                 return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트를 입력하세요."));
             }
         }
-            if (session.screen === "STAT_INPUT") {
-            // [수정] 화면 새로고침 요청("refresh_input")이 오면 여기서 바로 출력하고 종료
+
+        if (session.screen === "STAT_INPUT") {
+            // [버그 해결] 무한루프 방지: 새로고침(refresh) 신호가 오면 숫자로 바꾸지 않고 바로 입력창 출력 후 종료
             if (msg === "refresh_input" || msg === "refresh_stat") {
-                var body = LayoutManager.templates.inputRequest(data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
+                var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
                 return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트 입력"));
             }
 
             var amt = parseInt(msg);
-            if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, "오류", ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_input", session, sender, replier); });
-            if (data.point < amt) return SystemAction.go(replier, "실패", "포인트가 부족합니다.", function() { UserController.handle("refresh_input", session, sender, replier); });
-
-            data.point -= amt; data.stats[session.temp.statKey] += amt; Database.save();
             
-            return SystemAction.go(replier, "강화 성공", session.temp.statName + " 수치가 " + amt + " 상승했습니다.", function() {
-                session.screen = "STAT_SELECT";
-                replier.reply(LayoutManager.renderFrame("능력치 강화", LayoutManager.templates.menuList(ContentManager.menus.stats), true, "추가 강화 선택"));
+            // 숫자가 아니거나 포인트가 부족할 때 에러 출력
+            if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, "오류", ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_input", session, sender, replier); }); 
+            if (data.point < amt) return SystemAction.go(replier, "실패", "포인트가 부족합니다.", function() { UserController.handle("refresh_input", session, sender, replier); });
+            
+            data.point -= amt; 
+            data.stats[session.temp.statKey] += amt; 
+            Database.save();
+            
+            return SystemAction.go(replier, "강화 성공", session.temp.statName + " 수치가 " + amt + " 상승했습니다.", function() { 
+                session.screen = "STAT_SELECT"; 
+                var body = LayoutManager.templates.menuList(null, ContentManager.menus.stats);
+                replier.reply(LayoutManager.renderFrame("능력치 강화", body, true, "강화할 스탯 선택"));
             });
         }
-        if (msg === "refresh_input" && session.screen === "STAT_INPUT") {
-             var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
-             return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트 입력"));
-        }
-
+        
         // [2] 컬렉션
         if (session.screen === "MAIN" && msg === "2") {
             session.screen = "COLLECTION_MAIN";
