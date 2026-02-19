@@ -632,35 +632,41 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
-        // [세션 복구 로직] 타임아웃 체크보다 '메뉴' 입력을 우선 처리하여 즉시 복구 가능하게 함
+        // [핵심 수정] '메뉴' 입력 시 타임아웃 체크를 무시하고 즉시 세션 갱신 및 메뉴 출력
         if (realMsg === "메뉴") {
+            // 세션 시간 강제 갱신 (만료 방지)
+            session.lastTime = Date.now();
+            
             if (session.data) {
                 session.screen = "MAIN";
             } else {
                 session.screen = "GUEST_MAIN";
             }
             
+            // 관리자 방 처리
             if (room === Config.AdminRoom) {
                 return AdminController.handle("menu_refresh", session, sender, replier);
             }
+            
+            // 유저/비회원 처리 (이곳에서 UserController가 확실히 호출됨)
             if (session.data) {
                 return UserController.handle("menu_refresh", session, sender, replier);
+            } else {
+                return AuthController.handle("menu_refresh", session, sender, replier);
             }
-            return AuthController.handle("menu_refresh", session, sender, replier);
         }
 
-        // 이후 타임아웃 체크 (메뉴 입력이 아닐 때만 만료 알림)
+        // '메뉴'가 아닌 다른 입력일 때만 타임아웃을 체크함
         if (SessionManager.checkTimeout(sender, replier)) return;
 
-        // [취소] 기능: 모든 상태 중단 및 IDLE(대기)로 복구
+        // [취소] 기능
         if (realMsg === "취소") { 
             SessionManager.reset(sender); 
-            return replier.reply(LayoutManager.renderFrame("알림", "모든 작업을 중단하고 대기 상태로 돌아갑니다.", false, "재실행하려면 '메뉴'를 입력하세요.")); 
+            return replier.reply(LayoutManager.renderFrame("알림", "모든 작업을 중단합니다.", false, "재실행은 '메뉴'")); 
         }
 
-        // [이전] 기능: 트리 구조에 따른 상위 카테고리 이동
+        // [이전] 기능
         if (realMsg === "이전") {
-            // 문자열 오류 방지를 위한 조각화 처리
             var pData = [
                 "JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,",
                 "GUEST_INQUIRY:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,",
@@ -679,7 +685,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             if (pMap[session.screen]) {
                 session.screen = pMap[session.screen];
                 
-                // 관리자 방인 경우
                 if (room === Config.AdminRoom) {
                     if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier);
                     if (session.screen === "ADMIN_USER_SEL") return AdminController.handle("2", session, sender, replier);
@@ -687,7 +692,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     return AdminController.handle("menu_refresh", session, sender, replier);
                 }
                 
-                // 일반 유저인 경우
                 if (session.data) {
                     if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
                     if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
@@ -695,15 +699,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier);
                     return UserController.handle("menu_refresh", session, sender, replier);
                 }
-                
-                // 비회원인 경우
                 return AuthController.handle("menu_refresh", session, sender, replier);
-            } else {
-                return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 존재하지 않습니다.", false, null));
             }
+            return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 없습니다.", false, null));
         }
 
-        // [기본 라우팅] 관리자/유저/비회원 분기 실행
+        // [기본 분기]
         if (room === Config.AdminRoom) {
             return AdminController.handle(realMsg, session, sender, replier);
         }
@@ -715,16 +716,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
     } catch (e) {
-        // [상세 에러 로그 출력]
         var errLog = [
-            "⛔ 시스템 오류가 발생했습니다.",
+            "⛔ 시스템 오류 발생!",
             "━━━━━━━━━━━━━━",
             "📌 종류: " + e.name,
             "💬 내용: " + e.message,
             "📍 위치: " + (e.lineNumber || "정보 없음") + "줄",
-            "🔎 상세: " + (e.stack ? e.stack.substring(0, 150) + "..." : "정보 없음")
+            "🔎 상세: " + (e.stack ? e.stack.substring(0, 150) : "정보 없음")
         ].join("\n");
-        
-        replier.reply(LayoutManager.renderFrame("시스템 오류", errLog, false, "관리자에게 오류 내용을 전달해 주세요."));
+        replier.reply(LayoutManager.renderFrame("시스템 오류", errLog, false, "관리자 문의 필요"));
     }
 }
