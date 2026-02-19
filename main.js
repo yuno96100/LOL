@@ -144,14 +144,8 @@ var SessionManager = {
     },
 
     reset: function(sender) {
-        if (!this.sessions[sender]) {
-            this.sessions[sender] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
-        } else {
-            var s = this.sessions[sender];
-            s.screen = "IDLE";
-            s.temp = {};
-            s.lastTime = Date.now();
-        }
+        // [수정] 세션 초기화 시 기존 데이터 찌꺼기 완벽 제거
+        this.sessions[sender] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
         this.save();
     }
 };
@@ -303,10 +297,10 @@ var AuthController = {
             session.temp.id = msg; session.screen = "JOIN_PW";
             return replier.reply(LayoutManager.renderFrame("비밀번호 설정", ContentManager.msg.inputPW, true, "비밀번호 입력"));
         }
-        if (session.screen === "JOIN_PW") {
+if (session.screen === "JOIN_PW") {
             Database.createUser(session.temp.id, msg);
             Database.load(); 
-            session.data = Database.data[session.temp.id]; 
+            // [수정] session.data 복사본 생성 제거, 원본을 찾기 위한 id만 저장
             session.tempId = session.temp.id; 
             session.screen = "MAIN"; 
             SessionManager.save(); 
@@ -326,7 +320,8 @@ var AuthController = {
         if (session.screen === "LOGIN_PW") {
             var userData = Database.data[session.temp.id];
             if (userData && userData.pw === msg) {
-                session.data = userData; session.tempId = session.temp.id;
+                // [수정] session.data 복사본 생성 제거
+                session.tempId = session.temp.id;
                 SessionManager.save(); 
                 return SystemAction.go(replier, "로그인 성공", session.tempId + "님 환영합니다!", function() {
                     UserController.handle("menu_refresh", session, sender, replier);
@@ -347,11 +342,12 @@ var AuthController = {
 // 6-2. 유저 컨트롤러
 var UserController = {
     handle: function(msg, session, sender, replier) {
-        var data = session.data; 
+        // [핵심] 세션 복사본이 아닌 원본 DB 데이터를 직접 조준! (모든 수정이 즉시 DB에 적용됨)
+        var data = Database.data[session.tempId]; 
+        
         if (!data) return AuthController.handle(msg, session, sender, replier);
         if (data.banned) return replier.reply(LayoutManager.renderFrame("알림", ContentManager.msg.banned, false, null));
 
-        // [중요 수정] menu_refresh가 들어오면 무조건 메인 로비를 띄우도록 수정
         if (session.screen === "MAIN" || msg === "메뉴" || msg === "menu_refresh") {
             if (msg === "메뉴" || msg === "menu_refresh" || session.screen !== "MAIN") {
                 session.screen = "MAIN";
@@ -361,7 +357,7 @@ var UserController = {
             if (["1","2","3","4","5","6"].indexOf(msg) === -1) return;
         }
 
-       // [1] 내 정보
+        // [1] 내 정보
         if (session.screen === "MAIN" && msg === "1") {
             session.screen = "PROFILE_MAIN";
             var head = LayoutManager.renderProfileHead(data, session.tempId);
@@ -393,23 +389,19 @@ var UserController = {
         }
 
         if (session.screen === "STAT_INPUT") {
-            // 1. 새로고침 신호가 오면 무조건 여기서 화면 띄우고 즉시 종료 (무한루프 차단)
             if (msg === "refresh_input" || msg === "refresh_stat") {
                 var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
-                return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트를 입력하세요."));
+                return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트 입력"));
             }
 
-            // 2. 실제 유저 입력값 검사
             var amt = parseInt(msg);
             
-            // 숫자가 아니거나 포인트가 부족할 때 에러 출력 (콜백으로 refresh_input 전송)
             if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, "오류", ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_input", session, sender, replier); }); 
             if (data.point < amt) return SystemAction.go(replier, "실패", "포인트가 부족합니다.", function() { UserController.handle("refresh_input", session, sender, replier); });
             
-            // 3. 정상 처리
             data.point -= amt; 
             data.stats[session.temp.statKey] += amt; 
-            Database.save();
+            Database.save(); // 직접 DB를 수정했으므로 한방에 저장 완료
             
             return SystemAction.go(replier, "강화 성공", session.temp.statName + " 수치가 " + amt + " 상승했습니다.", function() { 
                 session.screen = "STAT_SELECT"; 
@@ -417,7 +409,7 @@ var UserController = {
                 replier.reply(LayoutManager.renderFrame("능력치 강화", body, true, "강화할 스탯 선택"));
             });
         }
-        
+
         // [2] 컬렉션
         if (session.screen === "MAIN" && msg === "2") {
             session.screen = "COLLECTION_MAIN";
@@ -654,25 +646,18 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
-        // [핵심 수정] '메뉴' 입력 시 타임아웃보다 우선 처리하여 즉시 복구
+        // [핵심 변경] 로그인 상태 여부를 DB 원본 기반으로 판단
+        var isLogged = (session.tempId && Database.data[session.tempId]);
+
         if (realMsg === "메뉴") {
             session.lastTime = Date.now();
             
-            if (session.data) {
-                session.screen = "MAIN";
-            } else {
-                session.screen = "GUEST_MAIN";
-            }
+            if (isLogged) session.screen = "MAIN"; 
+            else session.screen = "GUEST_MAIN"; 
             
-            if (room === Config.AdminRoom) {
-                return AdminController.handle("menu_refresh", session, sender, replier);
-            }
-            
-            if (session.data) {
-                return UserController.handle("menu_refresh", session, sender, replier);
-            } else {
-                return AuthController.handle("menu_refresh", session, sender, replier);
-            }
+            if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier);
+            if (isLogged) return UserController.handle("menu_refresh", session, sender, replier);
+            return AuthController.handle("menu_refresh", session, sender, replier);
         }
 
         if (SessionManager.checkTimeout(sender, replier)) return;
@@ -708,7 +693,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     return AdminController.handle("menu_refresh", session, sender, replier);
                 }
                 
-                if (session.data) {
+                if (isLogged) {
                     if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
                     if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
                     if (session.screen === "STAT_SELECT") return UserController.handle("1", session, sender, replier);
@@ -721,7 +706,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier);
-        return (session.data ? UserController : AuthController).handle(realMsg, session, sender, replier);
+        
+        // 라우팅도 isLogged 기준으로 변경
+        if (isLogged) return UserController.handle(realMsg, session, sender, replier);
+        else return AuthController.handle(realMsg, session, sender, replier);
 
     } catch (e) {
         var errLog = [
