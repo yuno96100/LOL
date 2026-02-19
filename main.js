@@ -1,13 +1,13 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE VERSION (v1.3.1)
- * - 기능: 로그인 유지(파일저장), 레벨-포인트 연동, 데이터 초기화 수정
- * - UI: 하단 도움말 복구, 불필요한 헤더 제거, 네비게이션 정교화
- * - 안정성: 문자열 오류 방지, 세션 파일 관리
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.4.2)
+ * - 버그 수정: 유저 톡방에서 '메뉴' 입력 시 화면이 안 뜨는 현상 해결
+ * - 원인: UserController 내부 조건문에 갱신 신호(menu_refresh) 누락 수정
+ * - 기능: 로그인 유지, 알림 분리, 에러 방지 포함 전체 소스
  */
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.4.1 Ultimate",
+    Version: "v1.4.2 MenuFix",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -28,8 +28,7 @@ var Utils = {
     
     wrapText: function(str) {
         if (!str) return "";
-        var lines = str.split("\n");
-        var result = [];
+        var lines = str.split("\n"), result = [];
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
             if (line.length <= Config.WRAP_LIMIT) { 
@@ -103,11 +102,10 @@ var Database = {
     }
 };
 
-// [수정] 세션 매니저: 파일 입출력으로 로그인 유지 기능 추가
+// 세션 매니저
 var SessionManager = {
     sessions: {},
     
-    // 초기 로드
     init: function() {
         var file = new java.io.File(Config.SESSION_PATH);
         if (file.exists()) {
@@ -127,7 +125,7 @@ var SessionManager = {
         }
         var s = this.sessions[sender];
         s.lastTime = Date.now(); 
-        this.save(); // 상태 변경 시 저장
+        this.save(); 
         return s;
     },
 
@@ -137,6 +135,10 @@ var SessionManager = {
             this.reset(sender);
             replier.reply("⌛ 세션이 만료되었습니다.\n'메뉴'를 입력해 다시 시작하세요.");
             return true; 
+        }
+        if (s) {
+            s.lastTime = Date.now();
+            this.save();
         }
         return false;
     },
@@ -150,18 +152,17 @@ var SessionManager = {
             s.temp = {};
             s.lastTime = Date.now();
         }
-        this.save(); // 리셋 후 저장
+        this.save();
     }
 };
 
-// 초기화 시 세션 로드
 SessionManager.init();
 
 // ━━━━━━━━ [3. 콘텐츠 매니저] ━━━━━━━━
 var ContentManager = {
     menus: {
         guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
-        main: ["1. 내 정보", "2. 컬렉션", "3. 대전 모드", "4. 상점", "5. 문의하기", "6. 로그아웃"],
+        main: ["1. 내 정보", "2. 컬렉션 확인", "3. 대전 모드", "4. 상점 이용", "5. 운영진 문의", "6. 로그아웃"],
         profileSub: ["1. 능력치 강화", "2. 능력치 초기화"],
         stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
         shopMain: ["1. 아이템 상점", "2. 챔피언 상점"],
@@ -192,14 +193,12 @@ var LayoutManager = {
         var div = Utils.getFixedDivider();
         var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content);
 
-        // 네비게이션 표준화
         if (showNav === true) {
             res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
         } else if (Array.isArray(showNav)) {
             res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
         }
 
-        // [수정] 도움말이 없으면 출력 안함, 있으면 출력
         if (footer) {
             res += "\n" + div + "\n💡 " + footer;
         }
@@ -244,13 +243,11 @@ var LayoutManager = {
 
     templates: {
         menuList: function(subtitle, items) {
-            // [수정] 불필요한 대괄호 타이틀 제거 (subtitle이 있어도 무시하거나 필요한 경우만 사용)
-            // 유저 요청: "강화할 능력치 선택 같은 문구 안 넣었으면 좋겠어"
-            return " " + items.join("\n "); 
+            var list = items || [];
+            return " " + list.join("\n "); 
         },
         inputRequest: function(subtitle, currentVal, info) {
             var lines = [
-                // subtitle 제거
                 " 현재 상태 : " + currentVal,
                 " " + info,
                 "",
@@ -259,7 +256,7 @@ var LayoutManager = {
             return lines.join("\n");
         },
         result: function(subtitle, text) {
-            return " " + text; // 결과창도 심플하게
+            return " " + text;
         },
         list: function(subtitle, listArray) {
             var content = (listArray && listArray.length > 0) ? listArray.join(", ") : "없음";
@@ -282,11 +279,10 @@ var SystemAction = {
 // 6-1. 인증 컨트롤러
 var AuthController = {
     handle: function(msg, session, sender, replier) {
-        if (session.screen === "IDLE" || session.screen === "GUEST_MAIN") {
+        if (session.screen === "IDLE" || session.screen === "GUEST_MAIN" || msg === "menu_refresh") {
             session.screen = "GUEST_MAIN";
             if (msg === "1") { 
                 session.screen = "JOIN_ID"; 
-                // [수정] 로그인쪽 네비게이션도 표준 UI 적용
                 return replier.reply(LayoutManager.renderFrame("회원가입", ContentManager.msg.inputID_Join, true, "아이디 입력")); 
             }
             if (msg === "2") { 
@@ -297,7 +293,8 @@ var AuthController = {
                 session.screen = "GUEST_INQUIRY"; 
                 return replier.reply(LayoutManager.renderFrame("문의 접수", "운영진에게 보낼 내용을 입력하세요.", true, "내용 입력")); 
             }
-            return replier.reply(LayoutManager.renderFrame("비회원 메뉴", ContentManager.menus.guest.join("\n"), false, "번호를 선택하세요.")); 
+            var body = LayoutManager.templates.menuList(null, ContentManager.menus.guest);
+            return replier.reply(LayoutManager.renderFrame("비회원 메뉴", body, false, "번호를 선택하세요.")); 
         }
 
         if (session.screen === "JOIN_ID") {
@@ -312,11 +309,12 @@ var AuthController = {
             session.data = Database.data[session.temp.id]; 
             session.tempId = session.temp.id; 
             session.screen = "MAIN"; 
-            SessionManager.save(); // 로그인 상태 저장
+            SessionManager.save(); 
             
+            try { Api.replyRoom(Config.AdminRoom, "📢 [신규 유저] " + session.temp.id + "님이 가입했습니다."); } catch(e) {}
+
             return SystemAction.go(replier, "가입 완료", ContentManager.msg.registerComplete, function() {
-                var body = LayoutManager.templates.menuList(null, ContentManager.menus.main);
-                replier.reply(LayoutManager.renderFrame("메인 로비", body, false, "메뉴를 선택하세요."));
+                UserController.handle("menu_refresh", session, sender, replier);
             });
         }
 
@@ -329,9 +327,9 @@ var AuthController = {
             var userData = Database.data[session.temp.id];
             if (userData && userData.pw === msg) {
                 session.data = userData; session.tempId = session.temp.id;
-                SessionManager.save(); // 로그인 상태 저장
+                SessionManager.save(); 
                 return SystemAction.go(replier, "로그인 성공", session.tempId + "님 환영합니다!", function() {
-                    UserController.handle("메뉴", session, sender, replier);
+                    UserController.handle("menu_refresh", session, sender, replier);
                 });
             } else {
                 return SystemAction.go(replier, "실패", ContentManager.msg.loginFail, function(){ AuthController.handle("2", session, sender, replier); });
@@ -343,10 +341,6 @@ var AuthController = {
             Database.save(); SessionManager.reset(sender);
             return SystemAction.go(replier, "접수 완료", "문의가 접수되었습니다.", function(){ AuthController.handle("메뉴", session, sender, replier); });
         }
-        
-        if (msg === "menu_refresh") {
-             return AuthController.handle("메뉴", session, sender, replier);
-        }
     }
 };
 
@@ -357,8 +351,9 @@ var UserController = {
         if (!data) return AuthController.handle(msg, session, sender, replier);
         if (data.banned) return replier.reply(LayoutManager.renderFrame("알림", ContentManager.msg.banned, false, null));
 
+        // [중요 수정] menu_refresh가 들어오면 무조건 메인 로비를 띄우도록 수정
         if (session.screen === "MAIN" || msg === "메뉴" || msg === "menu_refresh") {
-            if (msg === "메뉴" || session.screen !== "MAIN") {
+            if (msg === "메뉴" || msg === "menu_refresh" || session.screen !== "MAIN") {
                 session.screen = "MAIN";
                 var body = LayoutManager.templates.menuList(null, ContentManager.menus.main);
                 return replier.reply(LayoutManager.renderFrame("메인 로비", body, false, "메뉴를 선택하세요."));
@@ -366,7 +361,7 @@ var UserController = {
             if (["1","2","3","4","5","6"].indexOf(msg) === -1) return;
         }
 
-        // [1] 프로필
+        // [1] 내 정보
         if (session.screen === "MAIN" && msg === "1") {
             session.screen = "PROFILE_MAIN";
             var head = LayoutManager.renderProfileHead(data, session.tempId);
@@ -375,43 +370,45 @@ var UserController = {
         }
         
         if (session.screen === "PROFILE_MAIN") {
-            if (msg === "1") { // 강화
-                session.screen = "STAT_SELECT";
-                var head = LayoutManager.renderProfileHead(data, session.tempId);
+            if (msg === "1") { 
+                session.screen = "STAT_SELECT"; 
                 var body = LayoutManager.templates.menuList(null, ContentManager.menus.stats);
-                return replier.reply(LayoutManager.renderFrame("능력치 강화", head + "\n" + Utils.getFixedDivider() + "\n" + body, true, "강화할 스탯 선택"));
+                return replier.reply(LayoutManager.renderFrame("능력치 강화", body, true, "강화할 스탯 선택"));
             }
-            if (msg === "2") { // 초기화
-                return replier.reply(LayoutManager.renderFrame("알림", "스탯 초기화는 상점에서 '스탯 초기화권'을 구매하면 즉시 적용됩니다.", true, "상점을 이용하세요."));
+            if (msg === "2") { 
+                return replier.reply(LayoutManager.renderFrame("알림", "상점에서 '스탯 초기화권'을 구매하세요.", true, null));
             }
         }
 
         if (session.screen === "STAT_SELECT") {
-            var sMap = {"1":"acc","2":"ref","3":"com","4":"int"}, nMap = {"1":"정확","2":"반응","3":"침착","4":"직관"};
+            var sMap = {"1":"acc","2":"ref","3":"com","4":"int"}, 
+                nMap = {"1":"정확","2":"반응","3":"침착","4":"직관"};
             if (sMap[msg]) {
-                session.temp.statKey = sMap[msg]; session.temp.statName = nMap[msg]; session.screen = "STAT_INPUT";
-                var body = LayoutManager.templates.inputRequest(session.temp.statName + " 강화", data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
-                return replier.reply(LayoutManager.renderFrame("강화 진행", body, true, "투자할 포인트 입력"));
+                session.temp.statKey = sMap[msg]; 
+                session.temp.statName = nMap[msg]; 
+                session.screen = "STAT_INPUT";
+                var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
+                return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트를 입력하세요."));
             }
         }
         if (session.screen === "STAT_INPUT") {
+            if (msg === "refresh_stat") return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P"), true, "다시 입력"));
             var amt = parseInt(msg);
             if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, "오류", ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_input", session, sender, replier); }); 
             if (data.point < amt) return SystemAction.go(replier, "실패", "포인트가 부족합니다.", function() { UserController.handle("refresh_input", session, sender, replier); });
             
-            data.point -= amt; data.stats[session.temp.statKey] += amt; Database.save();
-            return SystemAction.go(replier, "강화 성공", session.temp.statName + " +" + amt, function() { 
-                // 강화 메인으로 복귀
+            data.point -= amt; 
+            data.stats[session.temp.statKey] += amt; 
+            Database.save();
+            return SystemAction.go(replier, "강화 성공", session.temp.statName + " 수치가 " + amt + " 상승했습니다.", function() { 
                 session.screen = "STAT_SELECT"; 
-                var head = LayoutManager.renderProfileHead(data, session.tempId);
                 var body = LayoutManager.templates.menuList(null, ContentManager.menus.stats);
-                replier.reply(LayoutManager.renderFrame("능력치 강화", head + "\n" + Utils.getFixedDivider() + "\n" + body, true, "강화할 스탯 선택"));
+                replier.reply(LayoutManager.renderFrame("능력치 강화", body, true, "강화할 스탯 선택"));
             });
         }
-        // 입력창 복귀
         if (msg === "refresh_input" && session.screen === "STAT_INPUT") {
-             var body = LayoutManager.templates.inputRequest(session.temp.statName + " 강화", data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
-             return replier.reply(LayoutManager.renderFrame("강화 진행", body, true, "투자할 포인트 입력"));
+             var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
+             return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트 입력"));
         }
 
         // [2] 컬렉션
@@ -419,14 +416,16 @@ var UserController = {
             session.screen = "COLLECTION_MAIN";
             if (!data.inventory.champions) data.inventory.champions = [];
             var myChamps = data.inventory.champions.length;
-            var stats = ["👑 현재 칭호: [" + data.title + "]", "📊 챔피언 수집: " + myChamps + "명"].join("\n");
+            var stats = ["👑 현재 칭호: [" + data.title + "]", "📊 수집 챔피언: " + myChamps + "명"].join("\n");
             var body = LayoutManager.templates.menuList(null, ["1. 보유 칭호", "2. 보유 챔피언"]);
             return replier.reply(LayoutManager.renderFrame("컬렉션", stats + "\n\n" + body, true, "번호를 선택하세요."));
         }
         if (session.screen === "COLLECTION_MAIN") {
              if (msg === "1") {
                  session.screen = "TITLE_EQUIP";
-                 var list = data.inventory.titles.map(function(t, i) { return (i+1) + ". " + t + (t === data.title ? " [장착중]" : ""); }).join("\n");
+                 var list = data.inventory.titles.map(function(t, i) { 
+                     return (i+1) + ". " + t + (t === data.title ? " [장착중]" : ""); 
+                 }).join("\n");
                  return replier.reply(LayoutManager.renderFrame("칭호 관리", list + "\n\n장착할 칭호 이름을 정확히 입력하세요.", true, "칭호 입력"));
              }
              if (msg === "2") {
@@ -437,96 +436,90 @@ var UserController = {
         }
         if (session.screen === "TITLE_EQUIP") {
             if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(replier, "오류", "보유하지 않은 칭호입니다.", function() { UserController.handle("refresh_title", session, sender, replier); });
-            data.title = msg; Database.save();
-            return SystemAction.go(replier, "완료", "칭호가 변경되었습니다.", function() { 
+            data.title = msg; 
+            Database.save();
+            return SystemAction.go(replier, "변경 완료", "칭호가 [" + msg + "](으)로 변경되었습니다.", function() { 
                 UserController.handle("2", session, sender, replier); 
             });
         }
         if (msg === "refresh_title") {
              var list = data.inventory.titles.map(function(t, i) { return (i+1) + ". " + t + (t === data.title ? " [장착중]" : ""); }).join("\n");
-             return replier.reply(LayoutManager.renderFrame("칭호 관리", list + "\n\n장착할 칭호 이름을 정확히 입력하세요.", true, "칭호 입력"));
-        }
-
-        // [3] 대전
-        if (session.screen === "MAIN" && msg === "3") {
-            return replier.reply(LayoutManager.renderFrame("대전 모드", ContentManager.msg.battlePrep, true, "준비 중..."));
+             return replier.reply(LayoutManager.renderFrame("칭호 관리", list + "\n\n정확한 칭호 이름을 입력해 주세요.", true, "칭호 입력"));
         }
 
         // [4] 상점
         if (session.screen === "MAIN" && msg === "4") {
             session.screen = "SHOP_MAIN";
             var body = LayoutManager.templates.menuList(null, ContentManager.menus.shopMain);
-            return replier.reply(LayoutManager.renderFrame("상점", body, true, "상점을 선택하세요."));
+            return replier.reply(LayoutManager.renderFrame("상점", body, true, "상점 카테고리를 선택하세요."));
         }
         if (session.screen === "SHOP_MAIN") {
             if (msg === "1") { 
                 session.screen = "SHOP_ITEMS";
                 var body = LayoutManager.templates.menuList(null, ContentManager.menus.shopItems);
-                return replier.reply(LayoutManager.renderFrame("아이템 상점", body + "\n\n구매할 번호를 입력하세요.", true, "번호 선택"));
+                return replier.reply(LayoutManager.renderFrame("아이템 상점", body, true, "구매할 아이템 번호를 입력하세요.")); 
             }
             if (msg === "2") { 
                 session.screen = "SHOP_CHAMPS";
                 if (!data.inventory.champions) data.inventory.champions = [];
-                var cList = ContentManager.champions.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); }).join("\n");
-                return replier.reply(LayoutManager.renderFrame("챔피언 상점 (500G)", cList + "\n\n영입할 번호를 입력하세요.", true, "번호 선택"));
+                var cList = ContentManager.champions.map(function(c, i){ 
+                    return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); 
+                }).join("\n");
+                return replier.reply(LayoutManager.renderFrame("챔피언 상점 (500G)", cList, true, "영입할 챔피언 번호를 입력하세요."));
             }
         }
         if (session.screen === "SHOP_ITEMS") {
-            var price = 0, name = "", action = "";
-            if (msg === "1") { price = 500; name = "닉네임 변경권"; action = "name"; }
-            else if (msg === "2") { price = 1500; name = "스탯 초기화권"; action = "reset_stat"; }
-            
-            if (price > 0) {
-                if (data.gold < price) return SystemAction.go(replier, "실패", ContentManager.msg.notEnoughGold, function() { UserController.handle("refresh_shop_item", session, sender, replier); });
-                data.gold -= price;
-                var resText = name + " 구매 완료!";
-                if (action === "name") { data.gold += price; resText = "관리자 문의 필요 (골드 반환)"; }
-                else if (action === "reset_stat") { data.stats = { acc: 10, ref: 10, com: 10, int: 10 }; resText += "\n(스탯 초기화)"; }
-                Database.save();
-                return SystemAction.go(replier, "구매 성공", resText + "\n남은 골드: " + data.gold + " G", function() { 
-                    UserController.handle("refresh_shop_item", session, sender, replier); 
-                });
+            if (msg === "refresh_shop_i") {
+                var body = LayoutManager.templates.menuList(null, ContentManager.menus.shopItems);
+                return replier.reply(LayoutManager.renderFrame("아이템 상점", body, true, "번호를 선택해 주세요."));
             }
-        }
-        if (msg === "refresh_shop_item") {
-             var body = LayoutManager.templates.menuList(null, ContentManager.menus.shopItems);
-             return replier.reply(LayoutManager.renderFrame("아이템 상점", body + "\n\n구매할 번호를 입력하세요.", true, "번호 선택"));
+            var p = 0, n = "", act = "";
+            if (msg === "1") { p = 500; n = "닉네임 변경권"; act = "name"; }
+            else if (msg === "2") { p = 1500; n = "스탯 초기화권"; act = "reset"; }
+            
+            if (p > 0) {
+                if (data.gold < p) return SystemAction.go(replier, "실패", "골드가 부족합니다.", function(){ UserController.handle("refresh_shop_i", session, sender, replier); });
+                data.gold -= p; 
+                if (act === "reset") data.stats = { acc: 50, ref: 50, com: 50, int: 50 };
+                Database.save();
+                return SystemAction.go(replier, "구매 성공", n + " 구매가 완료되었습니다!", function(){ UserController.handle("refresh_shop_i", session, sender, replier); });
+            }
         }
 
         if (session.screen === "SHOP_CHAMPS") {
+            if (msg === "refresh_shop_c") {
+                var cList = ContentManager.champions.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); }).join("\n");
+                return replier.reply(LayoutManager.renderFrame("챔피언 상점 (500G)", cList, true, "번호를 선택해 주세요."));
+            }
             var idx = parseInt(msg) - 1;
             if (ContentManager.champions[idx]) {
                 var target = ContentManager.champions[idx];
-                if (!data.inventory.champions) data.inventory.champions = [];
-                if (data.inventory.champions.indexOf(target) !== -1) return SystemAction.go(replier, "알림", "이미 보유중인 챔피언입니다.", function() { UserController.handle("refresh_shop_champ", session, sender, replier); });
-                if (data.gold < 500) return SystemAction.go(replier, "실패", ContentManager.msg.notEnoughGold, function() { UserController.handle("refresh_shop_champ", session, sender, replier); });
-                data.gold -= 500; data.inventory.champions.push(target); Database.save();
-                return SystemAction.go(replier, "영입 성공", target + " 합류!", function(){ 
-                    UserController.handle("refresh_shop_champ", session, sender, replier);
-                });
+                if (data.inventory.champions.indexOf(target) !== -1 || data.gold < 500) {
+                    return SystemAction.go(replier, "실패", "이미 보유 중이거나 골드가 부족합니다.", function(){ UserController.handle("refresh_shop_c", session, sender, replier); });
+                }
+                data.gold -= 500; 
+                data.inventory.champions.push(target); 
+                Database.save();
+                return SystemAction.go(replier, "영입 성공", target + "님이 합류했습니다!", function(){ UserController.handle("refresh_shop_c", session, sender, replier); });
             }
-        }
-        if (msg === "refresh_shop_champ") {
-             var cList = ContentManager.champions.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); }).join("\n");
-             return replier.reply(LayoutManager.renderFrame("챔피언 상점 (500G)", cList + "\n\n영입할 번호를 입력하세요.", true, "번호 선택"));
         }
 
         // [5] 문의
         if (session.screen === "MAIN" && msg === "5") {
             session.screen = "USER_INQUIRY";
-            return replier.reply(LayoutManager.renderFrame("문의 접수", "운영진에게 보낼 내용을 입력하세요.", true, "내용 입력"));
+            return replier.reply(LayoutManager.renderFrame("문의 접수", "운영진에게 보낼 내용을 입력해 주세요.", true, "내용 입력"));
         }
         if (session.screen === "USER_INQUIRY") {
             Database.inquiries.push({ sender: session.tempId, content: msg, time: new Date().toLocaleString(), read: false });
             Database.save();
             session.screen = "MAIN";
-            return SystemAction.go(replier, "완료", "문의가 접수되었습니다.", function() { UserController.handle("메뉴", session, sender, replier); });
+            return SystemAction.go(replier, "완료", "접수되었습니다.", function() { UserController.handle("menu_refresh", session, sender, replier); });
         }
         
         // [6] 로그아웃
-        if (session.screen === "MAIN" && msg === "6") {
-            SessionManager.reset(sender);
-            return replier.reply(LayoutManager.renderFrame("알림", "로그아웃 되었습니다.", false, "재로그인 필요"));
+        if (session.screen === "MAIN" && msg === "6") { 
+            SessionManager.reset(sender); 
+            return replier.reply(LayoutManager.renderFrame("알림", "성공적으로 로그아웃되었습니다.", false, "다시 이용하려면 '메뉴'를 입력하세요.")); 
         }
     }
 };
@@ -534,13 +527,14 @@ var UserController = {
 // 6-3. 관리자 컨트롤러
 var AdminController = {
     handle: function(msg, session, sender, replier) {
-        if (session.screen === "IDLE" || msg === "메뉴" || msg === "menu_refresh") {
+        if (session.screen === "IDLE" || msg === "menu_refresh" || msg === "메뉴") {
             session.screen = "ADMIN_MAIN";
             var body = LayoutManager.templates.menuList(null, ContentManager.menus.adminMain);
             return replier.reply(LayoutManager.renderFrame("관리 센터", body, false, "관리 메뉴 선택"));
         }
 
         if (session.screen === "ADMIN_MAIN" && msg === "1") {
+            session.screen = "ADMIN_SYS_INFO";
             var rt = java.lang.Runtime.getRuntime();
             var used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
             var info = "📟 메모리: " + used + "MB 사용중\n👥 유저 수: " + Object.keys(Database.data).length + "명\n🛡️ 버전: " + Config.Version;
@@ -568,6 +562,7 @@ var AdminController = {
         }
 
         if (session.screen === "ADMIN_MAIN" && msg === "3") {
+            session.screen = "ADMIN_INQUIRY";
             var list = Database.inquiries.map(function(iq, i) { return (i+1) + ". " + iq.sender + ": " + iq.content; }).join("\n");
             return replier.reply(LayoutManager.renderFrame("문의 목록", list || "문의가 없습니다.", true, "목록 확인"));
         }
@@ -576,13 +571,17 @@ var AdminController = {
             var tData = Database.data[session.temp.targetUser];
             if (msg === "1") { 
                 session.screen = "ADMIN_EDIT_SELECT";
-                return replier.reply(LayoutManager.renderFrame("정보 수정", LayoutManager.templates.menuList(null, ContentManager.menus.adminEdit), true, "항목 선택"));
+                return replier.reply(LayoutManager.renderFrame("정보 수정", LayoutManager.templates.menuList(null, ContentManager.menus.adminEdit), true, "수정할 항목 선택"));
             }
-            if (msg === "2") { // [수정] 데이터 초기화 버그 수정
-                tData.win = 0; tData.lose = 0; tData.lp = 0; 
-                tData.gold = 1000; tData.point = 0;
-                tData.stats = { acc: 50, ref: 50, com: 50, int: 50 };
-                Database.save(); // 확실하게 저장
+            if (msg === "2") {
+                var target = session.temp.targetUser;
+                Database.data[target].win = 0;
+                Database.data[target].lose = 0;
+                Database.data[target].lp = 0;
+                Database.data[target].gold = 1000;
+                Database.data[target].point = 0;
+                Database.data[target].stats = { acc: 50, ref: 50, com: 50, int: 50 };
+                Database.save();
                 return SystemAction.go(replier, "완료", "데이터가 초기화되었습니다.", function() {
                     AdminController.handle("refresh_detail", session, sender, replier);
                 });
@@ -602,13 +601,9 @@ var AdminController = {
         }
         
         if (msg === "refresh_detail") {
-             if(Database.data[session.temp.targetUser]) {
-                 var head = LayoutManager.renderProfileHead(Database.data[session.temp.targetUser], session.temp.targetUser);
-                 var body = LayoutManager.templates.menuList(null, ContentManager.menus.adminUser);
-                 return replier.reply(LayoutManager.renderFrame(session.temp.targetUser + " 관리", head + "\n" + Utils.getFixedDivider() + "\n" + body, true, "작업 선택"));
-             } else {
-                 return AdminController.handle("메뉴", session, sender, replier);
-             }
+             var head = LayoutManager.renderProfileHead(Database.data[session.temp.targetUser], session.temp.targetUser);
+             var body = LayoutManager.templates.menuList(null, ContentManager.menus.adminUser);
+             return replier.reply(LayoutManager.renderFrame(session.temp.targetUser + " 관리", head + "\n" + Utils.getFixedDivider() + "\n" + body, true, "작업 선택"));
         }
 
         if (session.screen === "ADMIN_EDIT_SELECT") {
@@ -622,20 +617,18 @@ var AdminController = {
         if (session.screen === "ADMIN_EDIT_INPUT") {
              var val = parseInt(msg);
              if(!isNaN(val)) {
-                 // [수정] 레벨 수정 시 포인트 자동 연동
                  if (session.temp.editType === "level") {
                      var oldLevel = Database.data[session.temp.targetUser].level;
                      var diff = val - oldLevel;
                      if (diff !== 0) {
-                         // 레벨 차이 * 5 만큼 포인트 더하기 (레벨 다운시 마이너스 됨)
-                         Database.data[session.temp.targetUser].point += (diff * POINT_PER_LEVEL);
-                         if(Database.data[session.temp.targetUser].point < 0) Database.data[session.temp.targetUser].point = 0; // 음수 방지
+                         var addPoint = diff * POINT_PER_LEVEL;
+                         Database.data[session.temp.targetUser].point += addPoint;
+                         if(Database.data[session.temp.targetUser].point < 0) Database.data[session.temp.targetUser].point = 0;
                      }
                  }
                  
                  Database.data[session.temp.targetUser][session.temp.editType] = val;
                  Database.save();
-                 
                  return SystemAction.go(replier, "완료", "수정되었습니다.", function() {
                      session.screen = "ADMIN_USER_DETAIL";
                      AdminController.handle("refresh_detail", session, sender, replier);
@@ -650,78 +643,90 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     try {
         Database.load(); 
         var realMsg = msg.trim();
-        var session = SessionManager.get(sender, replier);
+        var session = SessionManager.get(sender);
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
-        
+
+        // [핵심 수정] '메뉴' 입력 시 타임아웃보다 우선 처리하여 즉시 복구
+        if (realMsg === "메뉴") {
+            session.lastTime = Date.now();
+            
+            if (session.data) {
+                session.screen = "MAIN";
+            } else {
+                session.screen = "GUEST_MAIN";
+            }
+            
+            if (room === Config.AdminRoom) {
+                return AdminController.handle("menu_refresh", session, sender, replier);
+            }
+            
+            if (session.data) {
+                return UserController.handle("menu_refresh", session, sender, replier);
+            } else {
+                return AuthController.handle("menu_refresh", session, sender, replier);
+            }
+        }
+
         if (SessionManager.checkTimeout(sender, replier)) return;
 
-        // [네비게이션 핵심 로직]
-        if (realMsg === "취소") {
-            SessionManager.reset(sender);
-            return replier.reply(LayoutManager.renderFrame("알림", "대기 상태로 돌아갑니다.", false, null));
+        if (realMsg === "취소") { 
+            SessionManager.reset(sender); 
+            return replier.reply(LayoutManager.renderFrame("알림", "대기 상태로 돌아갑니다.", false, "재실행은 '메뉴'")); 
         }
-        if (realMsg === "메뉴") {
-            if (session.data) session.screen = "MAIN"; // 로그인 상태 -> 메인 로비
-            else session.screen = "GUEST_MAIN"; // 비로그인 상태 -> 게스트 메인
-            
-            // 화면 갱신
-            if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier);
-            if (session.data) return UserController.handle("menu_refresh", session, sender, replier);
-            return AuthController.handle("menu_refresh", session, sender, replier);
-        }
-        
+
         if (realMsg === "이전") {
-             // [이전] 로직 정교화: 각 단계별 부모 화면 매핑
-             var parentMap = {
-                 "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN",
-                 "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
-                 "GUEST_INQUIRY": "GUEST_MAIN",
-                 
-                 "PROFILE_MAIN": "MAIN", 
-                 "STAT_SELECT": "PROFILE_MAIN", "STAT_INPUT": "STAT_SELECT",
-                 
-                 "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN",
-                 "SHOP_MAIN": "MAIN", 
-                 "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_MAIN",
-                 "USER_INQUIRY": "MAIN",
-                 
-                 "ADMIN_USER_SELECT": "ADMIN_MAIN", "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT",
-                 "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT"
-             };
-             
-             if (parentMap[session.screen]) {
-                 session.screen = parentMap[session.screen]; // 부모 화면으로 상태 변경
-                 
-                 // 해당 컨트롤러 호출 (새로고침)
-                 if (room === Config.AdminRoom) {
-                     if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier);
-                     if (session.screen === "ADMIN_USER_DETAIL") return AdminController.handle("refresh_detail", session, sender, replier);
-                     return AdminController.handle("menu_refresh", session, sender, replier); // Fallback
-                 }
-                 
-                 // 유저 컨트롤러 새로고침 분기
-                 if (session.data) {
-                     if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
-                     if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
-                     if (session.screen === "STAT_SELECT") return UserController.handle("1", session, sender, replier); // PROFILE->STAT logic
-                     if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier);
-                     return UserController.handle("menu_refresh", session, sender, replier);
-                 }
-                 
-                 return AuthController.handle("menu_refresh", session, sender, replier);
-             } else {
-                 return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 없습니다.", false, null));
-             }
+            var pData = [
+                "JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,",
+                "GUEST_INQUIRY:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,",
+                "STAT_INPUT:STAT_SELECT,COLLECTION_MAIN:MAIN,TITLE_EQUIP:COLLECTION_MAIN,",
+                "SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,",
+                "ADMIN_SYS_INFO:ADMIN_MAIN,ADMIN_INQUIRY:ADMIN_MAIN,ADMIN_USER_SEL:ADMIN_MAIN,",
+                "ADMIN_USER_DETAIL:ADMIN_USER_SEL,ADMIN_EDIT_SEL:ADMIN_USER_DETAIL,ADMIN_EDIT_IN:ADMIN_EDIT_SEL"
+            ].join("").split(",");
+
+            var pMap = {};
+            for (var i = 0; i < pData.length; i++) {
+                var pair = pData[i].split(":");
+                if (pair.length === 2) pMap[pair[0]] = pair[1];
+            }
+
+            if (pMap[session.screen]) {
+                session.screen = pMap[session.screen];
+                
+                if (room === Config.AdminRoom) {
+                    if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier);
+                    if (session.screen === "ADMIN_USER_SEL") return AdminController.handle("2", session, sender, replier);
+                    if (session.screen === "ADMIN_USER_DETAIL") return AdminController.handle("refresh_detail", session, sender, replier);
+                    return AdminController.handle("menu_refresh", session, sender, replier);
+                }
+                
+                if (session.data) {
+                    if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
+                    if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
+                    if (session.screen === "STAT_SELECT") return UserController.handle("1", session, sender, replier);
+                    if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier);
+                    return UserController.handle("menu_refresh", session, sender, replier);
+                }
+                return AuthController.handle("menu_refresh", session, sender, replier);
+            }
+            return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 없습니다.", false, null));
         }
 
         if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier);
-        if (!session.data) return AuthController.handle(realMsg, session, sender, replier);
-        return UserController.handle(realMsg, session, sender, replier);
+        return (session.data ? UserController : AuthController).handle(realMsg, session, sender, replier);
 
     } catch (e) {
-        var errorLog = "⛔ 시스템 오류 발생!\n━━━━━━━━━━━━━━\n📌 종류: " + e.name + "\n💬 내용: " + e.message + "\n📍 위치: " + (e.lineNumber || "?") + "줄\n🔎 상세: " + (e.stack ? e.stack.substring(0, 100) : "없음");
-        try { Api.replyRoom(Config.AdminRoom, errorLog); } catch(err) {} 
+        var errLog = [
+            "⛔ 시스템 오류 발생!",
+            "━━━━━━━━━━━━━━",
+            "📌 종류: " + e.name,
+            "💬 내용: " + e.message,
+            "📍 위치: " + (e.lineNumber || "정보 없음") + "줄",
+            "🔎 상세: " + (e.stack ? e.stack.substring(0, 150) : "정보 없음")
+        ].join("\n");
+        
+        try { Api.replyRoom(Config.AdminRoom, errLog); } catch(err) {} 
         replier.reply(LayoutManager.renderFrame("시스템 오류", "봇 내부 오류가 발생했습니다.\n관리자에게 문의해 주세요.", false, "오류 발생"));
     }
 }
