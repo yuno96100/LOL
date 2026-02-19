@@ -566,22 +566,32 @@ var AdminController = {
             return replier.reply(LayoutManager.renderFrame("문의 목록", list || "문의가 없습니다.", true, "목록 확인"));
         }
 
-        if (session.screen === "ADMIN_USER_DETAIL") {
+if (session.screen === "ADMIN_USER_DETAIL") {
             var tData = Database.data[session.temp.targetUser];
             if (msg === "1") { 
                 session.screen = "ADMIN_EDIT_SELECT";
                 return replier.reply(LayoutManager.renderFrame("정보 수정", LayoutManager.templates.menuList(null, ContentManager.menus.adminEdit), true, "수정할 항목 선택"));
             }
-            if (msg === "2") {
+            if (msg === "2") { 
+                // [완벽 초기화 수정] 비밀번호와 차단 상태만 남기고 전부 가입 초기 상태로 덮어씌움
                 var target = session.temp.targetUser;
-                Database.data[target].win = 0;
-                Database.data[target].lose = 0;
-                Database.data[target].lp = 0;
-                Database.data[target].gold = 1000;
-                Database.data[target].point = 0;
-                Database.data[target].stats = { acc: 50, ref: 50, com: 50, int: 50 };
-                Database.save();
-                return SystemAction.go(replier, "완료", "데이터가 초기화되었습니다.", function() {
+                var currentPw = Database.data[target].pw;
+                var currentBan = Database.data[target].banned;
+                
+                Database.data[target] = {
+                    pw: currentPw, 
+                    name: target,
+                    title: "뉴비",
+                    lp: 0, win: 0, lose: 0,
+                    level: 1, exp: 0,
+                    gold: 1000, point: 0,
+                    stats: { acc: 50, ref: 50, com: 50, int: 50 }, 
+                    inventory: { titles: ["뉴비"], champions: [] },
+                    banned: currentBan
+                };
+                Database.save(); // 확실하게 저장
+                
+                return SystemAction.go(replier, "완료", "모든 데이터가 완벽하게 초기화되었습니다.", function() {
                     AdminController.handle("refresh_detail", session, sender, replier);
                 });
             }
