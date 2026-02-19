@@ -187,6 +187,19 @@ var ContentManager = {
             return "📢 관리자에 의해 [" + type + "] 정보가 " + val + "(으)로 수정되었습니다."; 
         }
     },
+        statMap: {
+        keys: {"1":"acc", "2":"ref", "3":"com", "4":"int"},
+        names: {"1":"정확", "2":"반응", "3":"침착", "4":"직관"}
+    },
+
+    // [추가] 공통 시스템 타이틀
+        title: {
+        error: "오류",
+        fail: "실패",
+        success: "성공",
+        complete: "완료",
+        notice: "알림"
+    },
     champions: ["알리스타", "말파이트", "레오나", "가렌", "다리우스", "잭스", "제드", "카타리나", "탈론", "럭스", "아리", "빅토르", "애쉬", "베인", "카이사", "소라카", "유미", "쓰레쉬"]
 };
 
@@ -386,11 +399,9 @@ var UserController = {
         }
 
         if (session.screen === "STAT_SELECT") {
-            var sMap = {"1":"acc","2":"ref","3":"com","4":"int"}, 
-                nMap = {"1":"정확","2":"반응","3":"침착","4":"직관"};
-            if (sMap[msg]) {
-                session.temp.statKey = sMap[msg]; 
-                session.temp.statName = nMap[msg]; 
+            if (ContentManager.statMap.keys[msg]) {
+                session.temp.statKey = ContentManager.statMap.keys[msg]; 
+                session.temp.statName = ContentManager.statMap.names[msg];
                 session.screen = "STAT_INPUT";
                 var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
                 return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트를 입력하세요."));
