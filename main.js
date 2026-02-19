@@ -393,18 +393,20 @@ var UserController = {
         }
 
         if (session.screen === "STAT_INPUT") {
-            // [버그 해결] 무한루프 방지: 새로고침(refresh) 신호가 오면 숫자로 바꾸지 않고 바로 입력창 출력 후 종료
+            // 1. 새로고침 신호가 오면 무조건 여기서 화면 띄우고 즉시 종료 (무한루프 차단)
             if (msg === "refresh_input" || msg === "refresh_stat") {
                 var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
-                return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트 입력"));
+                return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트를 입력하세요."));
             }
 
+            // 2. 실제 유저 입력값 검사
             var amt = parseInt(msg);
             
-            // 숫자가 아니거나 포인트가 부족할 때 에러 출력
+            // 숫자가 아니거나 포인트가 부족할 때 에러 출력 (콜백으로 refresh_input 전송)
             if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, "오류", ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_input", session, sender, replier); }); 
             if (data.point < amt) return SystemAction.go(replier, "실패", "포인트가 부족합니다.", function() { UserController.handle("refresh_input", session, sender, replier); });
             
+            // 3. 정상 처리
             data.point -= amt; 
             data.stats[session.temp.statKey] += amt; 
             Database.save();
