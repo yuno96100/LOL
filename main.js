@@ -720,6 +720,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return UserController.handle(realMsg, session, sender, replier);
 
     } catch (e) {
-        replier.reply("⛔ 에러: " + e);
+        var errorLog = "⛔ 시스템 오류 발생!\n━━━━━━━━━━━━━━\n📌 종류: " + e.name + "\n💬 내용: " + e.message + "\n📍 위치: " + (e.lineNumber || "?") + "줄\n🔎 상세: " + (e.stack ? e.stack.substring(0, 100) : "없음");
+        try { Api.replyRoom(Config.AdminRoom, errorLog); } catch(err) {} 
+        replier.reply(LayoutManager.renderFrame("시스템 오류", "봇 내부 오류가 발생했습니다.\n관리자에게 문의해 주세요.", false, "오류 발생"));
     }
 }
