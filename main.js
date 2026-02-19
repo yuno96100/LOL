@@ -163,14 +163,7 @@ SessionManager.init();
 var ContentManager = {
     menus: {
         guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
-        main: [
-            "1. 내 정보", // 프로필 조회
-            "2. 컬렉션", 
-            "3. 대전 모드", 
-            "4. 상점", 
-            "5. 문의하기", 
-            "6. 로그아웃"
-        ],
+        main: ["1. 내 정보", "2. 컬렉션", "3. 대전 모드", "4. 상점", "5. 문의하기", "6. 로그아웃"],
         profileSub: ["1. 능력치 강화", "2. 능력치 초기화"],
         stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
         shopMain: ["1. 아이템 상점", "2. 챔피언 상점"],
@@ -180,20 +173,11 @@ var ContentManager = {
         adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"]
     },
     msg: {
-        welcome: [
-            "소환사의 협곡에 오신 것을 환영합니다.", 
-            "원하시는 기능을 선택해 주세요."
-        ].join("\n"),
-        
+        welcome: "소환사의 협곡에 오신 것을 환영합니다.\n원하시는 기능을 선택해 주세요.",
         inputID_Join: "사용하실 아이디를 입력해 주세요.",
         inputID_Login: "로그인할 아이디를 입력해 주세요.",
         inputPW: "비밀번호를 입력해 주세요.",
-        
-        registerComplete: [
-            "가입이 완료되었습니다!", 
-            "자동으로 로그인됩니다."
-        ].join("\n"),
-        
+        registerComplete: "가입이 완료되었습니다!\n자동으로 로그인됩니다.",
         loginFail: "정보가 일치하지 않습니다.",
         notEnoughGold: "골드가 부족합니다.",
         onlyNumber: "숫자만 입력해 주세요.",
@@ -201,13 +185,7 @@ var ContentManager = {
         battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다.",
         adminSelectUser: "관리할 유저의 번호를 입력하세요."
     },
-    champions: [
-        "알리스타", "말파이트", "레오나", "가렌", 
-        "다리우스", "잭스", "제드", "카타리나", 
-        "탈론", "럭스", "아리", "빅토르", 
-        "애쉬", "베인", "카이사", "소라카", 
-        "유미", "쓰레쉬"
-    ]
+    champions: ["알리스타", "말파이트", "레오나", "가렌", "다리우스", "잭스", "제드", "카타리나", "탈론", "럭스", "아리", "빅토르", "애쉬", "베인", "카이사", "소라카", "유미", "쓰레쉬"]
 };
 
 // ━━━━━━━━ [4. 레이아웃 매니저] ━━━━━━━━
@@ -215,74 +193,45 @@ var LayoutManager = {
     renderFrame: function(title, content, showNav, footer) {
         var div = Utils.getFixedDivider();
         var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content);
-
-        // 네비게이션: [이전 | 취소 | 메뉴]
-        if (showNav === true) {
-            res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
-        } else if (Array.isArray(showNav)) {
-            res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
-        }
-
-        // 하단 도움말
-        if (footer) {
-            res += "\n" + div + "\n💡 " + footer;
-        }
-
+        if (showNav === true) res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
+        else if (Array.isArray(showNav)) res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
+        if (footer) res += "\n" + div + "\n💡 " + footer;
         return res;
     },
-
     renderAlert: function(title, content) {
         return this.renderFrame(title, content, false, "잠시만 기다려주세요...");
     },
-
     renderProfileHead: function(data, targetName) {
         var div = Utils.getFixedDivider();
         var tier = Utils.getTierInfo(data.lp);
         var win = data.win || 0, lose = data.lose || 0, total = win + lose;
-        var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-        var st = data.stats;
-        var expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
-        var banStatus = data.banned ? " [🚫차단]" : "";
-
-        var lines = [
-            "👤 대상: " + targetName + banStatus,
-            "🏅 칭호: [" + data.title + "]",
-            div,
-            "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")",
-            "💰 골드: " + (data.gold || 0).toLocaleString() + " G",
-            "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)",
-            "🆙 레벨: Lv." + data.level,
-            "🔷 경험: (" + expDisplay + ")",
-            div,
-            " [ 상세 능력치 ]",
-            "🎯 정확: " + st.acc,
-            "⚡ 반응: " + st.ref,
-            "🧘 침착: " + st.com,
-            "🧠 직관: " + st.int,
-            div,
-            "✨ 포인트: " + (data.point || 0) + " P"
-        ];
+        var rate = total === 0 ? 0 : Math.floor((win / total) * 100);
+        var s = data.stats;
+        var exp = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
+        var lines = [];
+        lines.push("👤 대상: " + targetName + (data.banned ? " [🚫차단]" : ""));
+        lines.push("🏅 칭호: [" + data.title + "]");
+        lines.push(div);
+        lines.push("🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")");
+        lines.push("💰 골드: " + (data.gold || 0).toLocaleString() + " G");
+        lines.push("⚔️ 전적: " + win + "승 " + lose + "패 (" + rate + "%)");
+        lines.push("🆙 레벨: Lv." + data.level);
+        lines.push("🔷 경험: (" + exp + ")");
+        lines.push(div);
+        lines.push("🎯 정확: " + s.acc);
+        lines.push("⚡ 반응: " + s.ref);
+        lines.push("🧘 침착: " + s.com);
+        lines.push("🧠 직관: " + s.int);
+        lines.push(div);
+        lines.push("✨ 포인트: " + (data.point || 0) + " P");
         return lines.join("\n");
     },
-
     templates: {
-        menuList: function(subtitle, items) {
-            // [수정] 대괄호 제목 제거, 리스트만 출력
-            return " " + items.join("\n "); 
-        },
+        menuList: function(subtitle, items) { return " " + items.join("\n "); },
         inputRequest: function(subtitle, currentVal, info) {
-            var lines = [
-                // subtitle 제거
-                " 현재 상태 : " + currentVal,
-                " " + info,
-                "",
-                " 값을 입력하세요."
-            ];
-            return lines.join("\n");
+            return " 현재 상태 : " + currentVal + "\n " + info + "\n\n 값을 입력하세요.";
         },
-        result: function(subtitle, text) {
-            return " " + text;
-        },
+        result: function(subtitle, text) { return " " + text; },
         list: function(subtitle, listArray) {
             return " " + (listArray && listArray.length > 0 ? listArray.join(", ") : "없음");
         }
