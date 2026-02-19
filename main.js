@@ -176,7 +176,16 @@ var ContentManager = {
         onlyNumber: "숫자만 입력해 주세요.",
         banned: "🚫 관리자에 의해 이용이 제한된 계정입니다.",
         battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다.",
-        adminSelectUser: "관리할 유저의 번호를 입력하세요."
+        adminSelectUser: "관리할 유저의 번호를 입력하세요.",
+        
+        // [추가] 관리자 작업 알림 텍스트 분리
+        adminNotifyInit: "📢 관리자에 의해 계정 데이터가 초기화되었습니다.",
+        adminNotifyDelete: "📢 관리자에 의해 계정이 영구 삭제되었습니다.",
+        adminNotifyBan: "📢 관리자에 의해 계정이 [이용 차단] 상태로 변경되었습니다.",
+        adminNotifyUnban: "📢 관리자에 의해 계정이 [차단 해제] 상태로 변경되었습니다.",
+        adminNotifyEdit: function(type, val) { 
+            return "📢 관리자에 의해 [" + type + "] 정보가 " + val + "(으)로 수정되었습니다."; 
+        }
     },
     champions: ["알리스타", "말파이트", "레오나", "가렌", "다리우스", "잭스", "제드", "카타리나", "탈론", "럭스", "아리", "빅토르", "애쉬", "베인", "카이사", "소라카", "유미", "쓰레쉬"]
 };
@@ -591,8 +600,8 @@ var AdminController = {
                 };
                 Database.save(); 
                 
-                // [알림 추가] 데이터 초기화
-                try { Api.replyRoom(target, "📢 관리자에 의해 계정 데이터가 초기화되었습니다."); } catch(e) {}
+                // [수정] ContentManager 참조
+                try { Api.replyRoom(target, ContentManager.msg.adminNotifyInit); } catch(e) {}
                 
                 return SystemAction.go(replier, "완료", "모든 데이터가 완벽하게 초기화되었습니다.", function() {
                     AdminController.handle("refresh_detail", session, sender, replier);
@@ -601,8 +610,8 @@ var AdminController = {
             if (msg === "3") {
                 delete Database.data[target]; Database.save();
                 
-                // [알림 추가] 계정 삭제
-                try { Api.replyRoom(target, "📢 관리자에 의해 계정이 영구 삭제되었습니다."); } catch(e) {}
+                // [수정] ContentManager 참조
+                try { Api.replyRoom(target, ContentManager.msg.adminNotifyDelete); } catch(e) {}
                 
                 return SystemAction.go(replier, "완료", "계정이 삭제되었습니다.", function() {
                     AdminController.handle("메뉴", session, sender, replier);
@@ -611,9 +620,9 @@ var AdminController = {
             if (msg === "4") {
                  tData.banned = !tData.banned; Database.save();
                  
-                 // [알림 추가] 차단 및 해제
-                 var banStr = tData.banned ? "이용 차단" : "차단 해제";
-                 try { Api.replyRoom(target, "📢 관리자에 의해 계정이 [" + banStr + "] 상태로 변경되었습니다."); } catch(e) {}
+                 // [수정] ContentManager 참조
+                 var notifyMsg = tData.banned ? ContentManager.msg.adminNotifyBan : ContentManager.msg.adminNotifyUnban;
+                 try { Api.replyRoom(target, notifyMsg); } catch(e) {}
                  
                  return SystemAction.go(replier, "완료", "차단 상태가 변경되었습니다.", function() {
                      AdminController.handle("refresh_detail", session, sender, replier);
@@ -654,8 +663,8 @@ var AdminController = {
                  Database.data[target][session.temp.editType] = val;
                  Database.save();
                  
-                 // [알림 추가] 정보 수정 (골드, LP, 레벨)
-                 try { Api.replyRoom(target, "📢 관리자에 의해 [" + typeName + "] 정보가 " + val + "(으)로 수정되었습니다."); } catch(e) {}
+                 // [수정] ContentManager 참조 (동적 메시지 처리)
+                 try { Api.replyRoom(target, ContentManager.msg.adminNotifyEdit(typeName, val)); } catch(e) {}
                  
                  return SystemAction.go(replier, "완료", "수정되었습니다.", function() {
                      session.screen = "ADMIN_USER_DETAIL";
