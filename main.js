@@ -566,15 +566,15 @@ var AdminController = {
             return replier.reply(LayoutManager.renderFrame("문의 목록", list || "문의가 없습니다.", true, "목록 확인"));
         }
 
-if (session.screen === "ADMIN_USER_DETAIL") {
-            var tData = Database.data[session.temp.targetUser];
+        if (session.screen === "ADMIN_USER_DETAIL") {
+            var target = session.temp.targetUser;
+            var tData = Database.data[target];
+            
             if (msg === "1") { 
                 session.screen = "ADMIN_EDIT_SELECT";
                 return replier.reply(LayoutManager.renderFrame("정보 수정", LayoutManager.templates.menuList(null, ContentManager.menus.adminEdit), true, "수정할 항목 선택"));
             }
             if (msg === "2") { 
-                // [완벽 초기화 수정] 비밀번호와 차단 상태만 남기고 전부 가입 초기 상태로 덮어씌움
-                var target = session.temp.targetUser;
                 var currentPw = Database.data[target].pw;
                 var currentBan = Database.data[target].banned;
                 
@@ -589,20 +589,32 @@ if (session.screen === "ADMIN_USER_DETAIL") {
                     inventory: { titles: ["뉴비"], champions: [] },
                     banned: currentBan
                 };
-                Database.save(); // 확실하게 저장
+                Database.save(); 
+                
+                // [알림 추가] 데이터 초기화
+                try { Api.replyRoom(target, "📢 관리자에 의해 계정 데이터가 초기화되었습니다."); } catch(e) {}
                 
                 return SystemAction.go(replier, "완료", "모든 데이터가 완벽하게 초기화되었습니다.", function() {
                     AdminController.handle("refresh_detail", session, sender, replier);
                 });
             }
             if (msg === "3") {
-                delete Database.data[session.temp.targetUser]; Database.save();
+                delete Database.data[target]; Database.save();
+                
+                // [알림 추가] 계정 삭제
+                try { Api.replyRoom(target, "📢 관리자에 의해 계정이 영구 삭제되었습니다."); } catch(e) {}
+                
                 return SystemAction.go(replier, "완료", "계정이 삭제되었습니다.", function() {
                     AdminController.handle("메뉴", session, sender, replier);
                 });
             }
             if (msg === "4") {
                  tData.banned = !tData.banned; Database.save();
+                 
+                 // [알림 추가] 차단 및 해제
+                 var banStr = tData.banned ? "이용 차단" : "차단 해제";
+                 try { Api.replyRoom(target, "📢 관리자에 의해 계정이 [" + banStr + "] 상태로 변경되었습니다."); } catch(e) {}
+                 
                  return SystemAction.go(replier, "완료", "차단 상태가 변경되었습니다.", function() {
                      AdminController.handle("refresh_detail", session, sender, replier);
                  });
@@ -626,18 +638,25 @@ if (session.screen === "ADMIN_USER_DETAIL") {
         if (session.screen === "ADMIN_EDIT_INPUT") {
              var val = parseInt(msg);
              if(!isNaN(val)) {
+                 var target = session.temp.targetUser;
+                 var typeName = {"gold":"골드", "lp":"LP", "level":"레벨"}[session.temp.editType];
+                 
                  if (session.temp.editType === "level") {
-                     var oldLevel = Database.data[session.temp.targetUser].level;
+                     var oldLevel = Database.data[target].level;
                      var diff = val - oldLevel;
                      if (diff !== 0) {
                          var addPoint = diff * POINT_PER_LEVEL;
-                         Database.data[session.temp.targetUser].point += addPoint;
-                         if(Database.data[session.temp.targetUser].point < 0) Database.data[session.temp.targetUser].point = 0;
+                         Database.data[target].point += addPoint;
+                         if(Database.data[target].point < 0) Database.data[target].point = 0;
                      }
                  }
                  
-                 Database.data[session.temp.targetUser][session.temp.editType] = val;
+                 Database.data[target][session.temp.editType] = val;
                  Database.save();
+                 
+                 // [알림 추가] 정보 수정 (골드, LP, 레벨)
+                 try { Api.replyRoom(target, "📢 관리자에 의해 [" + typeName + "] 정보가 " + val + "(으)로 수정되었습니다."); } catch(e) {}
+                 
                  return SystemAction.go(replier, "완료", "수정되었습니다.", function() {
                      session.screen = "ADMIN_USER_DETAIL";
                      AdminController.handle("refresh_detail", session, sender, replier);
