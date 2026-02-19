@@ -632,48 +632,62 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
-        // [핵심 수정] 타임아웃 체크보다 '메뉴' 처리를 먼저 수행하여 즉시 복구 가능하게 함
+        // [세션 복구 로직] 타임아웃 체크보다 '메뉴' 입력을 우선 처리하여 즉시 복구 가능하게 함
         if (realMsg === "메뉴") {
-            if (session.data) session.screen = "MAIN"; 
-            else session.screen = "GUEST_MAIN";
+            if (session.data) {
+                session.screen = "MAIN";
+            } else {
+                session.screen = "GUEST_MAIN";
+            }
             
-            if (room === Config.AdminRoom) return AdminController.handle("menu_refresh", session, sender, replier);
-            if (session.data) return UserController.handle("menu_refresh", session, sender, replier);
+            if (room === Config.AdminRoom) {
+                return AdminController.handle("menu_refresh", session, sender, replier);
+            }
+            if (session.data) {
+                return UserController.handle("menu_refresh", session, sender, replier);
+            }
             return AuthController.handle("menu_refresh", session, sender, replier);
         }
 
-        // 그 다음 타임아웃 체크 (메뉴가 아닐 때만 작동)
+        // 이후 타임아웃 체크 (메뉴 입력이 아닐 때만 만료 알림)
         if (SessionManager.checkTimeout(sender, replier)) return;
 
+        // [취소] 기능: 모든 상태 중단 및 IDLE(대기)로 복구
         if (realMsg === "취소") { 
             SessionManager.reset(sender); 
-            return replier.reply(LayoutManager.renderFrame("알림", "대기 상태로 돌아갑니다.", false, "재실행은 '메뉴'")); 
+            return replier.reply(LayoutManager.renderFrame("알림", "모든 작업을 중단하고 대기 상태로 돌아갑니다.", false, "재실행하려면 '메뉴'를 입력하세요.")); 
         }
 
+        // [이전] 기능: 트리 구조에 따른 상위 카테고리 이동
         if (realMsg === "이전") {
-            var pLines = [];
-            pLines.push("JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,");
-            pLines.push("GUEST_INQUIRY:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,");
-            pLines.push("STAT_INPUT:STAT_SELECT,COLLECTION_MAIN:MAIN,TITLE_EQUIP:COLLECTION_MAIN,");
-            pLines.push("SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,");
-            pLines.push("ADMIN_SYS_INFO:ADMIN_MAIN,ADMIN_INQUIRY:ADMIN_MAIN,ADMIN_USER_SEL:ADMIN_MAIN,");
-            pLines.push("ADMIN_USER_DETAIL:ADMIN_USER_SEL,ADMIN_EDIT_SEL:ADMIN_USER_DETAIL,ADMIN_EDIT_IN:ADMIN_EDIT_SEL");
-            
-            var pData = pLines.join("").split(",");
+            // 문자열 오류 방지를 위한 조각화 처리
+            var pData = [
+                "JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,",
+                "GUEST_INQUIRY:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,",
+                "STAT_INPUT:STAT_SELECT,COLLECTION_MAIN:MAIN,TITLE_EQUIP:COLLECTION_MAIN,",
+                "SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,",
+                "ADMIN_SYS_INFO:ADMIN_MAIN,ADMIN_INQUIRY:ADMIN_MAIN,ADMIN_USER_SEL:ADMIN_MAIN,",
+                "ADMIN_USER_DETAIL:ADMIN_USER_SEL,ADMIN_EDIT_SEL:ADMIN_USER_DETAIL,ADMIN_EDIT_IN:ADMIN_EDIT_SEL"
+            ].join("").split(",");
+
             var pMap = {};
-            for(var i=0; i<pData.length; i++) {
+            for (var i = 0; i < pData.length; i++) {
                 var pair = pData[i].split(":");
-                pMap[pair[0]] = pair[1];
+                if (pair.length === 2) pMap[pair[0]] = pair[1];
             }
 
             if (pMap[session.screen]) {
                 session.screen = pMap[session.screen];
+                
+                // 관리자 방인 경우
                 if (room === Config.AdminRoom) {
                     if (session.screen === "ADMIN_MAIN") return AdminController.handle("menu_refresh", session, sender, replier);
                     if (session.screen === "ADMIN_USER_SEL") return AdminController.handle("2", session, sender, replier);
                     if (session.screen === "ADMIN_USER_DETAIL") return AdminController.handle("refresh_detail", session, sender, replier);
                     return AdminController.handle("menu_refresh", session, sender, replier);
                 }
+                
+                // 일반 유저인 경우
                 if (session.data) {
                     if (session.screen === "MAIN") return UserController.handle("menu_refresh", session, sender, replier);
                     if (session.screen === "PROFILE_MAIN") return UserController.handle("1", session, sender, replier);
@@ -681,21 +695,36 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                     if (session.screen === "SHOP_MAIN") return UserController.handle("4", session, sender, replier);
                     return UserController.handle("menu_refresh", session, sender, replier);
                 }
+                
+                // 비회원인 경우
                 return AuthController.handle("menu_refresh", session, sender, replier);
+            } else {
+                return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 존재하지 않습니다.", false, null));
             }
-            return replier.reply(LayoutManager.renderFrame("알림", "이전 단계가 없습니다.", false, null));
         }
 
-        if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier);
-        return (session.data ? UserController : AuthController).handle(realMsg, session, sender, replier);
+        // [기본 라우팅] 관리자/유저/비회원 분기 실행
+        if (room === Config.AdminRoom) {
+            return AdminController.handle(realMsg, session, sender, replier);
+        }
+        
+        if (session.data) {
+            return UserController.handle(realMsg, session, sender, replier);
+        } else {
+            return AuthController.handle(realMsg, session, sender, replier);
+        }
 
     } catch (e) {
-        var errLines = [];
-        errLines.push("⛔ 시스템 오류!");
-        errLines.push("📌 종류: " + e.name);
-        errLines.push("💬 내용: " + e.message);
-        errLines.push("📍 위치: " + (e.lineNumber || "알수없음") + "줄");
-        errLines.push("🔎 상세: " + (e.stack ? e.stack.substring(0, 100) : "없음"));
-        replier.reply(LayoutManager.renderFrame("오류 로그", errLines.join("\n"), false, "관리자 문의"));
+        // [상세 에러 로그 출력]
+        var errLog = [
+            "⛔ 시스템 오류가 발생했습니다.",
+            "━━━━━━━━━━━━━━",
+            "📌 종류: " + e.name,
+            "💬 내용: " + e.message,
+            "📍 위치: " + (e.lineNumber || "정보 없음") + "줄",
+            "🔎 상세: " + (e.stack ? e.stack.substring(0, 150) + "..." : "정보 없음")
+        ].join("\n");
+        
+        replier.reply(LayoutManager.renderFrame("시스템 오류", errLog, false, "관리자에게 오류 내용을 전달해 주세요."));
     }
 }
