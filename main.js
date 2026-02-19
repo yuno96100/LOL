@@ -157,7 +157,7 @@ var SessionManager = {
 // 초기화 시 세션 로드
 SessionManager.init();
 
-// ━━━━━━━━ [3. 콘텐츠 매니저] ━━━━━━━━
+// ━━━━━━━━ [3. 콘텐츠 매니저 (수정본)] ━━━━━━━━
 var ContentManager = {
     menus: {
         guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
@@ -178,6 +178,7 @@ var ContentManager = {
         adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"]
     },
     msg: {
+        // [수정] 긴 문장은 배열로 나누어 안전하게 연결
         welcome: [
             "소환사의 협곡에 오신 것을 환영합니다.", 
             "원하시는 기능을 선택해 주세요."
@@ -199,6 +200,7 @@ var ContentManager = {
         battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다.",
         adminSelectUser: "관리할 유저의 번호를 입력하세요."
     },
+    // [수정] 챔피언 목록 줄바꿈 오류 방지
     champions: [
         "알리스타", "말파이트", "레오나", "가렌", 
         "다리우스", "잭스", "제드", "카타리나", 
@@ -212,7 +214,10 @@ var ContentManager = {
 var LayoutManager = {
     renderFrame: function(title, content, showNav, footer) {
         var div = Utils.getFixedDivider();
-        var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content);
+        // 문자열 연결을 안전하게 분리
+        var res = "『 " + title + " 』\n";
+        res += div + "\n";
+        res += Utils.wrapText(content);
 
         // 네비게이션 표준화
         if (showNav === true) {
@@ -221,7 +226,7 @@ var LayoutManager = {
             res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
         }
 
-        // [수정] 도움말이 없으면 출력 안함, 있으면 출력
+        // 하단 도움말
         if (footer) {
             res += "\n" + div + "\n💡 " + footer;
         }
@@ -236,52 +241,50 @@ var LayoutManager = {
     renderProfileHead: function(data, targetName) {
         var div = Utils.getFixedDivider();
         var tier = Utils.getTierInfo(data.lp);
-        var win = data.win || 0, lose = data.lose || 0, total = win + lose;
+        var win = data.win || 0, lose = data.lose || 0;
+        var total = win + lose;
         var winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
         var st = data.stats;
         var expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
         var banStatus = data.banned ? " [🚫차단]" : "";
 
-        var lines = [
-            "👤 대상: " + targetName + banStatus,
-            "🏅 칭호: [" + data.title + "]",
-            div,
-            "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")",
-            "💰 골드: " + (data.gold || 0).toLocaleString() + " G",
-            "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)",
-            "🆙 레벨: Lv." + data.level,
-            "🔷 경험: (" + expDisplay + ")",
-            div,
-            " [ 상세 능력치 ]",
-            "🎯 정확: " + st.acc,
-            "⚡ 반응: " + st.ref,
-            "🧘 침착: " + st.com,
-            "🧠 직관: " + st.int,
-            div,
-            "✨ 포인트: " + (data.point || 0) + " P"
-        ];
+        // [수정] 긴 문자열 생성 시 배열 push 방식 사용 (오류 원천 차단)
+        var lines = [];
+        lines.push("👤 대상: " + targetName + banStatus);
+        lines.push("🏅 칭호: [" + data.title + "]");
+        lines.push(div);
+        lines.push("🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")");
+        lines.push("💰 골드: " + (data.gold || 0).toLocaleString() + " G");
+        lines.push("⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)");
+        lines.push("🆙 레벨: Lv." + data.level);
+        lines.push("🔷 경험: (" + expDisplay + ")");
+        lines.push(div);
+        lines.push(" [ 상세 능력치 ]");
+        lines.push("🎯 정확: " + st.acc);
+        lines.push("⚡ 반응: " + st.ref);
+        lines.push("🧘 침착: " + st.com);
+        lines.push("🧠 직관: " + st.int);
+        lines.push(div);
+        lines.push("✨ 포인트: " + (data.point || 0) + " P");
         
         return lines.join("\n");
     },
 
     templates: {
         menuList: function(subtitle, items) {
-            // [수정] 불필요한 대괄호 타이틀 제거 (subtitle이 있어도 무시하거나 필요한 경우만 사용)
-            // 유저 요청: "강화할 능력치 선택 같은 문구 안 넣었으면 좋겠어"
-            return " " + items.join("\n "); 
+            if (!subtitle) return " " + items.join("\n ");
+            return " [ " + subtitle + " ]\n " + items.join("\n "); 
         },
         inputRequest: function(subtitle, currentVal, info) {
-            var lines = [
-                // subtitle 제거
-                " 현재 상태 : " + currentVal,
-                " " + info,
-                "",
-                " 값을 입력하세요."
-            ];
+            var lines = [];
+            lines.push(" 현재 상태 : " + currentVal);
+            lines.push(" " + info);
+            lines.push("");
+            lines.push(" 값을 입력하세요.");
             return lines.join("\n");
         },
         result: function(subtitle, text) {
-            return " " + text; // 결과창도 심플하게
+            return " " + text;
         },
         list: function(subtitle, listArray) {
             var content = (listArray && listArray.length > 0) ? listArray.join(", ") : "없음";
