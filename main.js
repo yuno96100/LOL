@@ -673,31 +673,49 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         var isLogged = (session.tempId && Database.data[session.tempId]);
 
-        // 메뉴 입력 시 즉시 메인 로비 복귀
+        // [버그 수정] 메뉴 입력 시 방(Room)에 따라 화면 상태(screen)를 정확히 분리
         if (realMsg === "메뉴") {
             session.lastTime = Date.now();
-            if (isLogged) session.screen = "MAIN"; 
-            else session.screen = "GUEST_MAIN"; 
             
-            if (room === Config.AdminRoom) return AdminController.handle("refresh_screen", session, sender, replier, room);
-            if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
-            return AuthController.handle("refresh_screen", session, sender, replier, room);
+            // 1. 관리자 방일 경우 관리자 전용 로비 세팅
+            if (room === Config.AdminRoom) {
+                session.screen = "ADMIN_MAIN";
+                return AdminController.handle("refresh_screen", session, sender, replier, room);
+            }
+            
+            // 2. 유저 방일 경우 로그인 여부에 따라 분기
+            if (isLogged) {
+                session.screen = "MAIN"; 
+                return UserController.handle("refresh_screen", session, sender, replier, room);
+            } else {
+                session.screen = "GUEST_MAIN"; 
+                return AuthController.handle("refresh_screen", session, sender, replier, room);
+            }
         }
 
         if (SessionManager.checkTimeout(sender, replier)) return;
 
-        // 취소 입력 시 세션 초기화 후 로비 복귀
+        // [보너스 패치] '취소' 입력 시 로그아웃되는 현상 방지 (작업만 취소하고 로비로)
         if (realMsg === "취소") { 
+            var backupId = session.tempId; // 로그인 상태 보존
             SessionManager.reset(sender); 
+            var newSession = SessionManager.get(sender, replier);
+            if (backupId) newSession.tempId = backupId;
+            
             return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.cancel, function() {
-                var newSession = SessionManager.get(sender, replier);
-                newSession.screen = (room === Config.AdminRoom) ? "ADMIN_MAIN" : "GUEST_MAIN";
-                if (room === Config.AdminRoom) AdminController.handle("refresh_screen", newSession, sender, replier, room);
-                else AuthController.handle("refresh_screen", newSession, sender, replier, room);
+                if (room === Config.AdminRoom) {
+                    newSession.screen = "ADMIN_MAIN";
+                    AdminController.handle("refresh_screen", newSession, sender, replier, room);
+                } else if (backupId) {
+                    newSession.screen = "MAIN";
+                    UserController.handle("refresh_screen", newSession, sender, replier, room);
+                } else {
+                    newSession.screen = "GUEST_MAIN";
+                    AuthController.handle("refresh_screen", newSession, sender, replier, room);
+                }
             });
         }
 
-        // [수정] 이전 기능 완벽 패치 (pMap과 refresh_screen 단일 체계 도입)
         if (realMsg === "이전") {
             var pData = [
                 "JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,",
@@ -717,9 +735,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
 
             if (pMap[session.screen]) {
-                session.screen = pMap[session.screen]; // 이전 화면으로 세션 변경
+                session.screen = pMap[session.screen];
                 
-                // [핵심] 변경된 세션 상태를 기준으로 UI만 100% 새로 그립니다 (명령어 중복 전송 원천 차단)
                 if (room === Config.AdminRoom) return AdminController.handle("refresh_screen", session, sender, replier, room);
                 if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
                 return AuthController.handle("refresh_screen", session, sender, replier, room);
@@ -732,10 +749,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             });
         }
 
-        // 라우팅
         if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier, room);
+        
         if (isLogged) return UserController.handle(realMsg, session, sender, replier, room);
-        return AuthController.handle(realMsg, session, sender, replier, room);
+        else return AuthController.handle(realMsg, session, sender, replier, room);
 
     } catch (e) {
         var errLog = [
