@@ -147,18 +147,18 @@ var SessionManager = {
         var targetTime = s.lastTime;
         var timeLimit = Config.TIMEOUT_MS;
         
-        // 자바 객체 에러 방지를 위해 순수 JS 문자열로 강제 변환 세팅
         var roomStr = String(room);
-        var msgStr = String(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.autoTimeout, false, ContentManager.footer.reStart));
+        // [버그 수정] autoTimeout(없는 변수) ➔ timeout(정상 변수)으로 변경하여 내용을 채움!
+        var msgStr = String(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
 
         new java.lang.Thread(new java.lang.Runnable({
             run: function() {
                 try {
-                    // 지정된 시간(5분) 대기
+                    // 지정된 시간 대기
                     java.lang.Thread.sleep(timeLimit);
                     
                     var curSession = SessionManager.sessions[key];
-                    // 5분 뒤 일어났는데 시간이 1밀리초도 변하지 않았다면 = 아무것도 안 함 = 만료 처리!
+                    // 지정 시간 뒤 일어났는데 시간이 1밀리초도 변하지 않았다면 = 아무것도 안 함 = 만료 처리!
                     if (curSession && curSession.screen !== "IDLE" && curSession.lastTime === targetTime) {
                         
                         // 1. 내부 세션 초기화
@@ -167,7 +167,7 @@ var SessionManager = {
                         if (backupId) SessionManager.sessions[key].tempId = backupId;
                         SessionManager.save();
                         
-                        // 2. 톡방에 자동으로 만료 알림 전송!
+                        // 2. 톡방에 자동으로 만료 알림(내용 포함) 전송!
                         Api.replyRoom(roomStr, msgStr);
                     }
                 } catch (e) {
