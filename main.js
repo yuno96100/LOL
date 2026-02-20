@@ -110,18 +110,51 @@ var ChampionData = {
 var ChampionList = Object.keys(ChampionData);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💾 [3. 코어 모델 (Model) - 데이터베이스 및 세션]
+// 💾 [3. 코어 모델 (Model) - 지능형 메모리 & 비동기 엔진 적용]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Database = {
     data: {}, inquiries: [],
+    isLoaded: false, // [IPM] 메모리 레지던트 플래그 (중복 읽기 방지)
+
     load: function() {
+        // 이미 메모리에 올라와 있다면, 지옥의 File I/O를 스킵하고 0.001초만에 패스!
+        if (this.isLoaded) return; 
+        
         var file = new java.io.File(Config.DB_PATH);
         if (file.exists()) {
-            try { var d = JSON.parse(FileStream.read(Config.DB_PATH)); this.data = d.users || {}; this.inquiries = d.inquiries || []; } 
-            catch (e) { this.data = {}; this.inquiries = []; }
+            try { 
+                var d = JSON.parse(FileStream.read(Config.DB_PATH)); 
+                this.data = d.users || {}; 
+                this.inquiries = d.inquiries || []; 
+            } catch (e) { this.data = {}; this.inquiries = []; }
         }
+        this.isLoaded = true; // 읽기 완료 마킹
     },
-    save: function() { FileStream.write(Config.DB_PATH, JSON.stringify({ users: this.data, inquiries: this.inquiries }, null, 4)); },
+
+    save: function() {
+        // [비동기 영속화] 유저를 기다리게 하지 않고, 백그라운드 스레드에서 몰래 저장합니다.
+        var currentData = JSON.stringify({ users: this.data, inquiries: this.inquiries }, null, 4);
+        var tempPath = Config.DB_PATH + ".temp";
+        var realPath = Config.DB_PATH;
+
+        new java.lang.Thread(new java.lang.Runnable({
+            run: function() {
+                try {
+                    // [원자적 스테이징] 1. 본 파일이 아닌 임시 파일(.temp)에 먼저 작성
+                    FileStream.write(tempPath, currentData);
+                    var tempFile = new java.io.File(tempPath);
+                    var realFile = new java.io.File(realPath);
+                    
+                    // 2. 임시 파일이 정상적으로 100% 써졌는지 검증 후, 원본과 바꿔치기 (데이터 증발 절대 방지)
+                    if (tempFile.exists() && tempFile.length() > 0) {
+                        if (realFile.exists()) realFile.delete();
+                        tempFile.renameTo(realFile);
+                    }
+                } catch(e) {}
+            }
+        })).start();
+    },
+
     createUser: function(sender, pw) {
         this.data[sender] = {
             pw: pw, name: sender, title: "뉴비", lp: 0, win: 0, lose: 0, level: 1, exp: 0, gold: 1000, point: 0,
@@ -133,17 +166,45 @@ var Database = {
 
 var SessionManager = {
     sessions: {},
+    isLoaded: false, // 세션 메모리 레지던트 플래그
+
     init: function() {
+        if (this.isLoaded) return;
         var file = new java.io.File(Config.SESSION_PATH);
         if (file.exists()) { try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch (e) { this.sessions = {}; } }
+        this.isLoaded = true;
     },
-    save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions, null, 4)); },
+
+    save: function() {
+        // 세션 파일도 비동기 + 원자적 스테이징 기법 동일 적용
+        var currentData = JSON.stringify(this.sessions, null, 4);
+        var tempPath = Config.SESSION_PATH + ".temp";
+        var realPath = Config.SESSION_PATH;
+
+        new java.lang.Thread(new java.lang.Runnable({
+            run: function() {
+                try {
+                    FileStream.write(tempPath, currentData);
+                    var tempFile = new java.io.File(tempPath);
+                    var realFile = new java.io.File(realPath);
+                    
+                    if (tempFile.exists() && tempFile.length() > 0) {
+                        if (realFile.exists()) realFile.delete();
+                        tempFile.renameTo(realFile);
+                    }
+                } catch(e) {}
+            }
+        })).start();
+    },
+
     getKey: function(room, sender) { return room + "_" + sender; },
+    
     get: function(room, sender) {
         var key = this.getKey(room, sender);
         if (!this.sessions[key]) { this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() }; this.save(); }
         return this.sessions[key];
     },
+
     checkTimeout: function(room, sender, replier) {
         var key = this.getKey(room, sender);
         var s = this.get(room, sender);
@@ -156,11 +217,13 @@ var SessionManager = {
         }
         return false;
     },
+
     reset: function(room, sender) {
         var key = this.getKey(room, sender);
         this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
         this.save();
     },
+
     startAutoTimer: function(room, sender) {
         var key = this.getKey(room, sender);
         var s = this.sessions[key];
@@ -193,6 +256,7 @@ var SessionManager = {
         })).start();
     }
 };
+
 SessionManager.init();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
