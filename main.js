@@ -195,6 +195,7 @@ var ContentManager = {
         loginFail: "정보가 일치하지 않습니다.",
         notEnoughGold: "골드가 부족합니다.",
         onlyNumber: "숫자만 입력해 주세요.",
+        invalidLevel: "레벨은 1부터 " + MAX_LEVEL + "까지만 설정할 수 있습니다.",
         banned: "🚫 관리자에 의해 이용이 제한된 계정입니다.",
         battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다.",
         inputNewVal: "새로운 값을 입력하세요.",
@@ -577,7 +578,8 @@ var AdminController = {
                     return SystemAction.go(replier, t.complete, m.adminDelSuccess, function() { session.screen="ADMIN_USER_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 }
                 if (action === "4") {
-                     tData.banned = !tData.banned; Database.save(); Utils.sendNotify(target, tData.banned ? m.adminNotifyBan : m.adminNotifyUnban);
+                     tData.banned = !tData.banned; Database.save();
+                     Utils.sendNotify(target, tData.banned ? m.adminNotifyBan : m.adminNotifyUnban);
                      return SystemAction.go(replier, t.complete, m.adminBanSuccess, function() { session.screen="ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 }
             } else if (msg === "2") { return SystemAction.go(replier, t.notice, m.adminCancel, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
@@ -612,6 +614,12 @@ var AdminController = {
         if (session.screen === "ADMIN_EDIT_INPUT") {
              var val = parseInt(msg);
              if(isNaN(val)) return SystemAction.go(replier, t.error, m.onlyNumber, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
+             
+             // [추가] 레벨 최대치 예외 처리
+             if (session.temp.editType === "level" && (val < 1 || val > MAX_LEVEL)) {
+                 return SystemAction.go(replier, t.error, m.invalidLevel, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
+             }
+             
              session.temp.editVal = val; session.screen = "ADMIN_EDIT_INPUT_CONFIRM"; return AdminController.handle("refresh_screen", session, sender, replier, room);
         }
         
