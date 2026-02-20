@@ -99,9 +99,7 @@ var Database = {
     }
 };
 
-// ━━━━━━━━ [세션 매니저 (자동 알림 타이머 완벽 적용)] ━━━━━━━━
-var TimeoutTimers = {}; // 백그라운드 타이머 관리 객체
-
+// ━━━━━━━━ [세션 매니저 (백그라운드 자동 알림 완벽 적용)] ━━━━━━━━
 var SessionManager = {
     sessions: {},
     init: function() {
@@ -119,7 +117,7 @@ var SessionManager = {
         var key = this.getKey(room, sender);
         var s = this.get(room, sender);
         
-        // 동기식 검사: 타이머가 씹혔을 경우를 대비한 이중 안전장치
+        // 동기식 검사: 타이머가 에러로 작동하지 않았을 경우를 대비한 2차 방어선
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId;
             this.reset(room, sender);
@@ -127,56 +125,56 @@ var SessionManager = {
             replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
             return true; 
         }
-        if (s) { s.lastTime = Date.now(); this.save(); }
         return false;
     },
     reset: function(room, sender) {
         var key = this.getKey(room, sender);
         this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
         this.save();
-        // 대기 상태로 가면 기존 타이머 즉시 소거
-        if (TimeoutTimers[key]) { TimeoutTimers[key].cancel(); delete TimeoutTimers[key]; }
     },
     
-    // [핵심 기능] 라우팅이 완전히 끝난 후 최종 화면을 기준으로 타이머를 켭니다.
-    startTimerIfNeeded: function(room, sender) {
+    // [핵심] 유저의 행동 처리가 완전히 끝난 후, 제일 마지막에 타이머를 작동시킵니다.
+    startAutoTimer: function(room, sender) {
         var key = this.getKey(room, sender);
         var s = this.sessions[key];
         
-        if (!s || s.screen === "IDLE") {
-            if (TimeoutTimers[key]) { TimeoutTimers[key].cancel(); delete TimeoutTimers[key]; }
-            return;
-        }
+        if (!s || s.screen === "IDLE") return;
         
-        // 중복 방지
-        if (TimeoutTimers[key]) { TimeoutTimers[key].cancel(); }
+        // 모든 처리가 끝난 직후의 찐 최종 시간을 기록
+        s.lastTime = Date.now();
+        this.save();
         
         var targetTime = s.lastTime;
-        var safeRoom = new java.lang.String(room);
-        var preRenderedMsg = LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.autoTimeout, false, ContentManager.footer.reStart);
-        var safeMsg = new java.lang.String(preRenderedMsg);
+        var timeLimit = Config.TIMEOUT_MS;
+        
+        // 자바 객체 에러 방지를 위해 순수 JS 문자열로 강제 변환 세팅
+        var roomStr = String(room);
+        var msgStr = String(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.autoTimeout, false, ContentManager.footer.reStart));
 
-        var timer = new java.util.Timer();
-        TimeoutTimers[key] = timer;
-
-        timer.schedule(new java.util.TimerTask({
+        new java.lang.Thread(new java.lang.Runnable({
             run: function() {
                 try {
+                    // 지정된 시간(5분) 대기
+                    java.lang.Thread.sleep(timeLimit);
+                    
                     var curSession = SessionManager.sessions[key];
-                    // 정확히 5분이 지났고 유저가 그동안 톡을 안 쳤다면 (시간이 변하지 않았다면)
+                    // 5분 뒤 일어났는데 시간이 1밀리초도 변하지 않았다면 = 아무것도 안 함 = 만료 처리!
                     if (curSession && curSession.screen !== "IDLE" && curSession.lastTime === targetTime) {
+                        
+                        // 1. 내부 세션 초기화
                         var backupId = curSession.tempId;
                         SessionManager.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
                         if (backupId) SessionManager.sessions[key].tempId = backupId;
                         SessionManager.save();
                         
-                        // 톡방에 먼저 알림을 쏨
-                        Api.replyRoom(safeRoom, safeMsg);
+                        // 2. 톡방에 자동으로 만료 알림 전송!
+                        Api.replyRoom(roomStr, msgStr);
                     }
-                    delete TimeoutTimers[key];
-                } catch (e) {}
+                } catch (e) {
+                    // 백그라운드 스레드 에러 발생 시 무시
+                }
             }
-        }), Config.TIMEOUT_MS);
+        })).start();
     }
 };
 
@@ -693,16 +691,17 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     try {
         Database.load(); 
         var realMsg = msg.trim();
+
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
-        
-        // 1. 시간 갱신 및 만료 안전망 체크
+
+        // 1. 시간 갱신 없이, 만료 여부만 먼저 검사합니다.
         if (SessionManager.checkTimeout(room, sender, replier)) return;
 
         var session = SessionManager.get(room, sender);
         var isLogged = (session.tempId && Database.data[session.tempId]);
 
         if (realMsg === "메뉴") {
-            session.lastTime = Date.now();
+            // [수정] 중간에 session.lastTime을 갱신하던 로직 삭제 (타이머 충돌 원인 제거)
             if (room === Config.AdminRoom) { session.screen = "ADMIN_MAIN"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
             if (isLogged) { session.screen = "MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); } 
             else { session.screen = "GUEST_MAIN"; return AuthController.handle("refresh_screen", session, sender, replier, room); }
@@ -737,7 +736,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         try { Api.replyRoom(Config.AdminRoom, ContentManager.msg.sysErrorLog(e)); } catch(err) {} 
         return SystemAction.go(replier, ContentManager.title.sysError, ContentManager.msg.sysErrorLog(e), function() { SessionManager.reset(room, sender); });
     } finally {
-        // [핵심] 유저의 행동과 화면 출력이 전부 끝난 직후, '최종 확정된 화면'을 기준으로 타이머를 켭니다!
-        SessionManager.startTimerIfNeeded(room, sender);
+        // [핵심] 명령 처리가 완전히 끝난 가장 마지막 순간! 타이머를 단 한 번만 작동시킵니다.
+        SessionManager.startAutoTimer(room, sender);
     }
 }
