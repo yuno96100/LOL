@@ -1,21 +1,22 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.7.0 Micro-MVC)
- * - 완벽한 메인 MVC 아키텍처 + 백그라운드 세션 자동 만료 통합
- * - BattleSystem 독립 모듈화: 모듈 내부에서도 Model, View, Controller를 완전히 캡슐화한 마이크로 아키텍처 적용
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.8.0 Full Stat Update)
+ * - 하드웨어 스펙 전면 개편: 실제 롤과 동일한 9가지 스탯(HP, MP, AD, AP, DEF, MDEF, AS, SPD, RANGE) 도입
+ * - 엔진 고도화: 레벨에 따른 하드웨어(챔피언) 스케일링과 소프트웨어(유저 피지컬) 스탯 무작위 분배 완벽 동기화
+ * - 완벽한 MVC & Micro-MVC 아키텍처 적용 유지
  */ 
- 
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [1. 코어 설정 및 유틸리티]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v1.7.0 Micro-MVC",
+    Version: "v1.8.0 Full Stat",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
-    FIXED_LINE: 14,
-    WRAP_LIMIT: 18, 
+    FIXED_LINE: 15,
+    WRAP_LIMIT: 20, 
     TIMEOUT_MS: 300000 // 5분
 };
 
@@ -84,7 +85,32 @@ var Utils = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💾 [2. 코어 모델 (Model) - 데이터베이스 및 세션]
+// 📊 [2. 데이터 (Data) - 챔피언 하드웨어 스펙]
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var ChampionData = {
+    "알리스타": { role: "탱커", hp: 650, mp: 350, ad: 60, ap: 0, def: 45, mdef: 32, as: 0.62, spd: 330, range: 125 },
+    "말파이트": { role: "탱커", hp: 630, mp: 280, ad: 62, ap: 0, def: 37, mdef: 32, as: 0.73, spd: 335, range: 125 },
+    "레오나": { role: "탱커", hp: 610, mp: 300, ad: 60, ap: 0, def: 47, mdef: 32, as: 0.62, spd: 335, range: 125 },
+    "가렌": { role: "전사", hp: 690, mp: 0, ad: 66, ap: 0, def: 36, mdef: 32, as: 0.62, spd: 340, range: 175 },
+    "다리우스": { role: "전사", hp: 650, mp: 260, ad: 64, ap: 0, def: 39, mdef: 32, as: 0.62, spd: 340, range: 175 },
+    "잭스": { role: "전사", hp: 615, mp: 338, ad: 68, ap: 0, def: 36, mdef: 32, as: 0.63, spd: 350, range: 125 },
+    "제드": { role: "암살자", hp: 600, mp: 200, ad: 63, ap: 0, def: 32, mdef: 32, as: 0.65, spd: 345, range: 125 },
+    "카타리나": { role: "암살자", hp: 600, mp: 0, ad: 58, ap: 50, def: 27, mdef: 32, as: 0.65, spd: 340, range: 125 },
+    "탈론": { role: "암살자", hp: 658, mp: 377, ad: 68, ap: 0, def: 30, mdef: 39, as: 0.62, spd: 335, range: 125 },
+    "럭스": { role: "마법사", hp: 560, mp: 480, ad: 53, ap: 60, def: 18, mdef: 30, as: 0.66, spd: 330, range: 550 },
+    "아리": { role: "마법사", hp: 590, mp: 418, ad: 53, ap: 55, def: 18, mdef: 30, as: 0.66, spd: 330, range: 550 },
+    "빅토르": { role: "마법사", hp: 560, mp: 405, ad: 53, ap: 60, def: 22, mdef: 30, as: 0.65, spd: 335, range: 525 },
+    "애쉬": { role: "원딜", hp: 640, mp: 280, ad: 59, ap: 0, def: 26, mdef: 30, as: 0.65, spd: 325, range: 600 },
+    "베인": { role: "원딜", hp: 600, mp: 231, ad: 60, ap: 0, def: 23, mdef: 30, as: 0.65, spd: 330, range: 550 },
+    "카이사": { role: "원딜", hp: 670, mp: 344, ad: 59, ap: 20, def: 28, mdef: 30, as: 0.64, spd: 335, range: 525 },
+    "소라카": { role: "서포터", hp: 605, mp: 425, ad: 50, ap: 40, def: 32, mdef: 30, as: 0.62, spd: 325, range: 550 },
+    "유미": { role: "서포터", hp: 500, mp: 440, ad: 49, ap: 45, def: 25, mdef: 25, as: 0.62, spd: 330, range: 500 },
+    "쓰레쉬": { role: "서포터", hp: 630, mp: 274, ad: 56, ap: 0, def: 28, mdef: 30, as: 0.62, spd: 330, range: 450 }
+};
+var ChampionList = Object.keys(ChampionData);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 💾 [3. 코어 모델 (Model) - 데이터베이스 및 세션]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Database = {
     data: {}, inquiries: [],
@@ -170,7 +196,7 @@ var SessionManager = {
 SessionManager.init();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎨 [3. 코어 뷰 (View) - 콘텐츠 및 레이아웃 매니저]
+// 🎨 [4. 코어 뷰 (View) - 콘텐츠 및 레이아웃 매니저]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var ContentManager = {
     menus: {
@@ -287,39 +313,32 @@ var LayoutManager = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ⚔️ [독립 모듈] 전투 시스템 (Micro-MVC Architecture)
+// ⚔️ [5. 독립 모듈] 전투 시스템 (Micro-MVC Architecture)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var BattleSystem = {
-    // ⚔️ [1] Battle Model: 전투 데이터 및 연산 로직
+    // ⚔️ [1] Model: 전투 연산 및 하드웨어 스케일링 엔진
     Model: {
-        Data: {
-            champions: {
-                "알리스타": { role: "탱커", hp: 650, atk: 55, def: 50, spd: 25 },
-                "말파이트": { role: "탱커", hp: 630, atk: 58, def: 55, spd: 28 },
-                "레오나": { role: "탱커", hp: 610, atk: 50, def: 60, spd: 30 },
-                "가렌": { role: "전사", hp: 600, atk: 60, def: 40, spd: 30 },
-                "다리우스": { role: "전사", hp: 580, atk: 65, def: 35, spd: 35 },
-                "잭스": { role: "전사", hp: 550, atk: 68, def: 30, spd: 38 },
-                "제드": { role: "암살자", hp: 450, atk: 75, def: 25, spd: 50 },
-                "카타리나": { role: "암살자", hp: 430, atk: 72, def: 20, spd: 55 },
-                "탈론": { role: "암살자", hp: 460, atk: 74, def: 28, spd: 48 },
-                "럭스": { role: "마법사", hp: 400, atk: 65, def: 18, spd: 40 },
-                "아리": { role: "마법사", hp: 420, atk: 68, def: 20, spd: 45 },
-                "빅토르": { role: "마법사", hp: 440, atk: 70, def: 22, spd: 38 },
-                "애쉬": { role: "원딜", hp: 400, atk: 70, def: 20, spd: 40 },
-                "베인": { role: "원딜", hp: 380, atk: 75, def: 18, spd: 45 },
-                "카이사": { role: "원딜", hp: 410, atk: 72, def: 22, spd: 42 },
-                "소라카": { role: "서포터", hp: 380, atk: 40, def: 15, spd: 35 },
-                "유미": { role: "서포터", hp: 300, atk: 35, def: 10, spd: 50 },
-                "쓰레쉬": { role: "서포터", hp: 500, atk: 50, def: 45, spd: 32 }
-            }
-        },
         Engine: {
             generateAI: function(userLevel) {
-                var cNames = Object.keys(BattleSystem.Model.Data.champions);
-                var rChamp = cNames[Math.floor(Math.random() * cNames.length)];
-                var base = BattleSystem.Model.Data.champions[rChamp];
+                var rChamp = ChampionList[Math.floor(Math.random() * ChampionList.length)];
+                var base = ChampionData[rChamp];
                 
+                // 1. 하드웨어 스케일링 (1레벨당 체력/데미지/방어력 5% 상승, 공속 미세 상승)
+                var scale = 1 + ((userLevel - 1) * 0.05);
+                var scaledHW = {
+                    role: base.role,
+                    hp: Math.floor(base.hp * scale),
+                    mp: Math.floor(base.mp * scale),
+                    ad: Math.floor(base.ad * scale),
+                    ap: Math.floor(base.ap * scale),
+                    def: Math.floor(base.def * scale),
+                    mdef: Math.floor(base.mdef * scale),
+                    as: parseFloat((base.as + ((userLevel - 1) * 0.015)).toFixed(2)),
+                    spd: base.spd,       // 이동속도 고정
+                    range: base.range    // 사거리 고정
+                };
+
+                // 2. 소프트웨어 스탯 무작위 분배
                 var aiStats = { acc: 50, ref: 50, com: 50, int: 50 };
                 var tPoints = (userLevel - 1) * POINT_PER_LEVEL;
                 var keys = ["acc", "ref", "com", "int"];
@@ -328,12 +347,12 @@ var BattleSystem = {
                     aiStats[keys[Math.floor(Math.random() * keys.length)]] += 1;
                 }
                 
-                return { name: "AI 소환사", champion: rChamp, level: userLevel, role: base.role, stats: aiStats, hw: base };
+                return { name: "AI 소환사", champion: rChamp, level: userLevel, stats: aiStats, hw: scaledHW };
             }
         }
     },
     
-    // ⚔️ [2] Battle View: 전투 전용 텍스트 및 UI 렌더링
+    // ⚔️ [2] View: 전투 전용 텍스트 및 레이아웃 렌더링
     View: {
         Content: {
             screen: { match: "매칭 시스템", matchFound: "매칭 완료", pick: "챔피언 선택 (픽창)", load: "협곡으로 이동 중", analyzed: "분석 완료", ready: "협곡 진입 대기" },
@@ -342,11 +361,17 @@ var BattleSystem = {
                 matchOk: "✅ 상대와 매칭되었습니다!\n곧 챔피언 선택 창으로 이동합니다.",
                 loadRift: "⏳ 선택한 챔피언과 함께 협곡으로 이동 중입니다...\n\n진행률: [■■□□□]",
                 analyze: function(ai) {
+                    var div = Utils.getFixedDivider();
                     return "상대방의 데이터를 분석했습니다.\n진행률: [■■■■■]\n\n" + 
                            "🎯 [ 타겟 분석 브리핑 ]\n" +
                            "🤖 대상: " + ai.name + " (Lv." + ai.level + ")\n" +
-                           "⚔️ 픽 챔피언: " + ai.champion + " (" + ai.role + ")\n" + Utils.getFixedDivider() + "\n" +
-                           "📊 [ 상대 피지컬(소프트웨어) 스탯 ]\n" +
+                           "⚔️ 픽 챔피언: " + ai.champion + " (" + ai.hw.role + ")\n" + div + "\n" +
+                           "📊 [ 기체 성능 (Hardware) ]\n" +
+                           "🩸HP: " + ai.hw.hp + "  💧MP: " + ai.hw.mp + "\n" +
+                           "🗡️AD: " + ai.hw.ad + "  🪄AP: " + ai.hw.ap + "\n" +
+                           "🛡️방어: " + ai.hw.def + "  🔮마저: " + ai.hw.mdef + "\n" +
+                           "⚡공속: " + ai.hw.as + "  🎯사거리: " + ai.hw.range + "\n" + div + "\n" +
+                           "🧠 [ 소환사 피지컬 (Software) ]\n" +
                            "🎯정확:" + ai.stats.acc + "  ⚡반응:" + ai.stats.ref + "\n" +
                            "🧘침착:" + ai.stats.com + "  🧠직관:" + ai.stats.int + "\n\n곧 소환사의 협곡으로 이동합니다...";
                 },
@@ -364,7 +389,7 @@ var BattleSystem = {
         }
     },
     
-    // ⚔️ [3] Battle Controller: 전투 흐름 및 스레드 연출 제어
+    // ⚔️ [3] Controller: 매칭, 픽창, 로딩 흐름 제어
     Controller: {
         handle: function(msg, session, sender, replier, room, userData) {
             var vC = BattleSystem.View.Content;
@@ -393,8 +418,9 @@ var BattleSystem = {
                     return;
                 }
                 if (session.screen === "BATTLE_PICK") {
-                    var list = userData.inventory.champions.map(function(c, i) { 
-                        var role = bM.Data.champions[c] ? bM.Data.champions[c].role : "알 수 없음";
+                    var champs = userData.inventory.champions || [];
+                    var list = champs.map(function(c, i) { 
+                        var role = ChampionData[c] ? ChampionData[c].role : "알 수 없음";
                         return (i+1) + ". " + c + " (" + role + ")"; 
                     }).join("\n");
                     return replier.reply(LayoutManager.renderFrame(vC.screen.pick, vC.msg.pickIntro + list, true, vC.footer.inputPick));
@@ -408,8 +434,10 @@ var BattleSystem = {
 
             if (session.screen === "BATTLE_PICK") {
                 var idx = parseInt(msg) - 1;
-                if (userData.inventory.champions && userData.inventory.champions[idx]) {
-                    session.battle.myChamp = userData.inventory.champions[idx];
+                var champs = userData.inventory.champions || [];
+                
+                if (champs && champs[idx]) {
+                    session.battle.myChamp = champs[idx];
                     var enemyAI = bM.Engine.generateAI(userData.level);
                     session.battle.enemy = enemyAI;
                     
@@ -422,7 +450,7 @@ var BattleSystem = {
                             try {
                                 java.lang.Thread.sleep(1500);
                                 Api.replyRoom(safeRoom2, LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(enemyAI), false, "전투 공간을 생성 중입니다..."));
-                                java.lang.Thread.sleep(2000);
+                                java.lang.Thread.sleep(2500);
                                 var cS = SessionManager.sessions[SessionManager.getKey(room, sender)];
                                 if (cS && cS.screen === "BATTLE_LOADING") {
                                     cS.screen = "BATTLE_READY"; SessionManager.save();
@@ -441,7 +469,7 @@ var BattleSystem = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🕹️ [4. 코어 컨트롤러 (Controller) - 액션 및 흐름 제어]
+// 🕹️ [6. 코어 컨트롤러 (Controller) - 액션 및 흐름 제어]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var SystemAction = {
     go: function(replier, title, msg, nextFunc) {
@@ -511,7 +539,16 @@ var UserController = {
     handle: function(msg, session, sender, replier, room) {
         var data = Database.data[session.tempId]; 
         var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title;
-        if (data && !data.items) { data.items = { statReset: 0, nameChange: 0 }; Database.save(); }
+        
+        if (data) {
+            var needSave = false;
+            if (!data.items) { data.items = { statReset: 0, nameChange: 0 }; needSave = true; }
+            if (!data.inventory) { data.inventory = { titles: ["뉴비"], champions: [] }; needSave = true; }
+            if (!data.inventory.champions) { data.inventory.champions = []; needSave = true; }
+            if (!data.inventory.titles) { data.inventory.titles = ["뉴비"]; needSave = true; }
+            if (needSave) Database.save();
+        }
+        
         if (!data) return AuthController.handle(msg, session, sender, replier, room);
         if (data.banned) return replier.reply(LayoutManager.renderFrame(t.notice, m.banned, false, null));
 
@@ -542,8 +579,8 @@ var UserController = {
                  return replier.reply(LayoutManager.renderFrame(s.title, head + "\n" + Utils.getFixedDivider() + "\n" + list, true, f.inputTitle));
             }
             if (session.screen === "CHAMP_LIST") {
-                 var head = "📊 수집 챔피언: " + (data.inventory.champions ? data.inventory.champions.length : 0) + "명";
-                 var list = (data.inventory.champions && data.inventory.champions.length > 0) ? data.inventory.champions.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유한 챔피언이 없습니다.";
+                 var head = "📊 수집 챔피언: " + data.inventory.champions.length + "명";
+                 var list = (data.inventory.champions.length > 0) ? data.inventory.champions.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유한 챔피언이 없습니다.";
                  return replier.reply(LayoutManager.renderFrame(s.champ, head + "\n" + Utils.getFixedDivider() + "\n" + list, true, f.checkList));
             }
             if (session.screen === "SHOP_MAIN") return replier.reply(LayoutManager.renderFrame(s.shop, LayoutManager.templates.menuList(null, ContentManager.menus.shopMain), true, f.selectCat));
@@ -553,7 +590,7 @@ var UserController = {
             }
             if (session.screen === "SHOP_CHAMPS") {
                 var head = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G";
-                var cList = ContentManager.champions.map(function(c, i){ return (i+1) + ". " + c + ((data.inventory.champions||[]).indexOf(c)!==-1?" [보유]":""); }).join("\n");
+                var cList = ChampionList.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); }).join("\n");
                 return replier.reply(LayoutManager.renderFrame(s.shopChamp, head + "\n" + Utils.getFixedDivider() + "\n" + cList, true, f.inputHireNum));
             }
             if (session.screen === "USER_INQUIRY") return replier.reply(LayoutManager.renderFrame(s.inq, "운영진에게 보낼 내용을 입력해 주세요.", true, f.inputContent));
@@ -573,7 +610,7 @@ var UserController = {
         
         if (session.screen === "MODE_SELECT") {
             if (msg === "1") {
-                if (!data.inventory.champions || data.inventory.champions.length === 0) {
+                if (data.inventory.champions.length === 0) {
                     return SystemAction.go(replier, t.fail, m.noChamp, function() { session.screen = "MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
                 }
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
@@ -625,7 +662,7 @@ var UserController = {
              if (msg === "2") { session.screen = "CHAMP_LIST"; return UserController.handle("refresh_screen", session, sender, replier, room); }
         }
         if (session.screen === "TITLE_EQUIP") {
-            if ((data.inventory.titles||[]).indexOf(msg) === -1) return SystemAction.go(replier, t.error, m.noTitleError, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+            if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(replier, t.error, m.noTitleError, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             data.title = msg; Database.save();
             return SystemAction.go(replier, t.complete, m.titleEquipSuccess(msg), function() { session.screen = "COLLECTION_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
         }
@@ -645,9 +682,9 @@ var UserController = {
         }
         if (session.screen === "SHOP_CHAMPS") {
             var idx = parseInt(msg) - 1;
-            if (ContentManager.champions[idx]) {
-                var target = ContentManager.champions[idx];
-                if ((data.inventory.champions||[]).indexOf(target) !== -1 || data.gold < 500) return SystemAction.go(replier, t.fail, m.champFail, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
+            if (ChampionList[idx]) {
+                var target = ChampionList[idx];
+                if (data.inventory.champions.indexOf(target) !== -1 || data.gold < 500) return SystemAction.go(replier, t.fail, m.champFail, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
                 data.gold -= 500; data.inventory.champions.push(target); Database.save();
                 return SystemAction.go(replier, t.success, m.champSuccess(target), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
             }
@@ -811,7 +848,7 @@ var AdminController = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🚀 [5. 메인 라우터 (Entry Point)]
+// 🚀 [7. 메인 라우터 (Entry Point)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     try {
