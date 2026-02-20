@@ -206,9 +206,9 @@ var ContentManager = {
     screen: {
         gMain: "비회원 메뉴", joinId: "회원가입", joinPw: "비밀번호 설정", loginId: "로그인", loginPw: "로그인",
         inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 최종 확인",
-        resetCon: "초기화 확인", col: "컬렉션", title: "칭호 관리", champ: "챔피언 목록", shop: "상점",
+        resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
         shopItem: "아이템 상점", shopChamp: "챔피언 상점 (500G)", battle: "대전 모드",
-        aMain: "관리 센터", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 최종 확인",
+        aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 최종 확인",
         aInqList: "문의 목록", aInqDet: "문의 상세 내용", aInqRep: "답변 작성", aUserDetail: " 관리",
         aEditSel: "정보 수정", aEditIn: "값 수정", aEditCon: "수정 최종 확인"
     },
@@ -216,7 +216,7 @@ var ContentManager = {
         selectNum: "번호를 선택하세요.", inputId: "아이디 입력", inputPw: "비밀번호 입력", inputContent: "내용 입력",
         selectAction: "작업을 선택하세요.", selectStat: "강화할 스탯 선택", inputPoint: "투자할 포인트를 입력하세요.",
         inputTitle: "장착할 칭호 이름을 정확히 입력해 주세요.", checkList: "목록 확인 완료",
-        selectCat: "상점 카테고리를 선택하세요.", inputBuyNum: "구매할 번호를 입력하세요.", inputHireNum: "영입할 번호를 입력하세요.",
+        selectCat: "상점 카테고리를 선택하세요.", inputBuyNum: "구매할 번호를 입력하세요.", inputHireNum: "구입할 번호를 입력하세요.",
         aSelectUser: "관리할 유저의 번호를 입력하세요.", aInputInq: "확인할 문의 번호를 입력하세요.", aInputRep: "유저에게 전송할 답변 내용을 입력하세요.",
         reStart: "다시 시작하려면 '메뉴'를 입력하세요.", sysNotify: "시스템 알림", wait: "잠시만 기다려주세요..."
     },
