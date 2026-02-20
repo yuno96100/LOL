@@ -16,7 +16,7 @@ var Config = {
     SESSION_PATH: "sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 15,
-    WRAP_LIMIT: 20, 
+    WRAP_LIMIT: 18, 
     TIMEOUT_MS: 300000 // 5분
 };
 
@@ -411,7 +411,7 @@ var BattleSystem = {
                     aiStats[keys[Math.floor(Math.random() * keys.length)]] += 1;
                 }
                 
-                return { name: "봇 이름", champion: rChamp, level: userLevel, stats: aiStats, hw: scaledHW };
+                return { name: "AI 소환사", champion: rChamp, level: userLevel, stats: aiStats, hw: scaledHW };
             }
         }
     },
@@ -419,22 +419,22 @@ var BattleSystem = {
     // ⚔️ [2] View: 전투 전용 텍스트 및 레이아웃 렌더링
     View: {
         Content: {
-            // [수정] 사진에 맞춰 화면 이름(타이틀) 변경
-            screen: { match: "매칭 시스템", matchFound: "매칭 완료", pick: "전투 준비", load: "로딩중", analyzed: "매칭 완료", ready: "협곡 진입 대기" },
+            // [수정] 타이틀 '매칭중'으로 변경
+            screen: { match: "매칭중", matchFound: "매칭 완료", pick: "전투 준비", load: "로딩중", analyzed: "매칭 완료", ready: "협곡 진입 대기" },
             msg: {
                 find: "🔍 적합한 훈련 상대를 탐색하고 있습니다...\n\n[ 예상 대기 시간: 6초 ]",
-                matchOk: "✅ 상대와 매칭되었습니다!\n곧 전장에 참가할 준비를 하러 이동합니다.",
-                // [수정] 로딩중 화면 텍스트
+                // [수정] 매칭 완료 텍스트 변경
+                matchOk: "✅ 상대와 매칭되었습니다!\n전장에 참가할 준비중입니다.",
                 loadRift: "⏳ 전투를 위한 데이터를 생성중입니다.",
-                // [수정] 스크린샷과 100% 동일한 완벽한 VS 대조표 UI 적용
                 analyze: function(userName, userChamp, userLevel, userStats, ai) {
+                    // [수정] VS 구분선 깨짐 방지 및 디자인 개선
                     return "🎯 [ " + userName + " ]\n" +
                            "🤖 챔피언: " + userChamp + "\n" +
                            "⚔️ 레벨 : " + userLevel + "\n\n" +
                            "🧠 [ 피지컬 ]\n" +
                            "🎯 정확:" + userStats.acc + "  ⚡ 반응:" + userStats.ref + "\n" +
-                           "🧘 침착:" + userStats.com + "  🧠 직관:" + userStats.int + "\n\n" +
-                           "-------------------VS-------------------\n\n" +
+                           "🧘 침착:" + userStats.com + "  🧠 직관:" + userStats.int + "\n" +
+                           "\n━━━━━  🆚  ━━━━━\n\n" +
                            "🎯 [ " + ai.name + " ]\n" +
                            "🤖 챔피언: " + ai.champion + "\n" +
                            "⚔️ 레벨 : " + ai.level + "\n\n" +
@@ -446,10 +446,10 @@ var BattleSystem = {
                 readyMsg: "소환사의 협곡에 오신 것을 환영합니다!\n미니언들이 생성되었습니다.\n\n(※ 실제 전투 시스템은 업데이트 예정입니다.)",
                 pickIntro: "전장에 출전할 챔피언을 선택하세요.\n\n"
             },
+            // [수정] Footer 도움말 문구 요청사항 반영
             footer: { 
-                inputPick: "출전시킬 번호를 입력하세요.", 
-                waitMatch: "상대를 찾는 중입니다. 잠시만 기다려\n주세요...", 
-                // [수정] 로딩중 푸터 텍스트 변경
+                inputPick: "챔피언을 선택하세요.", 
+                waitMatch: "잠시만 기다려주세요.", 
                 waitLoad: "잠시만 기다려주세요.", 
                 readyFooter: "다음 업데이트를 기대해 주세요!" 
             },
@@ -463,7 +463,7 @@ var BattleSystem = {
         }
     },
     
-    // ⚔️ [3] Controller: 매칭, 픽창, 로딩 흐름 제어 (동기식 + 스레드 렌더링 혼합)
+    // ⚔️ [3] Controller: 매칭, 픽창, 로딩 흐름 제어
     Controller: {
         handle: function(msg, session, sender, replier, room, userData) {
             var vC = BattleSystem.View.Content;
@@ -477,7 +477,7 @@ var BattleSystem = {
                     
                     var roomStr = String(room);
                     var sessionKey = SessionManager.getKey(String(room), String(sender));
-                    var matchFoundUI = String(LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "전투 준비 중..."));
+                    var matchFoundUI = String(LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, vC.footer.waitMatch));
                     
                     var champs = userData.inventory.champions || [];
                     var pickList = champs.map(function(c, i) { 
@@ -489,7 +489,7 @@ var BattleSystem = {
                     new java.lang.Thread(new java.lang.Runnable({
                         run: function() {
                             try {
-                                java.lang.Thread.sleep(6000); // [시간 적용] 매칭 대기 6초
+                                java.lang.Thread.sleep(6000); 
                                 Api.replyRoom(roomStr, matchFoundUI);
                                 
                                 java.lang.Thread.sleep(2500); 
@@ -535,23 +535,21 @@ var BattleSystem = {
                     
                     replier.reply(LayoutManager.renderFrame(vC.screen.load, vC.msg.loadRift, false, vC.footer.waitLoad));
                     
-                    // 스레드 내부에서 UI를 그릴 때 필요한 데이터 미리 세팅
                     var roomStr = String(room);
                     var sessionKey = SessionManager.getKey(String(room), String(sender));
                     var userName = userData.name || sender;
                     
-                    // [핵심] 유저 데이터와 AI 데이터를 함께 넘겨서 대조표 UI 렌더링
-                    var analyzedUI = String(LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(userName, session.battle.myChamp, userData.level, userData.stats, enemyAI), false, "전투 공간을 생성 중입니다..."));
+                    var analyzedUI = String(LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(userName, session.battle.myChamp, userData.level, userData.stats, enemyAI), false, vC.footer.waitLoad));
                     var vsUI = vL.renderVSBoard(session.battle.myChamp, enemyAI.champion, vC.msg.readyMsg);
                     var readyUI = String(LayoutManager.renderFrame(vC.screen.ready, vsUI, ["✖취소", "🏠메뉴"], vC.footer.readyFooter));
                     
                     new java.lang.Thread(new java.lang.Runnable({
                         run: function() {
                             try {
-                                java.lang.Thread.sleep(6000); // [시간 적용] 로딩 화면 유지 6초
+                                java.lang.Thread.sleep(6000); 
                                 Api.replyRoom(roomStr, analyzedUI); 
                                 
-                                java.lang.Thread.sleep(15000); // [시간 적용] 분석 완료 창(VS창) 유지 15초
+                                java.lang.Thread.sleep(15000); 
                                 var cS = SessionManager.sessions[sessionKey];
                                 if (cS && cS.screen === "BATTLE_LOADING") {
                                     cS.screen = "BATTLE_READY"; 
