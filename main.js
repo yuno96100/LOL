@@ -419,10 +419,13 @@ var BattleSystem = {
     // ⚔️ [2] View: 전투 전용 텍스트 및 레이아웃 렌더링
     View: {
         Content: {
-            screen: { match: "매칭 시스템", matchFound: "매칭 완료", pick: "챔피언 선택 (픽창)", load: "협곡으로 이동 중", analyzed: "분석 완료", ready: "협곡 진입 대기" },
+            // [수정] '픽창' 관련 명칭을 '전투 준비'로 모두 변경
+            screen: { match: "매칭 시스템", matchFound: "매칭 완료", pick: "전투 준비", load: "협곡으로 이동 중", analyzed: "분석 완료", ready: "협곡 진입 대기" },
             msg: {
-                find: "🔍 적합한 훈련 상대를 탐색하고 있습니다...\n\n[ 예상 대기 시간: 3초 ]",
-                matchOk: "✅ 상대와 매칭되었습니다!\n곧 챔피언 선택 창으로 이동합니다.",
+                // [수정] 대기 시간을 6초로 표기
+                find: "🔍 적합한 훈련 상대를 탐색하고 있습니다...\n\n[ 예상 대기 시간: 6초 ]",
+                // [수정] 텍스트 몰입감 강화
+                matchOk: "✅ 상대와 매칭되었습니다!\n곧 전장에 참가할 준비를 하러 이동합니다.",
                 loadRift: "⏳ 선택한 챔피언과 함께 협곡으로 이동 중입니다...\n\n진행률: [■■□□□]",
                 analyze: function(ai) {
                     var div = Utils.getFixedDivider();
@@ -440,9 +443,16 @@ var BattleSystem = {
                            "🧘침착:" + ai.stats.com + "  🧠직관:" + ai.stats.int + "\n\n곧 소환사의 협곡으로 이동합니다...";
                 },
                 readyMsg: "소환사의 협곡에 오신 것을 환영합니다!\n미니언들이 생성되었습니다.\n\n(※ 실제 전투 시스템은 업데이트 예정입니다.)",
-                pickIntro: "전투에 출전할 챔피언을 선택하세요.\n\n"
+                // [수정] 픽창 도입부 텍스트 변경
+                pickIntro: "전장에 출전할 챔피언을 선택하세요.\n\n"
             },
-            footer: { inputPick: "출전시킬 번호를 입력하세요.", waitMatch: "상대를 찾는 중입니다. 잠시만 기다려주세요...", waitLoad: "협곡으로 이동 중입니다. 잠시만 기다려주세요...", readyFooter: "다음 업데이트를 기대해 주세요!" },
+            // [수정] Footer 문구 깨짐 방지를 위해 짧고 간결하게 변경
+            footer: { 
+                inputPick: "출전시킬 번호를 입력하세요.", 
+                waitMatch: "상대를 찾는 중입니다...\n잠시만 기다려주세요.", 
+                waitLoad: "협곡으로 이동 중입니다...\n잠시만 기다려주세요.", 
+                readyFooter: "다음 업데이트를 기대해 주세요!" 
+            },
             ui: { vsMe: "👤 나 [", vsEnemy: "🤖 적 [", vsMark: "🆚", bracketEnd: "]" }
         },
         Layout: {
@@ -462,13 +472,14 @@ var BattleSystem = {
             if (!session.battle) session.battle = {};
 
             if (msg === "refresh_screen") {
-                // [수정] 1. 매칭 시네마틱 (동기식 순차 실행으로 씹힘 완벽 방지)
                 if (session.screen === "BATTLE_MATCHING") {
                     replier.reply(LayoutManager.renderFrame(vC.screen.match, vC.msg.find, false, vC.footer.waitMatch));
-                    java.lang.Thread.sleep(3000); // 3초 대기
+                    // [수정] 매칭 대기 6초로 연장
+                    java.lang.Thread.sleep(6000); 
                     
-                    replier.reply(LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "픽창 진입 중..."));
-                    java.lang.Thread.sleep(2000); // 2초 대기
+                    replier.reply(LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "전투 준비 중..."));
+                    // 매칭 완료 후 이동 대기는 2.5초로 세팅 (너무 길면 답답함 방지)
+                    java.lang.Thread.sleep(2500); 
                     
                     session.screen = "BATTLE_PICK"; 
                     SessionManager.save();
@@ -503,12 +514,13 @@ var BattleSystem = {
                     session.screen = "BATTLE_LOADING"; 
                     SessionManager.save();
                     
-                    // [수정] 2. 로딩 및 브리핑 시네마틱 (동기식 순차 실행)
                     replier.reply(LayoutManager.renderFrame(vC.screen.load, vC.msg.loadRift, false, vC.footer.waitLoad));
-                    java.lang.Thread.sleep(1500); // 1.5초 대기
+                    // [수정] 챔피언 선택 후 로딩 분석 시간 6초로 연장
+                    java.lang.Thread.sleep(6000); 
                     
                     replier.reply(LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(enemyAI), false, "전투 공간을 생성 중입니다..."));
-                    java.lang.Thread.sleep(2500); // 2.5초 대기
+                    // 분석 완료 후 진입 대기 2.5초
+                    java.lang.Thread.sleep(2500); 
                     
                     session.screen = "BATTLE_READY"; 
                     SessionManager.save();
@@ -521,7 +533,6 @@ var BattleSystem = {
                 }
             }
             
-            // 시네마틱 도중 유저의 입력이 들어오면 무시하고 안내
             if (session.screen === "BATTLE_MATCHING") return replier.reply(vC.footer.waitMatch);
             if (session.screen === "BATTLE_LOADING") return replier.reply(vC.footer.waitLoad);
         }
