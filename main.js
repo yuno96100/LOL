@@ -434,7 +434,7 @@ var BattleSystem = {
                            "🧠 [ 피지컬 ]\n" +
                            "🎯 정확:" + userStats.acc + "  ⚡ 반응:" + userStats.ref + "\n" +
                            "🧘 침착:" + userStats.com + "  🧠 직관:" + userStats.int + "\n" +
-                           "\n━━━━━  🆚  ━━━━━\n\n" +
+                           "\n━━━━━━━ VS ━━━━━━━\n\n" +
                            "🎯 [ " + ai.name + " ]\n" +
                            "🤖 챔피언: " + ai.champion + "\n" +
                            "⚔️ 레벨 : " + ai.level + "\n\n" +
