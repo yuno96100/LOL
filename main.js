@@ -1,12 +1,14 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.9 Enterprise)
- * - 하드코딩 완전 제거: 프로필(LayoutManager), 시스템 오류, 관리자 안내 메시지 등 남은 모든 한글 텍스트를 ContentManager로 100% 분리
- * - 관리자 메뉴 동적 처리: 안 읽은 문의 갯수 표기를 ContentManager 함수로 캡슐화
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.7.0 Micro-MVC)
+ * - 완벽한 메인 MVC 아키텍처 + 백그라운드 세션 자동 만료 통합
+ * - BattleSystem 독립 모듈화: 모듈 내부에서도 Model, View, Controller를 완전히 캡슐화한 마이크로 아키텍처 적용
  */ 
 
-// ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ⚙️ [1. 코어 설정 및 유틸리티]
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v1.5.9 Enterprise",
+    Version: "v1.7.0 Micro-MVC",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -14,18 +16,20 @@ var Config = {
     LINE_CHAR: "━",
     FIXED_LINE: 14,
     WRAP_LIMIT: 18, 
-    TIMEOUT_MS: 300000
+    TIMEOUT_MS: 300000 // 5분
 };
 
 var MAX_LEVEL = 30;
 var POINT_PER_LEVEL = 5;
 
+// [라우팅 맵] 이전(Back) 화면 전환 정의
 var PrevScreenMap = {
     "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
     "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
     "STAT_INPUT": "STAT_SELECT", "STAT_INPUT_CONFIRM": "STAT_INPUT", "STAT_RESET_CONFIRM": "PROFILE_MAIN",
     "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN", "CHAMP_LIST": "COLLECTION_MAIN",
     "SHOP_MAIN": "MAIN", "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_MAIN", "USER_INQUIRY": "MAIN",
+    "MODE_SELECT": "MAIN", "BATTLE_PICK": "MODE_SELECT",
     "ADMIN_SYS_INFO": "ADMIN_MAIN", "ADMIN_INQUIRY_LIST": "ADMIN_MAIN", "ADMIN_USER_SELECT": "ADMIN_MAIN",
     "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT", "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL",
     "ADMIN_ACTION_CONFIRM": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT", 
@@ -79,7 +83,9 @@ var Utils = {
     }
 };
 
-// ━━━━━━━━ [2. 데이터베이스] ━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 💾 [2. 코어 모델 (Model) - 데이터베이스 및 세션]
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Database = {
     data: {}, inquiries: [],
     load: function() {
@@ -99,7 +105,6 @@ var Database = {
     }
 };
 
-// ━━━━━━━━ [세션 매니저 (백그라운드 자동 알림 완벽 적용)] ━━━━━━━━
 var SessionManager = {
     sessions: {},
     init: function() {
@@ -116,8 +121,6 @@ var SessionManager = {
     checkTimeout: function(room, sender, replier) {
         var key = this.getKey(room, sender);
         var s = this.get(room, sender);
-        
-        // 동기식 검사: 타이머가 에러로 작동하지 않았을 경우를 대비한 2차 방어선
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId;
             this.reset(room, sender);
@@ -132,15 +135,12 @@ var SessionManager = {
         this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
         this.save();
     },
-    
-    // [핵심] 유저의 행동 처리가 완전히 끝난 후, 제일 마지막에 타이머를 작동시킵니다.
     startAutoTimer: function(room, sender) {
         var key = this.getKey(room, sender);
         var s = this.sessions[key];
         
         if (!s || s.screen === "IDLE") return;
         
-        // 모든 처리가 끝난 직후의 찐 최종 시간을 기록
         s.lastTime = Date.now();
         this.save();
         
@@ -148,43 +148,35 @@ var SessionManager = {
         var timeLimit = Config.TIMEOUT_MS;
         
         var roomStr = String(room);
-        // [버그 수정] autoTimeout(없는 변수) ➔ timeout(정상 변수)으로 변경하여 내용을 채움!
         var msgStr = String(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
 
         new java.lang.Thread(new java.lang.Runnable({
             run: function() {
                 try {
-                    // 지정된 시간 대기
                     java.lang.Thread.sleep(timeLimit);
-                    
                     var curSession = SessionManager.sessions[key];
-                    // 지정 시간 뒤 일어났는데 시간이 1밀리초도 변하지 않았다면 = 아무것도 안 함 = 만료 처리!
                     if (curSession && curSession.screen !== "IDLE" && curSession.lastTime === targetTime) {
-                        
-                        // 1. 내부 세션 초기화
                         var backupId = curSession.tempId;
                         SessionManager.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
                         if (backupId) SessionManager.sessions[key].tempId = backupId;
                         SessionManager.save();
-                        
-                        // 2. 톡방에 자동으로 만료 알림(내용 포함) 전송!
                         Api.replyRoom(roomStr, msgStr);
                     }
-                } catch (e) {
-                    // 백그라운드 스레드 에러 발생 시 무시
-                }
+                } catch (e) {}
             }
         })).start();
     }
 };
-
 SessionManager.init();
 
-// ━━━━━━━━ [3. 콘텐츠 매니저] ━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🎨 [3. 코어 뷰 (View) - 콘텐츠 및 레이아웃 매니저]
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var ContentManager = {
     menus: {
         guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
         main: ["1. 내 정보", "2. 컬렉션 확인", "3. 대전 모드", "4. 상점 이용", "5. 운영진 문의", "6. 로그아웃"],
+        modeSelect: ["1. 협곡 훈련장 (AI PvE)", "2. 랭크 게임 (유저 PvP - 준비중)"],
         profileSub: ["1. 능력치 강화", "2. 능력치 초기화"],
         stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
         shopMain: ["1. 아이템 상점", "2. 챔피언 상점"],
@@ -193,7 +185,6 @@ var ContentManager = {
         adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"],
         yesNo: ["1. 예", "2. 아니오"],
         adminInqDetail: ["1. 답변 전송", "2. 문의 삭제"],
-        
         getAdminMain: function(unreadCount) {
             return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")];
         }
@@ -207,7 +198,7 @@ var ContentManager = {
         gMain: "비회원 메뉴", joinId: "회원가입", joinPw: "비밀번호 설정", loginId: "로그인", loginPw: "로그인",
         inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 최종 확인",
         resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
-        shopItem: "아이템 상점", shopChamp: "챔피언 상점 (500G)", battle: "대전 모드",
+        shopItem: "아이템 상점", shopChamp: "챔피언 상점 (500G)", modeSel: "대전 모드 선택",
         aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 최종 확인",
         aInqList: "문의 목록", aInqDet: "문의 상세 내용", aInqRep: "답변 작성", aUserDetail: " 관리",
         aEditSel: "정보 수정", aEditIn: "값 수정", aEditCon: "수정 최종 확인"
@@ -220,13 +211,8 @@ var ContentManager = {
         aSelectUser: "관리할 유저의 번호를 입력하세요.", aInputInq: "확인할 문의 번호를 입력하세요.", aInputRep: "유저에게 전송할 답변 내용을 입력하세요.",
         reStart: "다시 시작하려면 '메뉴'를 입력하세요.", sysNotify: "시스템 알림", wait: "잠시만 기다려주세요..."
     },
-    title: {
-        error: "오류", fail: "실패", success: "성공", complete: "완료", notice: "알림", sysError: "시스템 오류"
-    },
-    statMap: {
-        keys: {"1":"acc", "2":"ref", "3":"com", "4":"int"},
-        names: {"1":"정확", "2":"반응", "3":"침착", "4":"직관"}
-    },
+    title: { error: "오류", fail: "실패", success: "성공", complete: "완료", notice: "알림", sysError: "시스템 오류" },
+    statMap: { keys: {"1":"acc", "2":"ref", "3":"com", "4":"int"}, names: {"1":"정확", "2":"반응", "3":"침착", "4":"직관"} },
     ui: {
         replyMark: "🔔 [운영진 답변 도착]", sender: "👤 보낸이: ", date: "📅 날짜: ", time: "⏰ 시간: ",
         read: " ✅ ", unread: " ⬜ ", datePrefix: "📅 [", dateSuffix: "]",
@@ -236,68 +222,42 @@ var ContentManager = {
     },
     msg: {
         welcome: "소환사의 협곡에 오신 것을 환영합니다.\n원하시는 기능을 선택해 주세요.",
-        inputID_Join: "사용하실 아이디를 입력해 주세요.",
-        inputID_Login: "로그인할 아이디를 입력해 주세요.",
-        inputPW: "비밀번호를 입력해 주세요.",
-        registerComplete: "가입이 완료되었습니다!\n자동으로 로그인됩니다.",
-        loginFail: "정보가 일치하지 않습니다.",
-        notEnoughGold: "골드가 부족합니다.",
-        onlyNumber: "숫자만 입력해 주세요.",
+        inputID_Join: "사용하실 아이디를 입력해 주세요.", inputID_Login: "로그인할 아이디를 입력해 주세요.", inputPW: "비밀번호를 입력해 주세요.",
+        registerComplete: "가입이 완료되었습니다!\n자동으로 로그인됩니다.", loginFail: "정보가 일치하지 않습니다.",
+        notEnoughGold: "골드가 부족합니다.", onlyNumber: "숫자만 입력해 주세요.",
         invalidLevel: "레벨은 1부터 " + MAX_LEVEL + "까지만 설정할 수 있습니다.",
-        banned: "🚫 관리자에 의해 이용이 제한된 계정입니다.",
-        battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다.",
-        inputNewVal: "새로운 값을 입력하세요.",
-        
-        cancel: "진행 중인 작업을 중단하고 대기 상태로 전환합니다.",
-        timeout: "⌛ 시간이 초과되어 세션이 만료되었습니다.",
-        noPrevious: "이전 단계가 없습니다.\n현재 화면을 다시 불러옵니다.",
-        logout: "성공적으로 로그아웃되었습니다.",
-        noItem: "보유 중인 스탯 초기화권이 없습니다.\n상점에서 먼저 구매해 주세요.",
-        statResetSuccess: "스탯이 초기화되고 투자했던 포인트가 모두 반환되었습니다.",
-        
-        noTitleError: "보유하지 않은 칭호입니다.",
-        titleEquipSuccess: function(t) { return "칭호가 [" + t + "](으)로 변경되었습니다."; },
+        banned: "🚫 관리자에 의해 이용이 제한된 계정입니다.", inputNewVal: "새로운 값을 입력하세요.",
+        noChamp: "🚫 보유 중인 챔피언이 없어 출전할 수 없습니다.\n먼저 상점에서 챔피언을 영입해 주세요.",
+        pvpPrep: "랭크 게임은 현재 시스템 점검 중입니다.",
+        cancel: "진행 중인 작업을 중단하고 대기 상태로 전환합니다.", timeout: "⌛ 시간이 초과되어 세션이 만료되었습니다.",
+        noPrevious: "이전 단계가 없습니다.\n현재 화면을 다시 불러옵니다.", logout: "성공적으로 로그아웃되었습니다.",
+        noItem: "보유 중인 스탯 초기화권이 없습니다.\n상점에서 먼저 구매해 주세요.", statResetSuccess: "스탯이 초기화되고 투자했던 포인트가 모두 반환되었습니다.",
+        noTitleError: "보유하지 않은 칭호입니다.", titleEquipSuccess: function(t) { return "칭호가 [" + t + "](으)로 변경되었습니다."; },
         buySuccess: function(item) { return item + " 구매 완료!\n인벤토리에 보관되었습니다."; },
-        champFail: "이미 보유 중이거나 골드가 부족합니다.",
-        champSuccess: function(c) { return c + "님이 합류했습니다!"; },
-        
+        champFail: "이미 보유 중이거나 골드가 부족합니다.", champSuccess: function(c) { return c + "님이 합류했습니다!"; },
         statResetConfirm: function(count) { return "정말로 능력치를 초기화하시겠습니까?\n(투자한 포인트는 100% 반환됩니다.)\n\n- 보유 초기화권: " + count + "개"; },
         statEnhanceConfirm: function(stat, amt) { return "[" + stat + "] 능력치를 " + amt + "만큼 강화하시겠습니까?"; },
         statEnhanceSuccess: function(stat, amt) { return stat + " 수치가 " + amt + " 상승했습니다."; },
-        
-        inqSubmitSuccess: "문의가 접수되었습니다.",
-        notifyNewUser: function(id) { return "📢 [신규 유저] " + id + "님이 가입했습니다."; },
+        inqSubmitSuccess: "문의가 접수되었습니다.", notifyNewUser: function(id) { return "📢 [신규 유저] " + id + "님이 가입했습니다."; },
         notifyNewInq: function(sender) { return "🔔 새 문의가 접수되었습니다.\n보낸이: " + sender; },
-        
-        adminNoUser: "등록된 유저가 없습니다.",
-        adminNoInq: "접수된 문의가 없습니다.",
+        adminNoUser: "등록된 유저가 없습니다.", adminNoInq: "접수된 문의가 없습니다.",
         adminSysInfo: function(used, users, ver) { return "📟 메모리: " + used + "MB 사용중\n👥 유저 수: " + users + "명\n🛡️ 버전: " + ver; },
         adminEditConfirm: function(type, val) { return "[" + type + "] 수치를 " + val + "(으)로 수정하시겠습니까?"; },
         adminActionConfirm: function(action) { return "정말로 해당 유저의 [" + action + "] 작업을 진행하시겠습니까?"; },
-        adminCancel: "작업을 취소합니다.",
-        adminInitSuccess: "모든 데이터가 완벽하게 초기화되었습니다.",
-        adminDelSuccess: "계정이 삭제되었습니다.",
-        adminBanSuccess: "차단 상태가 변경되었습니다.",
-        adminInqDelSuccess: "문의가 삭제되었습니다.",
-        adminReplySuccess: "답변이 성공적으로 전송되었습니다.",
-        adminEditSuccess: "수정되었습니다.",
-        adminEditCancel: "수정을 취소합니다.",
-        
-        adminNotifyInit: "관리자에 의해 계정 데이터가 초기화되었습니다.",
-        adminNotifyDelete: "관리자에 의해 계정이 영구 삭제되었습니다.",
-        adminNotifyBan: "관리자에 의해 계정이 [이용 차단] 상태로 변경되었습니다.",
-        adminNotifyUnban: "관리자에 의해 계정이 [차단 해제] 상태로 변경되었습니다.",
+        adminCancel: "작업을 취소합니다.", adminInitSuccess: "모든 데이터가 완벽하게 초기화되었습니다.",
+        adminDelSuccess: "계정이 삭제되었습니다.", adminBanSuccess: "차단 상태가 변경되었습니다.",
+        adminInqDelSuccess: "문의가 삭제되었습니다.", adminReplySuccess: "답변이 성공적으로 전송되었습니다.",
+        adminEditSuccess: "수정되었습니다.", adminEditCancel: "수정을 취소합니다.",
+        adminNotifyInit: "관리자에 의해 계정 데이터가 초기화되었습니다.", adminNotifyDelete: "관리자에 의해 계정이 영구 삭제되었습니다.",
+        adminNotifyBan: "관리자에 의해 계정이 [이용 차단] 상태로 변경되었습니다.", adminNotifyUnban: "관리자에 의해 계정이 [차단 해제] 상태로 변경되었습니다.",
         adminNotifyEdit: function(type, val) { return "관리자에 의해 [" + type + "] 정보가 " + val + "(으)로 수정되었습니다."; },
-        
         sysErrorLog: function(e) {
             return ["⛔ 시스템 오류 발생!", "━━━━━━━━━━━━━━", "📌 종류: " + e.name, "💬 내용: " + e.message,
                     "📍 위치: " + (e.lineNumber || "정보 없음") + "줄", "🔎 상세: " + (e.stack ? e.stack.substring(0, 150) : "정보 없음")].join("\n");
         }
-    },
-    champions: ["알리스타", "말파이트", "레오나", "가렌", "다리우스", "잭스", "제드", "카타리나", "탈론", "럭스", "아리", "빅토르", "애쉬", "베인", "카이사", "소라카", "유미", "쓰레쉬"]
+    }
 };
 
-// ━━━━━━━━ [4. 레이아웃 매니저] ━━━━━━━━
 var LayoutManager = {
     renderFrame: function(title, content, showNav, footer) {
         var div = Utils.getFixedDivider();
@@ -326,7 +286,163 @@ var LayoutManager = {
     }
 };
 
-// ━━━━━━━━ [5. 시스템 액션] ━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ⚔️ [독립 모듈] 전투 시스템 (Micro-MVC Architecture)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var BattleSystem = {
+    // ⚔️ [1] Battle Model: 전투 데이터 및 연산 로직
+    Model: {
+        Data: {
+            champions: {
+                "알리스타": { role: "탱커", hp: 650, atk: 55, def: 50, spd: 25 },
+                "말파이트": { role: "탱커", hp: 630, atk: 58, def: 55, spd: 28 },
+                "레오나": { role: "탱커", hp: 610, atk: 50, def: 60, spd: 30 },
+                "가렌": { role: "전사", hp: 600, atk: 60, def: 40, spd: 30 },
+                "다리우스": { role: "전사", hp: 580, atk: 65, def: 35, spd: 35 },
+                "잭스": { role: "전사", hp: 550, atk: 68, def: 30, spd: 38 },
+                "제드": { role: "암살자", hp: 450, atk: 75, def: 25, spd: 50 },
+                "카타리나": { role: "암살자", hp: 430, atk: 72, def: 20, spd: 55 },
+                "탈론": { role: "암살자", hp: 460, atk: 74, def: 28, spd: 48 },
+                "럭스": { role: "마법사", hp: 400, atk: 65, def: 18, spd: 40 },
+                "아리": { role: "마법사", hp: 420, atk: 68, def: 20, spd: 45 },
+                "빅토르": { role: "마법사", hp: 440, atk: 70, def: 22, spd: 38 },
+                "애쉬": { role: "원딜", hp: 400, atk: 70, def: 20, spd: 40 },
+                "베인": { role: "원딜", hp: 380, atk: 75, def: 18, spd: 45 },
+                "카이사": { role: "원딜", hp: 410, atk: 72, def: 22, spd: 42 },
+                "소라카": { role: "서포터", hp: 380, atk: 40, def: 15, spd: 35 },
+                "유미": { role: "서포터", hp: 300, atk: 35, def: 10, spd: 50 },
+                "쓰레쉬": { role: "서포터", hp: 500, atk: 50, def: 45, spd: 32 }
+            }
+        },
+        Engine: {
+            generateAI: function(userLevel) {
+                var cNames = Object.keys(BattleSystem.Model.Data.champions);
+                var rChamp = cNames[Math.floor(Math.random() * cNames.length)];
+                var base = BattleSystem.Model.Data.champions[rChamp];
+                
+                var aiStats = { acc: 50, ref: 50, com: 50, int: 50 };
+                var tPoints = (userLevel - 1) * POINT_PER_LEVEL;
+                var keys = ["acc", "ref", "com", "int"];
+                
+                for (var i = 0; i < tPoints; i++) {
+                    aiStats[keys[Math.floor(Math.random() * keys.length)]] += 1;
+                }
+                
+                return { name: "AI 소환사", champion: rChamp, level: userLevel, role: base.role, stats: aiStats, hw: base };
+            }
+        }
+    },
+    
+    // ⚔️ [2] Battle View: 전투 전용 텍스트 및 UI 렌더링
+    View: {
+        Content: {
+            screen: { match: "매칭 시스템", matchFound: "매칭 완료", pick: "챔피언 선택 (픽창)", load: "협곡으로 이동 중", analyzed: "분석 완료", ready: "협곡 진입 대기" },
+            msg: {
+                find: "🔍 적합한 훈련 상대를 탐색하고 있습니다...\n\n[ 예상 대기 시간: 3초 ]",
+                matchOk: "✅ 상대와 매칭되었습니다!\n곧 챔피언 선택 창으로 이동합니다.",
+                loadRift: "⏳ 선택한 챔피언과 함께 협곡으로 이동 중입니다...\n\n진행률: [■■□□□]",
+                analyze: function(ai) {
+                    return "상대방의 데이터를 분석했습니다.\n진행률: [■■■■■]\n\n" + 
+                           "🎯 [ 타겟 분석 브리핑 ]\n" +
+                           "🤖 대상: " + ai.name + " (Lv." + ai.level + ")\n" +
+                           "⚔️ 픽 챔피언: " + ai.champion + " (" + ai.role + ")\n" + Utils.getFixedDivider() + "\n" +
+                           "📊 [ 상대 피지컬(소프트웨어) 스탯 ]\n" +
+                           "🎯정확:" + ai.stats.acc + "  ⚡반응:" + ai.stats.ref + "\n" +
+                           "🧘침착:" + ai.stats.com + "  🧠직관:" + ai.stats.int + "\n\n곧 소환사의 협곡으로 이동합니다...";
+                },
+                readyMsg: "소환사의 협곡에 오신 것을 환영합니다!\n미니언들이 생성되었습니다.\n\n(※ 실제 전투 시스템은 업데이트 예정입니다.)",
+                pickIntro: "전투에 출전할 챔피언을 선택하세요.\n\n"
+            },
+            footer: { inputPick: "출전시킬 번호를 입력하세요.", waitMatch: "상대를 찾는 중입니다. 잠시만 기다려주세요...", waitLoad: "협곡으로 이동 중입니다. 잠시만 기다려주세요...", readyFooter: "다음 업데이트를 기대해 주세요!" },
+            ui: { vsMe: "👤 나 [", vsEnemy: "🤖 적 [", vsMark: "🆚", bracketEnd: "]" }
+        },
+        Layout: {
+            renderVSBoard: function(myChamp, enemyName, msgContent) {
+                var u = BattleSystem.View.Content.ui;
+                return u.vsMe + myChamp + u.bracketEnd + "\n" + u.vsMark + "\n" + u.vsEnemy + enemyName + u.bracketEnd + "\n\n" + msgContent;
+            }
+        }
+    },
+    
+    // ⚔️ [3] Battle Controller: 전투 흐름 및 스레드 연출 제어
+    Controller: {
+        handle: function(msg, session, sender, replier, room, userData) {
+            var vC = BattleSystem.View.Content;
+            var vL = BattleSystem.View.Layout;
+            var bM = BattleSystem.Model;
+            if (!session.battle) session.battle = {};
+
+            if (msg === "refresh_screen") {
+                if (session.screen === "BATTLE_MATCHING") {
+                    replier.reply(LayoutManager.renderFrame(vC.screen.match, vC.msg.find, false, vC.footer.waitMatch));
+                    var safeRoom1 = new java.lang.String(room);
+                    new java.lang.Thread(new java.lang.Runnable({
+                        run: function() {
+                            try {
+                                java.lang.Thread.sleep(3000); 
+                                Api.replyRoom(safeRoom1, LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "픽창 진입 중..."));
+                                java.lang.Thread.sleep(2000); 
+                                var cS = SessionManager.sessions[SessionManager.getKey(room, sender)];
+                                if (cS && cS.screen === "BATTLE_MATCHING") {
+                                    cS.screen = "BATTLE_PICK"; SessionManager.save();
+                                    BattleSystem.Controller.handle("refresh_screen", cS, sender, { reply: function(txt){ Api.replyRoom(safeRoom1, txt); } }, room, userData);
+                                }
+                            } catch(e) {}
+                        }
+                    })).start();
+                    return;
+                }
+                if (session.screen === "BATTLE_PICK") {
+                    var list = userData.inventory.champions.map(function(c, i) { 
+                        var role = bM.Data.champions[c] ? bM.Data.champions[c].role : "알 수 없음";
+                        return (i+1) + ". " + c + " (" + role + ")"; 
+                    }).join("\n");
+                    return replier.reply(LayoutManager.renderFrame(vC.screen.pick, vC.msg.pickIntro + list, true, vC.footer.inputPick));
+                }
+                if (session.screen === "BATTLE_READY") {
+                    var myC = session.battle.myChamp, enM = session.battle.enemy;
+                    var vsUI = vL.renderVSBoard(myC, enM.champion, vC.msg.readyMsg);
+                    return replier.reply(LayoutManager.renderFrame(vC.screen.ready, vsUI, ["✖취소", "🏠메뉴"], vC.footer.readyFooter));
+                }
+            }
+
+            if (session.screen === "BATTLE_PICK") {
+                var idx = parseInt(msg) - 1;
+                if (userData.inventory.champions && userData.inventory.champions[idx]) {
+                    session.battle.myChamp = userData.inventory.champions[idx];
+                    var enemyAI = bM.Engine.generateAI(userData.level);
+                    session.battle.enemy = enemyAI;
+                    
+                    session.screen = "BATTLE_LOADING"; SessionManager.save();
+                    replier.reply(LayoutManager.renderFrame(vC.screen.load, vC.msg.loadRift, false, vC.footer.waitLoad));
+                    
+                    var safeRoom2 = new java.lang.String(room);
+                    new java.lang.Thread(new java.lang.Runnable({
+                        run: function() {
+                            try {
+                                java.lang.Thread.sleep(1500);
+                                Api.replyRoom(safeRoom2, LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(enemyAI), false, "전투 공간을 생성 중입니다..."));
+                                java.lang.Thread.sleep(2000);
+                                var cS = SessionManager.sessions[SessionManager.getKey(room, sender)];
+                                if (cS && cS.screen === "BATTLE_LOADING") {
+                                    cS.screen = "BATTLE_READY"; SessionManager.save();
+                                    BattleSystem.Controller.handle("refresh_screen", cS, sender, { reply: function(txt){ Api.replyRoom(safeRoom2, txt); } }, room, userData);
+                                }
+                            } catch(e) {}
+                        }
+                    })).start();
+                    return; 
+                } else { return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function(){ BattleSystem.Controller.handle("refresh_screen", session, sender, replier, room, userData); }); }
+            }
+            if (session.screen === "BATTLE_MATCHING") return replier.reply(vC.footer.waitMatch);
+            if (session.screen === "BATTLE_LOADING") return replier.reply(vC.footer.waitLoad);
+        }
+    }
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🕹️ [4. 코어 컨트롤러 (Controller) - 액션 및 흐름 제어]
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var SystemAction = {
     go: function(replier, title, msg, nextFunc) {
         replier.reply(LayoutManager.renderAlert(title, msg));
@@ -335,9 +451,6 @@ var SystemAction = {
     }
 };
 
-// ━━━━━━━━ [6. 컨트롤러] ━━━━━━━━
-
-// 6-1. 인증 컨트롤러
 var AuthController = {
     handle: function(msg, session, sender, replier, room) {
         var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title;
@@ -394,7 +507,6 @@ var AuthController = {
     }
 };
 
-// 6-2. 유저 컨트롤러
 var UserController = {
     handle: function(msg, session, sender, replier, room) {
         var data = Database.data[session.tempId]; 
@@ -405,6 +517,7 @@ var UserController = {
 
         if (msg === "refresh_screen") {
             if (session.screen === "MAIN") return replier.reply(LayoutManager.renderFrame(s.main, LayoutManager.templates.menuList(null, ContentManager.menus.main), false, f.selectNum));
+            if (session.screen === "MODE_SELECT") return replier.reply(LayoutManager.renderFrame(s.modeSel, LayoutManager.templates.menuList(null, ContentManager.menus.modeSelect), true, f.selectNum));
             if (session.screen === "PROFILE_MAIN") {
                 var head = LayoutManager.renderProfileHead(data, session.tempId);
                 return replier.reply(LayoutManager.renderFrame(s.profile, head + "\n" + Utils.getFixedDivider() + "\n" + LayoutManager.templates.menuList(null, ContentManager.menus.profileSub), true, f.selectAction));
@@ -449,12 +562,25 @@ var UserController = {
         if (session.screen === "MAIN") {
             if (msg === "1") { session.screen = "PROFILE_MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "2") { session.screen = "COLLECTION_MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "3") { return replier.reply(LayoutManager.renderFrame(s.battle, m.battlePrep, true, "준비 중...")); }
+            if (msg === "3") { session.screen = "MODE_SELECT"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "4") { session.screen = "SHOP_MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "5") { session.screen = "USER_INQUIRY"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "6") { 
                 var backupId = session.tempId; SessionManager.reset(room, sender); 
                 return SystemAction.go(replier, t.notice, m.logout, function() { AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
+            }
+        }
+        
+        if (session.screen === "MODE_SELECT") {
+            if (msg === "1") {
+                if (!data.inventory.champions || data.inventory.champions.length === 0) {
+                    return SystemAction.go(replier, t.fail, m.noChamp, function() { session.screen = "MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
+                }
+                session.screen = "BATTLE_MATCHING"; SessionManager.save();
+                return BattleSystem.Controller.handle("refresh_screen", session, sender, replier, room, data);
+            }
+            if (msg === "2") {
+                return SystemAction.go(replier, t.notice, m.pvpPrep, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
 
@@ -535,7 +661,6 @@ var UserController = {
     }
 };
 
-// 6-3. 관리자 컨트롤러
 var AdminController = {
     handle: function(msg, session, sender, replier, room) {
         var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title, ui = ContentManager.ui;
@@ -663,7 +788,6 @@ var AdminController = {
              var val = parseInt(msg);
              if(isNaN(val)) return SystemAction.go(replier, t.error, m.onlyNumber, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
              
-             // [추가] 레벨 최대치 예외 처리
              if (session.temp.editType === "level" && (val < 1 || val > MAX_LEVEL)) {
                  return SystemAction.go(replier, t.error, m.invalidLevel, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
              }
@@ -686,7 +810,9 @@ var AdminController = {
     }
 };
 
-// ━━━━━━━━ [7. 메인 라우터] ━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🚀 [5. 메인 라우터 (Entry Point)]
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     try {
         Database.load(); 
@@ -694,14 +820,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
-        // 1. 시간 갱신 없이, 만료 여부만 먼저 검사합니다.
         if (SessionManager.checkTimeout(room, sender, replier)) return;
 
         var session = SessionManager.get(room, sender);
         var isLogged = (session.tempId && Database.data[session.tempId]);
 
         if (realMsg === "메뉴") {
-            // [수정] 중간에 session.lastTime을 갱신하던 로직 삭제 (타이머 충돌 원인 제거)
             if (room === Config.AdminRoom) { session.screen = "ADMIN_MAIN"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
             if (isLogged) { session.screen = "MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); } 
             else { session.screen = "GUEST_MAIN"; return AuthController.handle("refresh_screen", session, sender, replier, room); }
@@ -729,6 +853,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier, room);
+        
+        // [위임] 전투 화면일 경우 독립된 BattleSystem으로 제어권 완벽 인계
+        if (isLogged && session.screen.indexOf("BATTLE_") === 0) {
+            return BattleSystem.Controller.handle(realMsg, session, sender, replier, room, Database.data[session.tempId]);
+        }
+        
         if (isLogged) return UserController.handle(realMsg, session, sender, replier, room);
         return AuthController.handle(realMsg, session, sender, replier, room);
 
@@ -736,7 +866,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         try { Api.replyRoom(Config.AdminRoom, ContentManager.msg.sysErrorLog(e)); } catch(err) {} 
         return SystemAction.go(replier, ContentManager.title.sysError, ContentManager.msg.sysErrorLog(e), function() { SessionManager.reset(room, sender); });
     } finally {
-        // [핵심] 명령 처리가 완전히 끝난 가장 마지막 순간! 타이머를 단 한 번만 작동시킵니다.
         SessionManager.startAutoTimer(room, sender);
     }
 }
