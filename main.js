@@ -14,7 +14,7 @@ var Config = {
     LINE_CHAR: "━",
     FIXED_LINE: 14,
     WRAP_LIMIT: 18, 
-    TIMEOUT_MS: 10000
+    TIMEOUT_MS: 300000
 };
 
 var MAX_LEVEL = 30;
