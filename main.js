@@ -1,12 +1,12 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.1 Final)
- * - 세션 독립화: 동일 유저라도 '관리자 방'과 '일반 방'의 세션 및 타임아웃을 100% 개별 분리 (Room + Sender 키 적용)
- * - 타임아웃 픽스: 시간 갱신 전 만료 여부를 먼저 검사하여 5분 방치 시 정상적으로 대기 상태 복귀
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.2 Auto Timeout)
+ * - 코어 업그레이드: '백그라운드 타이머 스레드' 도입으로 유저 무응답 5분 경과 시 봇이 스스로 알림 전송!
+ * - 세션 독립화: 동일 유저라도 '관리자 방'과 '유저 방'의 타이머가 절대 섞이지 않도록 100% 분리
  */ 
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.5.1 Final",
+    Version: "v1.5.2 Auto Timeout",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -14,7 +14,7 @@ var Config = {
     LINE_CHAR: "━",
     FIXED_LINE: 14,
     WRAP_LIMIT: 20, 
-    TIMEOUT_MS: 300000 
+    TIMEOUT_MS: 300000 // 5분
 };
 
 var MAX_LEVEL = 30;
@@ -114,9 +114,10 @@ var Database = {
     }
 };
 
-// ━━━━━━━━ [세션 매니저 (방+유저 개별 분리 적용)] ━━━━━━━━
+// ━━━━━━━━ [세션 매니저 (방+유저 자동 타이머 적용)] ━━━━━━━━
 var SessionManager = {
     sessions: {},
+    
     init: function() {
         var file = new java.io.File(Config.SESSION_PATH);
         if (file.exists()) {
@@ -125,7 +126,7 @@ var SessionManager = {
     },
     save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions, null, 4)); },
     
-    // [핵심] 방 이름과 유저 이름을 합쳐서 고유 키 생성
+    // 방과 유저 이름을 합친 고유 키 사용
     getKey: function(room, sender) { return room + "_" + sender; },
     
     get: function(room, sender) {
@@ -137,11 +138,42 @@ var SessionManager = {
         return this.sessions[key];
     },
     
+    // [핵심] 5분 무응답 자동 만료 백그라운드 스레드
+    updateTimer: function(room, sender) {
+        var key = this.getKey(room, sender);
+        var s = this.sessions[key];
+        
+        if (!s || s.screen === "IDLE") return;
+        
+        var targetTime = s.lastTime; // 기준 시간 캡처
+        
+        new java.lang.Thread(new java.lang.Runnable({
+            run: function() {
+                try {
+                    // 정확히 5분(300,000ms) 대기
+                    java.lang.Thread.sleep(Config.TIMEOUT_MS);
+                    
+                    var curSession = SessionManager.sessions[key];
+                    // 5분이 지났는데, 유저가 아무것도 치지 않아 마지막 시간이 변하지 않았다면 강제 종료!
+                    if (curSession && curSession.screen !== "IDLE" && curSession.lastTime === targetTime) {
+                        var backupId = curSession.tempId;
+                        SessionManager.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
+                        if (backupId) SessionManager.sessions[key].tempId = backupId; // 로그인 유지
+                        SessionManager.save();
+                        
+                        var alertMsg = LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.autoTimeout, false, "다시 시작하려면 '메뉴'를 입력하세요.");
+                        Api.replyRoom(room, alertMsg); // 스스로 톡방에 메시지 전송!
+                    }
+                } catch (e) {}
+            }
+        })).start();
+    },
+    
     checkTimeout: function(room, sender, replier) {
         var key = this.getKey(room, sender);
         var s = this.get(room, sender);
         
-        // 시간 갱신 전 먼저 만료 여부 검사
+        // 스레드 지연 시 2차 안전장치 (명령어 입력 시 만료 여부 즉시 검사)
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId;
             this.reset(room, sender);
@@ -150,7 +182,12 @@ var SessionManager = {
             return true; 
         }
         
-        if (s) { s.lastTime = Date.now(); this.save(); }
+        // 시간 갱신 및 백그라운드 자동 타이머 시작
+        if (s) { 
+            s.lastTime = Date.now(); 
+            this.save(); 
+            this.updateTimer(room, sender); 
+        }
         return false;
     },
     
@@ -197,6 +234,7 @@ var ContentManager = {
         adminSelectUser: "관리할 유저의 번호를 입력하세요.",
         
         cancel: "진행 중인 작업을 중단하고 대기 상태로 전환합니다.",
+        autoTimeout: "⌛ 5분간 입력이 없어 대기 상태로 자동 전환되었습니다.",
         noPrevious: "이전 단계가 없습니다.\n현재 화면을 다시 불러옵니다.",
         logout: "성공적으로 로그아웃되었습니다.",
         noItem: "보유 중인 스탯 초기화권이 없습니다.\n상점에서 먼저 구매해 주세요.",
@@ -719,7 +757,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
-        // 타임아웃 검사
+        // [핵심] 타임아웃 검사 및 백그라운드 타이머 작동
         if (SessionManager.checkTimeout(room, sender, replier)) return;
 
         var session = SessionManager.get(room, sender);
@@ -740,7 +778,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
         }
 
-        // [수정] 취소 입력 시 로그아웃(tempId 삭제)되지 않도록 백업 처리 후 대기 상태로
+        // [수정] 취소 입력 시 로그아웃을 방지하기 위해 로그인 데이터(tempId) 백업 후 복원
         if (realMsg === "취소") { 
             var backupId = session.tempId; 
             SessionManager.reset(room, sender); 
@@ -755,7 +793,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         if (realMsg === "이전") {
             var pData = [
                 "JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,",
-                "GUEST_INQUIRY:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,",
+                "GUEST_INQUquiry:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,",
                 "STAT_INPUT:STAT_SELECT,STAT_RESET_CONFIRM:PROFILE_MAIN,COLLECTION_MAIN:MAIN,",
                 "TITLE_EQUIP:COLLECTION_MAIN,CHAMP_LIST:COLLECTION_MAIN,SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,",
                 "SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,ADMIN_SYS_INFO:ADMIN_MAIN,",
