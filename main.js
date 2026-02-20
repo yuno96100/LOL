@@ -13,7 +13,7 @@ var Config = {
     SESSION_PATH: "sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 14,
-    WRAP_LIMIT: 20, 
+    WRAP_LIMIT: 18, 
     TIMEOUT_MS: 10000 // ⚠️ [테스트용] 10초 설정입니다. 확인 후 300000(5분)으로 변경하세요!
 };
 
