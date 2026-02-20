@@ -1,13 +1,13 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.4.8)
- * - 기능 보강: 24시간제 변환, 문의 목록 날짜별 그룹화 및 내용 숨김 처리
- * - 상태 연동: 관리자 로비 안읽음 알림(🔴) 및 리스트 읽음/안읽음(🔴/⬜) 표시
- * - UX 개선: 취소 시 완벽한 대기상태 복귀, 답변 톡방 UI에 상하단 구분선 추가
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.4.9)
+ * - 버그 수정: '취소' 입력 시 로그아웃되는 현상 방지 (로그인 세션 유지)
+ * - UX 개선: 로그인/회원가입 성공 후 즉시 유저 메인 로비 자동 출력
+ * - UI 디테일: 문의 목록 아이콘(✅/⬜) 적용 및 관리자 알림 아이콘 제거, 24시간제 고정
  */ 
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.4.8 UX Polish",
+    Version: "v1.4.9 UX Detail",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -26,7 +26,7 @@ var Utils = {
         return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); 
     },
     
-    // [추가] 24시간제 날짜 출력 함수 (오전/오후 제거)
+    // [수정] 24시간제 완벽 적용 (오전/오후 절대 표기 안됨)
     get24HTime: function() {
         var d = new Date();
         var y = d.getFullYear();
@@ -133,7 +133,10 @@ var SessionManager = {
     checkTimeout: function(sender, replier) {
         var s = this.sessions[sender];
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
+            // 타임아웃 시에도 로그인 정보는 살려두는 것이 좋습니다.
+            var backupId = s.tempId;
             this.reset(sender);
+            if(backupId) { this.sessions[sender].tempId = backupId; this.save(); }
             replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, "⌛ 세션이 만료되었습니다.", false, "다시 이용하시려면 '메뉴'를 입력하세요."));
             return true; 
         }
@@ -181,7 +184,7 @@ var ContentManager = {
         battlePrep: "⚔️ 대전 모드는 현재 준비 중입니다.",
         adminSelectUser: "관리할 유저의 번호를 입력하세요.",
         
-        cancel: "모든 작업을 중단하고 초기 화면으로 돌아갑니다.",
+        cancel: "진행 중인 작업을 중단하고 대기 상태로 전환합니다.",
         noPrevious: "이전 단계가 없습니다.\n현재 화면을 다시 불러옵니다.",
         logout: "성공적으로 로그아웃되었습니다.",
         noItem: "보유 중인 스탯 초기화권이 없습니다.\n상점에서 먼저 구매해 주세요.",
@@ -290,7 +293,9 @@ var AuthController = {
         }
         if (session.screen === "JOIN_PW") {
             Database.createUser(session.temp.id, msg); Database.load(); 
-            session.tempId = session.temp.id; session.screen = "MAIN"; SessionManager.save(); 
+            session.tempId = session.temp.id; 
+            session.screen = "MAIN"; // [수정] 성공 시 메인 로비로 세팅
+            SessionManager.save(); 
             try { Utils.sendNotify(Config.AdminRoom, "📢 [신규 유저] " + session.temp.id + "님이 가입했습니다."); } catch(e) {}
             return SystemAction.go(replier, ContentManager.title.success, ContentManager.msg.registerComplete, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
         }
@@ -303,7 +308,9 @@ var AuthController = {
         if (session.screen === "LOGIN_PW") {
             var userData = Database.data[session.temp.id];
             if (userData && userData.pw === msg) {
-                session.tempId = session.temp.id; SessionManager.save(); 
+                session.tempId = session.temp.id; 
+                session.screen = "MAIN"; // [수정] 성공 시 메인 로비로 세팅
+                SessionManager.save(); 
                 return SystemAction.go(replier, ContentManager.title.success, session.tempId + "님 환영합니다!", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             } else {
                 return SystemAction.go(replier, ContentManager.title.fail, ContentManager.msg.loginFail, function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
@@ -390,6 +397,7 @@ var UserController = {
             if (msg === "4") { session.screen = "SHOP_MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "5") { session.screen = "USER_INQUIRY"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "6") { 
+                var backupId = session.tempId; // [수정] 혹시 모를 대비
                 SessionManager.reset(sender); 
                 return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.logout, function() {
                     AuthController.handle("refresh_screen", SessionManager.get(sender, replier), sender, replier, room);
@@ -504,12 +512,12 @@ var AdminController = {
         if (msg === "refresh_screen") {
             if (session.screen === "IDLE" || session.screen === "ADMIN_MAIN") {
                 session.screen = "ADMIN_MAIN";
-                // [추가] 안 읽은 문의 개수 동적 표시 (🔴)
                 var unreadCount = Database.inquiries.filter(function(iq){ return !iq.read; }).length;
+                // [수정] 아이콘 🔴 제거하고 갯수만 표시되도록 수정
                 var adminMenus = [
                     "1. 시스템 정보", 
                     "2. 전체 유저", 
-                    "3. 문의 관리" + (unreadCount > 0 ? " 🔴[" + unreadCount + "]" : "")
+                    "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")
                 ];
                 return replier.reply(LayoutManager.renderFrame("관리 센터", LayoutManager.templates.menuList(null, adminMenus), false, "관리 메뉴 선택"));
             }
@@ -533,7 +541,6 @@ var AdminController = {
             if (session.screen === "ADMIN_INQUIRY_LIST") {
                 if (Database.inquiries.length === 0) return SystemAction.go(replier, ContentManager.title.notice, "접수된 문의가 없습니다.", function(){ session.screen = "ADMIN_MAIN"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 
-                // [개선] 날짜별 목록 그룹화 및 내용 숨김 처리
                 var listArr = [];
                 var curDate = "";
                 for (var i = 0; i < Database.inquiries.length; i++) {
@@ -544,7 +551,8 @@ var AdminController = {
                         if(listArr.length > 0) listArr.push(""); 
                         listArr.push("📅 [" + curDate + "]");
                     }
-                    var mark = iq.read ? " ⬜" : " 🔴";
+                    // [수정] 읽음 아이콘 ✅, 안 읽음 ⬜
+                    var mark = iq.read ? " ✅" : " ⬜";
                     listArr.push((i+1) + "." + mark + " " + iq.sender);
                 }
                 return replier.reply(LayoutManager.renderFrame("문의 목록", listArr.join("\n"), true, "확인할 문의 번호를 입력하세요."));
@@ -553,7 +561,6 @@ var AdminController = {
                 var iq = Database.inquiries[session.temp.inqIdx];
                 if (!iq) return AdminController.handle("이전", session, sender, replier, room);
                 
-                // [추가] 상세 보기 시 읽음(read: true) 처리
                 if (!iq.read) { iq.read = true; Database.save(); }
                 
                 var content = "👤 보낸이: " + iq.sender + "\n⏰ 시간: " + iq.time + "\n" + Utils.getFixedDivider() + "\n" + iq.content;
@@ -613,11 +620,9 @@ var AdminController = {
             var idx = session.temp.inqIdx;
             var iq = Database.inquiries[idx];
             if (iq && iq.room) {
-                // [추가] 답변 UI 상하단 구분선 적용
                 var replyMsg = "🔔 [운영진 답변 도착]\n" + Utils.getFixedDivider() + "\n" + msg + "\n" + Utils.getFixedDivider();
                 try { Api.replyRoom(iq.room, replyMsg); } catch(e){}
-                
-                // [수정] 문의 삭제(splice) 제거 -> 보존됨
+                // 답변 전송 후에도 데이터 보존
                 return SystemAction.go(replier, ContentManager.title.complete, "답변이 성공적으로 전송되었습니다.", function(){
                     session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_screen", session, sender, replier, room);
                 });
@@ -721,9 +726,16 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (SessionManager.checkTimeout(sender, replier)) return;
 
-        // [수정] 취소 입력 시 완벽한 '대기 상태'로 진입 (후속 작업 없음)
+        // [수정] 취소 시 로그아웃을 방지하기 위해 로그인 데이터(tempId) 백업 후 복원
         if (realMsg === "취소") { 
+            var backupId = session.tempId; 
             SessionManager.reset(sender); 
+            var newSession = SessionManager.get(sender, replier);
+            if (backupId) {
+                newSession.tempId = backupId;
+                SessionManager.save();
+            }
+            
             return replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, "대기 상태로 돌아갑니다.", false, "다시 시작하려면 '메뉴'를 입력하세요."));
         }
 
