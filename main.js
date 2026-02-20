@@ -13,8 +13,8 @@ var Config = {
     SESSION_PATH: "sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 14,
-    WRAP_LIMIT: 20, 
-    TIMEOUT_MS: 300000 // 정상적으로 5분(300000) 세팅
+    WRAP_LIMIT: 18, 
+    TIMEOUT_MS: 10000 // 정상적으로 5분(300000) 세팅
 };
 
 var MAX_LEVEL = 30;
@@ -47,7 +47,7 @@ var Utils = {
                 for (var j = 0; j < line.length; j++) {
                     currentLine += line[j];
                     if (currentLine.length >= Config.WRAP_LIMIT) {
-                        while (j + 1 < line.length && /^[.,!?]$/.test(line[j + 1])) {
+                        while (j + 1 < line.length && /^[.,!?()]$/.test(line[j + 1])) {
                             currentLine += line[j + 1];
                             j++;
                         }
