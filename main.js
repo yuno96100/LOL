@@ -323,7 +323,7 @@ var BattleSystem = {
                 var rChamp = ChampionList[Math.floor(Math.random() * ChampionList.length)];
                 var base = ChampionData[rChamp];
                 
-                // 1. 하드웨어 스케일링 (1레벨당 체력/데미지/방어력 5% 상승, 공속 미세 상승)
+                // 하드웨어 스케일링 (1레벨당 체력/데미지/방어력 5% 상승)
                 var scale = 1 + ((userLevel - 1) * 0.05);
                 var scaledHW = {
                     role: base.role,
@@ -334,11 +334,11 @@ var BattleSystem = {
                     def: Math.floor(base.def * scale),
                     mdef: Math.floor(base.mdef * scale),
                     as: parseFloat((base.as + ((userLevel - 1) * 0.015)).toFixed(2)),
-                    spd: base.spd,       // 이동속도 고정
-                    range: base.range    // 사거리 고정
+                    spd: base.spd,       
+                    range: base.range    
                 };
 
-                // 2. 소프트웨어 스탯 무작위 분배
+                // 소프트웨어 스탯 무작위 분배
                 var aiStats = { acc: 50, ref: 50, com: 50, int: 50 };
                 var tPoints = (userLevel - 1) * POINT_PER_LEVEL;
                 var keys = ["acc", "ref", "com", "int"];
@@ -389,7 +389,7 @@ var BattleSystem = {
         }
     },
     
-    // ⚔️ [3] Controller: 매칭, 픽창, 로딩 흐름 제어
+    // ⚔️ [3] Controller: 매칭, 픽창, 로딩 흐름 제어 (동기식 딜레이 적용)
     Controller: {
         handle: function(msg, session, sender, replier, room, userData) {
             var vC = BattleSystem.View.Content;
@@ -398,40 +398,17 @@ var BattleSystem = {
             if (!session.battle) session.battle = {};
 
             if (msg === "refresh_screen") {
+                // [수정] 1. 매칭 시네마틱 (동기식 순차 실행으로 씹힘 완벽 방지)
                 if (session.screen === "BATTLE_MATCHING") {
-                    // 매칭 시작 UI 렌더링
                     replier.reply(LayoutManager.renderFrame(vC.screen.match, vC.msg.find, false, vC.footer.waitMatch));
+                    java.lang.Thread.sleep(3000); // 3초 대기
                     
-                    // [핵심] 스레드 진입 전, 모든 텍스트와 UI를 미리 완성(사전 렌더링)하여 에러 방지
-                    var roomStr = String(room);
-                    var sessionKey = SessionManager.getKey(String(room), String(sender));
+                    replier.reply(LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "픽창 진입 중..."));
+                    java.lang.Thread.sleep(2000); // 2초 대기
                     
-                    var matchFoundUI = String(LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "픽창 진입 중..."));
-                    
-                    var champs = userData.inventory.champions || [];
-                    var pickList = champs.map(function(c, i) { 
-                        var role = ChampionData[c] ? ChampionData[c].role : "알 수 없음";
-                        return (i+1) + ". " + c + " (" + role + ")"; 
-                    }).join("\n");
-                    var pickUI = String(LayoutManager.renderFrame(vC.screen.pick, vC.msg.pickIntro + pickList, true, vC.footer.inputPick));
-
-                    new java.lang.Thread(new java.lang.Runnable({
-                        run: function() {
-                            try {
-                                java.lang.Thread.sleep(3000); 
-                                Api.replyRoom(roomStr, matchFoundUI); // 미리 포장해둔 매칭 완료 문구 발사
-                                
-                                java.lang.Thread.sleep(2000); 
-                                var cS = SessionManager.sessions[sessionKey];
-                                if (cS && cS.screen === "BATTLE_MATCHING") {
-                                    cS.screen = "BATTLE_PICK"; 
-                                    SessionManager.save();
-                                    Api.replyRoom(roomStr, pickUI); // 미리 포장해둔 픽창 렌더링 발사
-                                }
-                            } catch(e) {}
-                        }
-                    })).start();
-                    return;
+                    session.screen = "BATTLE_PICK"; 
+                    SessionManager.save();
+                    return BattleSystem.Controller.handle("refresh_screen", session, sender, replier, room, userData);
                 }
                 
                 if (session.screen === "BATTLE_PICK") {
@@ -462,33 +439,17 @@ var BattleSystem = {
                     session.screen = "BATTLE_LOADING"; 
                     SessionManager.save();
                     
+                    // [수정] 2. 로딩 및 브리핑 시네마틱 (동기식 순차 실행)
                     replier.reply(LayoutManager.renderFrame(vC.screen.load, vC.msg.loadRift, false, vC.footer.waitLoad));
+                    java.lang.Thread.sleep(1500); // 1.5초 대기
                     
-                    // [핵심] 진입 연출 역시 스레드 밖에서 전부 사전 렌더링
-                    var roomStr = String(room);
-                    var sessionKey = SessionManager.getKey(String(room), String(sender));
+                    replier.reply(LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(enemyAI), false, "전투 공간을 생성 중입니다..."));
+                    java.lang.Thread.sleep(2500); // 2.5초 대기
                     
-                    var analyzedUI = String(LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(enemyAI), false, "전투 공간을 생성 중입니다..."));
-                    var vsUI = vL.renderVSBoard(session.battle.myChamp, enemyAI.champion, vC.msg.readyMsg);
-                    var readyUI = String(LayoutManager.renderFrame(vC.screen.ready, vsUI, ["✖취소", "🏠메뉴"], vC.footer.readyFooter));
+                    session.screen = "BATTLE_READY"; 
+                    SessionManager.save();
+                    return BattleSystem.Controller.handle("refresh_screen", session, sender, replier, room, userData);
                     
-                    new java.lang.Thread(new java.lang.Runnable({
-                        run: function() {
-                            try {
-                                java.lang.Thread.sleep(1500);
-                                Api.replyRoom(roomStr, analyzedUI); // 사전 렌더링된 분석 화면
-                                
-                                java.lang.Thread.sleep(2500);
-                                var cS = SessionManager.sessions[sessionKey];
-                                if (cS && cS.screen === "BATTLE_LOADING") {
-                                    cS.screen = "BATTLE_READY"; 
-                                    SessionManager.save();
-                                    Api.replyRoom(roomStr, readyUI); // 사전 렌더링된 게임 진입 화면
-                                }
-                            } catch(e) {}
-                        }
-                    })).start();
-                    return; 
                 } else { 
                     return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function(){ 
                         BattleSystem.Controller.handle("refresh_screen", session, sender, replier, room, userData); 
@@ -496,6 +457,7 @@ var BattleSystem = {
                 }
             }
             
+            // 시네마틱 도중 유저의 입력이 들어오면 무시하고 안내
             if (session.screen === "BATTLE_MATCHING") return replier.reply(vC.footer.waitMatch);
             if (session.screen === "BATTLE_LOADING") return replier.reply(vC.footer.waitLoad);
         }
