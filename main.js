@@ -1,12 +1,12 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.2 Auto Timeout)
- * - 코어 업그레이드: '백그라운드 타이머 스레드' 도입으로 유저 무응답 5분 경과 시 봇이 스스로 알림 전송!
- * - 세션 독립화: 동일 유저라도 '관리자 방'과 '유저 방'의 타이머가 절대 섞이지 않도록 100% 분리
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.4 Thread Safe)
+ * - 치명적 버그 수정: 백그라운드 스레드(Thread) 내에서 JS Context 유실로 인해 알림이 전송되지 않는 현상 완벽 해결
+ * - 로직 개선: 타이머 진입 전 알림 메시지를 사전 렌더링(Pre-rendering)하여 스레드 안전성(Thread-Safe) 확보
  */ 
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.5.2 Auto Timeout",
+    Version: "v1.5.4 Thread Safe",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -14,7 +14,7 @@ var Config = {
     LINE_CHAR: "━",
     FIXED_LINE: 14,
     WRAP_LIMIT: 20, 
-    TIMEOUT_MS: 300000 // 5분
+    TIMEOUT_MS: 10000 // ⚠️ [테스트용] 10초 설정입니다. 확인 후 300000(5분)으로 변경하세요!
 };
 
 var MAX_LEVEL = 30;
@@ -114,92 +114,6 @@ var Database = {
     }
 };
 
-// ━━━━━━━━ [세션 매니저 (방+유저 자동 타이머 적용)] ━━━━━━━━
-var SessionManager = {
-    sessions: {},
-    
-    init: function() {
-        var file = new java.io.File(Config.SESSION_PATH);
-        if (file.exists()) {
-            try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch (e) { this.sessions = {}; }
-        }
-    },
-    save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions, null, 4)); },
-    
-    // 방과 유저 이름을 합친 고유 키 사용
-    getKey: function(room, sender) { return room + "_" + sender; },
-    
-    get: function(room, sender) {
-        var key = this.getKey(room, sender);
-        if (!this.sessions[key]) {
-            this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
-            this.save();
-        }
-        return this.sessions[key];
-    },
-    
-    // [핵심] 5분 무응답 자동 만료 백그라운드 스레드
-    updateTimer: function(room, sender) {
-        var key = this.getKey(room, sender);
-        var s = this.sessions[key];
-        
-        if (!s || s.screen === "IDLE") return;
-        
-        var targetTime = s.lastTime; // 기준 시간 캡처
-        
-        new java.lang.Thread(new java.lang.Runnable({
-            run: function() {
-                try {
-                    // 정확히 5분(300,000ms) 대기
-                    java.lang.Thread.sleep(Config.TIMEOUT_MS);
-                    
-                    var curSession = SessionManager.sessions[key];
-                    // 5분이 지났는데, 유저가 아무것도 치지 않아 마지막 시간이 변하지 않았다면 강제 종료!
-                    if (curSession && curSession.screen !== "IDLE" && curSession.lastTime === targetTime) {
-                        var backupId = curSession.tempId;
-                        SessionManager.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
-                        if (backupId) SessionManager.sessions[key].tempId = backupId; // 로그인 유지
-                        SessionManager.save();
-                        
-                        var alertMsg = LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.autoTimeout, false, "다시 시작하려면 '메뉴'를 입력하세요.");
-                        Api.replyRoom(room, alertMsg); // 스스로 톡방에 메시지 전송!
-                    }
-                } catch (e) {}
-            }
-        })).start();
-    },
-    
-    checkTimeout: function(room, sender, replier) {
-        var key = this.getKey(room, sender);
-        var s = this.get(room, sender);
-        
-        // 스레드 지연 시 2차 안전장치 (명령어 입력 시 만료 여부 즉시 검사)
-        if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
-            var backupId = s.tempId;
-            this.reset(room, sender);
-            if(backupId) { this.sessions[key].tempId = backupId; this.save(); }
-            replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, "⌛ 세션이 만료되었습니다.", false, "다시 이용하시려면 '메뉴'를 입력하세요."));
-            return true; 
-        }
-        
-        // 시간 갱신 및 백그라운드 자동 타이머 시작
-        if (s) { 
-            s.lastTime = Date.now(); 
-            this.save(); 
-            this.updateTimer(room, sender); 
-        }
-        return false;
-    },
-    
-    reset: function(room, sender) {
-        var key = this.getKey(room, sender);
-        this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
-        this.save();
-    }
-};
-
-SessionManager.init();
-
 // ━━━━━━━━ [3. 콘텐츠 매니저] ━━━━━━━━
 var ContentManager = {
     menus: {
@@ -234,7 +148,7 @@ var ContentManager = {
         adminSelectUser: "관리할 유저의 번호를 입력하세요.",
         
         cancel: "진행 중인 작업을 중단하고 대기 상태로 전환합니다.",
-        autoTimeout: "⌛ 5분간 입력이 없어 대기 상태로 자동 전환되었습니다.",
+        autoTimeout: "장시간 입력이 없어 대기 상태로 자동 전환되었습니다.",
         noPrevious: "이전 단계가 없습니다.\n현재 화면을 다시 불러옵니다.",
         logout: "성공적으로 로그아웃되었습니다.",
         noItem: "보유 중인 스탯 초기화권이 없습니다.\n상점에서 먼저 구매해 주세요.",
@@ -244,6 +158,8 @@ var ContentManager = {
         statResetConfirm: function(count) {
             return "정말로 능력치를 초기화하시겠습니까?\n(투자한 포인트는 100% 반환됩니다.)\n\n- 보유 초기화권: " + count + "개";
         },
+        statEnhanceConfirm: function(stat, amt) { return "[" + stat + "] 능력치를 " + amt + "만큼 강화하시겠습니까?"; },
+        adminEditConfirm: function(type, val) { return "[" + type + "] 수치를 " + val + "(으)로 수정하시겠습니까?"; },
         
         adminNotifyInit: "관리자에 의해 계정 데이터가 초기화되었습니다.",
         adminNotifyDelete: "관리자에 의해 계정이 영구 삭제되었습니다.",
@@ -281,7 +197,8 @@ var LayoutManager = {
         var lines = [
             "👤 대상: " + targetName + banStatus,
             "🏅 칭호: [" + data.title + "]", div,
-            "🏅 티어: " + tier.icon + tier.name + " (" + data.lp + ")",
+            "🏅 티어: " + tier.icon + tier.name,
+            "🏆 점수: " + data.lp + " LP",
             "💰 골드: " + (data.gold || 0).toLocaleString() + " G",
             "⚔️ 전적: " + win + "승 " + lose + "패 (" + winRate + "%)",
             "🆙 레벨: Lv." + data.level,
@@ -302,6 +219,91 @@ var LayoutManager = {
         }
     }
 };
+
+// ━━━━━━━━ [세션 매니저 (Thread-Safe 타이머 적용)] ━━━━━━━━
+var SessionManager = {
+    sessions: {},
+    
+    init: function() {
+        var file = new java.io.File(Config.SESSION_PATH);
+        if (file.exists()) {
+            try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch (e) { this.sessions = {}; }
+        }
+    },
+    save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions, null, 4)); },
+    
+    getKey: function(room, sender) { return room + "_" + sender; },
+    
+    get: function(room, sender) {
+        var key = this.getKey(room, sender);
+        if (!this.sessions[key]) {
+            this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
+            this.save();
+        }
+        return this.sessions[key];
+    },
+    
+    updateTimer: function(room, sender) {
+        var key = this.getKey(room, sender);
+        var s = this.sessions[key];
+        if (!s || s.screen === "IDLE") return;
+        
+        var targetTime = s.lastTime; 
+        var timeLimit = Config.TIMEOUT_MS;
+        
+        // [핵심 패치] 스레드 밖에서 텍스트를 완전히 렌더링해서 변수에 담아버립니다. (컨텍스트 유실 방지)
+        var preRenderedMsg = LayoutManager.renderFrame(ContentManager.title.notice, "⌛ " + ContentManager.msg.autoTimeout, false, "다시 시작하려면 '메뉴'를 입력하세요.");
+        var safeRoomStr = new java.lang.String(room); // 자바 순수 문자열로 변환
+
+        new java.lang.Thread(new java.lang.Runnable({
+            run: function() {
+                try {
+                    java.lang.Thread.sleep(timeLimit);
+                    
+                    // 시간이 지나고 다시 조회
+                    var curSession = SessionManager.sessions[key];
+                    if (curSession && curSession.screen !== "IDLE" && curSession.lastTime === targetTime) {
+                        var backupId = curSession.tempId;
+                        SessionManager.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
+                        if (backupId) SessionManager.sessions[key].tempId = backupId; 
+                        SessionManager.save();
+                        
+                        // 이미 완성된 문자열만 순수하게 전송
+                        Api.replyRoom(safeRoomStr, preRenderedMsg); 
+                    }
+                } catch (e) {}
+            }
+        })).start();
+    },
+    
+    checkTimeout: function(room, sender, replier) {
+        var key = this.getKey(room, sender);
+        var s = this.get(room, sender);
+        
+        if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
+            var backupId = s.tempId;
+            this.reset(room, sender);
+            if(backupId) { this.sessions[key].tempId = backupId; this.save(); }
+            replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, "⌛ 세션이 만료되었습니다.", false, "다시 이용하시려면 '메뉴'를 입력하세요."));
+            return true; 
+        }
+        
+        if (s) { 
+            s.lastTime = Date.now(); 
+            this.save(); 
+            this.updateTimer(room, sender); 
+        }
+        return false;
+    },
+    
+    reset: function(room, sender) {
+        var key = this.getKey(room, sender);
+        this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
+        this.save();
+    }
+};
+
+SessionManager.init();
 
 // ━━━━━━━━ [5. 시스템 액션] ━━━━━━━━
 var SystemAction = {
@@ -404,11 +406,13 @@ var UserController = {
                 var body = LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P");
                 return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", body, true, "투자할 포인트를 입력하세요."));
             }
+            if (session.screen === "STAT_INPUT_CONFIRM") {
+                var body = ContentManager.msg.statEnhanceConfirm(session.temp.statName, session.temp.statAmt) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo);
+                return replier.reply(LayoutManager.renderFrame("강화 최종 확인", body, true, "번호 선택"));
+            }
             if (session.screen === "COLLECTION_MAIN") {
-                var myChamps = data.inventory.champions ? data.inventory.champions.length : 0;
-                var stats = ["👑 현재 칭호: [" + data.title + "]", "📊 수집 챔피언: " + myChamps + "명"].join("\n");
                 var body = LayoutManager.templates.menuList(null, ["1. 보유 칭호", "2. 보유 챔피언"]);
-                return replier.reply(LayoutManager.renderFrame("컬렉션", stats + "\n\n" + body, true, "번호를 선택하세요."));
+                return replier.reply(LayoutManager.renderFrame("컬렉션", body, true, "번호를 선택하세요."));
             }
             if (session.screen === "TITLE_EQUIP") {
                  var head = "👑 현재 칭호: [" + data.title + "]";
@@ -491,10 +495,25 @@ var UserController = {
             if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function() { UserController.handle("refresh_screen", session, sender, replier, room); }); 
             if (data.point < amt) return SystemAction.go(replier, ContentManager.title.fail, "포인트가 부족합니다.", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             
-            data.point -= amt; data.stats[session.temp.statKey] += amt; Database.save(); 
-            return SystemAction.go(replier, ContentManager.title.success, session.temp.statName + " 수치가 " + amt + " 상승했습니다.", function() { 
-                session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room);
-            });
+            session.temp.statAmt = amt;
+            session.screen = "STAT_INPUT_CONFIRM";
+            return UserController.handle("refresh_screen", session, sender, replier, room);
+        }
+        
+        if (session.screen === "STAT_INPUT_CONFIRM") {
+            if (msg === "1") {
+                var amt = session.temp.statAmt;
+                if (data.point < amt) return SystemAction.go(replier, ContentManager.title.fail, "포인트가 부족합니다.", function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
+                
+                data.point -= amt; data.stats[session.temp.statKey] += amt; Database.save(); 
+                return SystemAction.go(replier, ContentManager.title.success, session.temp.statName + " 수치가 " + amt + " 상승했습니다.", function() { 
+                    session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room);
+                });
+            } else if (msg === "2") {
+                return SystemAction.go(replier, ContentManager.title.notice, "강화를 취소합니다.", function() {
+                    session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room);
+                });
+            }
         }
 
         if (session.screen === "COLLECTION_MAIN") {
@@ -546,7 +565,7 @@ var UserController = {
             }
         }
 
-        if (session.screen === "USER_INQUIRY") {
+        if (session.screen === "USER_INQUquiry") {
             Database.inquiries.push({ sender: session.tempId, room: room, content: msg, time: Utils.get24HTime(), read: false });
             Database.save(); session.screen = "MAIN";
             try { Utils.sendNotify(Config.AdminRoom, "🔔 새 문의가 접수되었습니다.\n보낸이: " + session.tempId); } catch(e){}
@@ -627,6 +646,11 @@ var AdminController = {
             }
             if (session.screen === "ADMIN_EDIT_INPUT") {
                 return replier.reply(LayoutManager.renderFrame("값 수정", "새로운 값을 입력하세요.", true, "숫자 입력"));
+            }
+            if (session.screen === "ADMIN_EDIT_INPUT_CONFIRM") {
+                var typeName = {"gold":"골드", "lp":"LP", "level":"레벨"}[session.temp.editType];
+                var body = ContentManager.msg.adminEditConfirm(typeName, session.temp.editVal) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo);
+                return replier.reply(LayoutManager.renderFrame("수정 최종 확인", body, true, "번호 선택"));
             }
         }
 
@@ -723,28 +747,41 @@ var AdminController = {
         
         if (session.screen === "ADMIN_EDIT_INPUT") {
              var val = parseInt(msg);
-             if(!isNaN(val)) {
-                 var target = session.temp.targetUser;
-                 var typeName = {"gold":"골드", "lp":"LP", "level":"레벨"}[session.temp.editType];
-                 
-                 if (session.temp.editType === "level") {
-                     var oldLevel = Database.data[target].level;
-                     var diff = val - oldLevel;
-                     if (diff !== 0) {
-                         var addPoint = diff * POINT_PER_LEVEL;
-                         Database.data[target].point += addPoint;
-                         if(Database.data[target].point < 0) Database.data[target].point = 0;
-                     }
-                 }
-                 
-                 Database.data[target][session.temp.editType] = val;
-                 Database.save();
-                 Utils.sendNotify(target, ContentManager.msg.adminNotifyEdit(typeName, val));
-                 
-                 return SystemAction.go(replier, ContentManager.title.complete, "수정되었습니다.", function() {
-                     session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room);
-                 });
-             }
+             if(isNaN(val)) return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
+             
+             session.temp.editVal = val;
+             session.screen = "ADMIN_EDIT_INPUT_CONFIRM";
+             return AdminController.handle("refresh_screen", session, sender, replier, room);
+        }
+        
+        if (session.screen === "ADMIN_EDIT_INPUT_CONFIRM") {
+            if (msg === "1") {
+                var val = session.temp.editVal;
+                var target = session.temp.targetUser;
+                var typeName = {"gold":"골드", "lp":"LP", "level":"레벨"}[session.temp.editType];
+                
+                if (session.temp.editType === "level") {
+                    var oldLevel = Database.data[target].level;
+                    var diff = val - oldLevel;
+                    if (diff !== 0) {
+                        var addPoint = diff * POINT_PER_LEVEL;
+                        Database.data[target].point += addPoint;
+                        if(Database.data[target].point < 0) Database.data[target].point = 0;
+                    }
+                }
+                
+                Database.data[target][session.temp.editType] = val;
+                Database.save();
+                Utils.sendNotify(target, ContentManager.msg.adminNotifyEdit(typeName, val));
+                
+                return SystemAction.go(replier, ContentManager.title.complete, "수정되었습니다.", function() {
+                    session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room);
+                });
+            } else if (msg === "2") {
+                return SystemAction.go(replier, ContentManager.title.notice, "수정을 취소합니다.", function() {
+                    session.screen = "ADMIN_EDIT_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room);
+                });
+            }
         }
     }
 };
@@ -757,7 +794,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
-        // [핵심] 타임아웃 검사 및 백그라운드 타이머 작동
         if (SessionManager.checkTimeout(room, sender, replier)) return;
 
         var session = SessionManager.get(room, sender);
@@ -778,7 +814,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
         }
 
-        // [수정] 취소 입력 시 로그아웃을 방지하기 위해 로그인 데이터(tempId) 백업 후 복원
         if (realMsg === "취소") { 
             var backupId = session.tempId; 
             SessionManager.reset(room, sender); 
@@ -793,12 +828,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         if (realMsg === "이전") {
             var pData = [
                 "JOIN_ID:GUEST_MAIN,JOIN_PW:GUEST_MAIN,LOGIN_ID:GUEST_MAIN,LOGIN_PW:GUEST_MAIN,",
-                "GUEST_INQUquiry:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,",
-                "STAT_INPUT:STAT_SELECT,STAT_RESET_CONFIRM:PROFILE_MAIN,COLLECTION_MAIN:MAIN,",
-                "TITLE_EQUIP:COLLECTION_MAIN,CHAMP_LIST:COLLECTION_MAIN,SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,",
-                "SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,ADMIN_SYS_INFO:ADMIN_MAIN,",
-                "ADMIN_INQUIRY_LIST:ADMIN_MAIN,ADMIN_USER_SELECT:ADMIN_MAIN,ADMIN_USER_DETAIL:ADMIN_USER_SELECT,",
-                "ADMIN_EDIT_SELECT:ADMIN_USER_DETAIL,ADMIN_EDIT_INPUT:ADMIN_EDIT_SELECT,",
+                "GUEST_INQUIRY:GUEST_MAIN,PROFILE_MAIN:MAIN,STAT_SELECT:PROFILE_MAIN,",
+                "STAT_INPUT:STAT_SELECT,STAT_INPUT_CONFIRM:STAT_INPUT,STAT_RESET_CONFIRM:PROFILE_MAIN,",
+                "COLLECTION_MAIN:MAIN,TITLE_EQUIP:COLLECTION_MAIN,CHAMP_LIST:COLLECTION_MAIN,",
+                "SHOP_MAIN:MAIN,SHOP_ITEMS:SHOP_MAIN,SHOP_CHAMPS:SHOP_MAIN,USER_INQUIRY:MAIN,",
+                "ADMIN_SYS_INFO:ADMIN_MAIN,ADMIN_INQUIRY_LIST:ADMIN_MAIN,ADMIN_USER_SELECT:ADMIN_MAIN,",
+                "ADMIN_USER_DETAIL:ADMIN_USER_SELECT,ADMIN_EDIT_SELECT:ADMIN_USER_DETAIL,",
+                "ADMIN_EDIT_INPUT:ADMIN_EDIT_SELECT,ADMIN_EDIT_INPUT_CONFIRM:ADMIN_EDIT_INPUT,",
                 "ADMIN_INQUIRY_DETAIL:ADMIN_INQUIRY_LIST,ADMIN_INQUIRY_REPLY:ADMIN_INQUIRY_DETAIL"
             ].join("").split(",");
 
