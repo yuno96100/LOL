@@ -1,12 +1,12 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.6 Stable Timeout)
- * - 버그 수정: 안드로이드 백그라운드 제한으로 인해 세션이 몰래 초기화되던 현상(Thread) 제거
- * - 로직 롤백: 가장 안정적인 '동기식 타임아웃(유저가 다음 입력을 할 때 만료 여부 즉시 판단 후 출력)'으로 복구
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.7 Footer Wrap)
+ * - UI 디테일: 하단 도움말(Footer) 텍스트에도 자동 줄바꿈(wrapText) 적용
+ * - 디자인 개선: 도움말이 여러 줄로 넘어갈 경우 두 번째 줄부터 들여쓰기 정렬 추가
  */ 
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.5.6 Stable",
+    Version: "v1.5.7 Footer Wrap",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -14,7 +14,7 @@ var Config = {
     LINE_CHAR: "━",
     FIXED_LINE: 14,
     WRAP_LIMIT: 18, 
-    TIMEOUT_MS: 10000 // 정상적으로 5분(300000) 세팅
+    TIMEOUT_MS: 300000 // 정상적으로 5분(300000) 세팅
 };
 
 var MAX_LEVEL = 30;
@@ -114,7 +114,7 @@ var Database = {
     }
 };
 
-// ━━━━━━━━ [세션 매니저 (가장 안정적인 방식 복구)] ━━━━━━━━
+// ━━━━━━━━ [세션 매니저] ━━━━━━━━
 var SessionManager = {
     sessions: {},
     
@@ -141,17 +141,15 @@ var SessionManager = {
         var key = this.getKey(room, sender);
         var s = this.get(room, sender);
         
-        // [핵심] 유저가 메시지를 보냈을 때, 이전 기록과 비교하여 5분이 지났으면 무조건 만료창 출력!
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId;
             this.reset(room, sender);
-            if(backupId) { this.sessions[key].tempId = backupId; this.save(); } // 로그인 유지
+            if(backupId) { this.sessions[key].tempId = backupId; this.save(); } 
             
             replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, "⌛ 시간이 초과되어 세션이 만료되었습니다.", false, "다시 이용하시려면 '메뉴'를 입력하세요."));
             return true; 
         }
         
-        // 만료되지 않았다면 시간 최신화
         if (s) { 
             s.lastTime = Date.now(); 
             this.save(); 
@@ -234,7 +232,12 @@ var LayoutManager = {
         if (showNav === true) res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
         else if (Array.isArray(showNav)) res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
 
-        if (footer) res += "\n" + div + "\n💡 " + footer;
+        // [수정] 도움말(footer)에도 줄바꿈(wrapText)을 적용하고, 여러 줄일 경우 들여쓰기를 맞춰줍니다.
+        if (footer) {
+            var wrappedFooter = Utils.wrapText(footer).replace(/\n/g, "\n   ");
+            res += "\n" + div + "\n💡 " + wrappedFooter;
+        }
+
         return res;
     },
     renderAlert: function(title, content) {
@@ -788,7 +791,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
-        // [핵심] 메시지 입력 시 동기식 타임아웃 100% 검사 완료 후 진행
         if (SessionManager.checkTimeout(room, sender, replier)) return;
 
         var session = SessionManager.get(room, sender);
