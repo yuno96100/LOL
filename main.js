@@ -399,24 +399,41 @@ var BattleSystem = {
 
             if (msg === "refresh_screen") {
                 if (session.screen === "BATTLE_MATCHING") {
+                    // 매칭 시작 UI 렌더링
                     replier.reply(LayoutManager.renderFrame(vC.screen.match, vC.msg.find, false, vC.footer.waitMatch));
-                    var safeRoom1 = new java.lang.String(room);
+                    
+                    // [핵심] 스레드 진입 전, 모든 텍스트와 UI를 미리 완성(사전 렌더링)하여 에러 방지
+                    var roomStr = String(room);
+                    var sessionKey = SessionManager.getKey(String(room), String(sender));
+                    
+                    var matchFoundUI = String(LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "픽창 진입 중..."));
+                    
+                    var champs = userData.inventory.champions || [];
+                    var pickList = champs.map(function(c, i) { 
+                        var role = ChampionData[c] ? ChampionData[c].role : "알 수 없음";
+                        return (i+1) + ". " + c + " (" + role + ")"; 
+                    }).join("\n");
+                    var pickUI = String(LayoutManager.renderFrame(vC.screen.pick, vC.msg.pickIntro + pickList, true, vC.footer.inputPick));
+
                     new java.lang.Thread(new java.lang.Runnable({
                         run: function() {
                             try {
                                 java.lang.Thread.sleep(3000); 
-                                Api.replyRoom(safeRoom1, LayoutManager.renderFrame(vC.screen.matchFound, vC.msg.matchOk, false, "픽창 진입 중..."));
+                                Api.replyRoom(roomStr, matchFoundUI); // 미리 포장해둔 매칭 완료 문구 발사
+                                
                                 java.lang.Thread.sleep(2000); 
-                                var cS = SessionManager.sessions[SessionManager.getKey(room, sender)];
+                                var cS = SessionManager.sessions[sessionKey];
                                 if (cS && cS.screen === "BATTLE_MATCHING") {
-                                    cS.screen = "BATTLE_PICK"; SessionManager.save();
-                                    BattleSystem.Controller.handle("refresh_screen", cS, sender, { reply: function(txt){ Api.replyRoom(safeRoom1, txt); } }, room, userData);
+                                    cS.screen = "BATTLE_PICK"; 
+                                    SessionManager.save();
+                                    Api.replyRoom(roomStr, pickUI); // 미리 포장해둔 픽창 렌더링 발사
                                 }
                             } catch(e) {}
                         }
                     })).start();
                     return;
                 }
+                
                 if (session.screen === "BATTLE_PICK") {
                     var champs = userData.inventory.champions || [];
                     var list = champs.map(function(c, i) { 
@@ -425,6 +442,7 @@ var BattleSystem = {
                     }).join("\n");
                     return replier.reply(LayoutManager.renderFrame(vC.screen.pick, vC.msg.pickIntro + list, true, vC.footer.inputPick));
                 }
+                
                 if (session.screen === "BATTLE_READY") {
                     var myC = session.battle.myChamp, enM = session.battle.enemy;
                     var vsUI = vL.renderVSBoard(myC, enM.champion, vC.msg.readyMsg);
@@ -441,27 +459,43 @@ var BattleSystem = {
                     var enemyAI = bM.Engine.generateAI(userData.level);
                     session.battle.enemy = enemyAI;
                     
-                    session.screen = "BATTLE_LOADING"; SessionManager.save();
+                    session.screen = "BATTLE_LOADING"; 
+                    SessionManager.save();
+                    
                     replier.reply(LayoutManager.renderFrame(vC.screen.load, vC.msg.loadRift, false, vC.footer.waitLoad));
                     
-                    var safeRoom2 = new java.lang.String(room);
+                    // [핵심] 진입 연출 역시 스레드 밖에서 전부 사전 렌더링
+                    var roomStr = String(room);
+                    var sessionKey = SessionManager.getKey(String(room), String(sender));
+                    
+                    var analyzedUI = String(LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(enemyAI), false, "전투 공간을 생성 중입니다..."));
+                    var vsUI = vL.renderVSBoard(session.battle.myChamp, enemyAI.champion, vC.msg.readyMsg);
+                    var readyUI = String(LayoutManager.renderFrame(vC.screen.ready, vsUI, ["✖취소", "🏠메뉴"], vC.footer.readyFooter));
+                    
                     new java.lang.Thread(new java.lang.Runnable({
                         run: function() {
                             try {
                                 java.lang.Thread.sleep(1500);
-                                Api.replyRoom(safeRoom2, LayoutManager.renderFrame(vC.screen.analyzed, vC.msg.analyze(enemyAI), false, "전투 공간을 생성 중입니다..."));
+                                Api.replyRoom(roomStr, analyzedUI); // 사전 렌더링된 분석 화면
+                                
                                 java.lang.Thread.sleep(2500);
-                                var cS = SessionManager.sessions[SessionManager.getKey(room, sender)];
+                                var cS = SessionManager.sessions[sessionKey];
                                 if (cS && cS.screen === "BATTLE_LOADING") {
-                                    cS.screen = "BATTLE_READY"; SessionManager.save();
-                                    BattleSystem.Controller.handle("refresh_screen", cS, sender, { reply: function(txt){ Api.replyRoom(safeRoom2, txt); } }, room, userData);
+                                    cS.screen = "BATTLE_READY"; 
+                                    SessionManager.save();
+                                    Api.replyRoom(roomStr, readyUI); // 사전 렌더링된 게임 진입 화면
                                 }
                             } catch(e) {}
                         }
                     })).start();
                     return; 
-                } else { return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function(){ BattleSystem.Controller.handle("refresh_screen", session, sender, replier, room, userData); }); }
+                } else { 
+                    return SystemAction.go(replier, ContentManager.title.error, ContentManager.msg.onlyNumber, function(){ 
+                        BattleSystem.Controller.handle("refresh_screen", session, sender, replier, room, userData); 
+                    }); 
+                }
             }
+            
             if (session.screen === "BATTLE_MATCHING") return replier.reply(vC.footer.waitMatch);
             if (session.screen === "BATTLE_LOADING") return replier.reply(vC.footer.waitLoad);
         }
