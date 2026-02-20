@@ -1,11 +1,12 @@
 /*
- * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.0 Final)
- * - 디테일 수정: 문의 상세 내용 출력 시 날짜(📅)와 시간(⏰)을 분리하여 표기
+ * 🏰 소환사의 협곡 Bot - FINAL ULTIMATE FIX (v1.5.1 Final)
+ * - 세션 독립화: 동일 유저라도 '관리자 방'과 '일반 방'의 세션 및 타임아웃을 100% 개별 분리 (Room + Sender 키 적용)
+ * - 타임아웃 픽스: 시간 갱신 전 만료 여부를 먼저 검사하여 5분 방치 시 정상적으로 대기 상태 복귀
  */ 
 
 // ━━━━━━━━ [1. 설정 및 인프라] ━━━━━━━━
 var Config = {
-    Version: "v1.5.0 Final",
+    Version: "v1.5.1 Final",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -113,7 +114,7 @@ var Database = {
     }
 };
 
-// 세션 매니저
+// ━━━━━━━━ [세션 매니저 (방+유저 개별 분리 적용)] ━━━━━━━━
 var SessionManager = {
     sessions: {},
     init: function() {
@@ -123,24 +124,39 @@ var SessionManager = {
         }
     },
     save: function() { FileStream.write(Config.SESSION_PATH, JSON.stringify(this.sessions, null, 4)); },
-    get: function(sender, replier) {
-        if (!this.sessions[sender]) this.sessions[sender] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
-        var s = this.sessions[sender]; s.lastTime = Date.now(); this.save(); return s;
+    
+    // [핵심] 방 이름과 유저 이름을 합쳐서 고유 키 생성
+    getKey: function(room, sender) { return room + "_" + sender; },
+    
+    get: function(room, sender) {
+        var key = this.getKey(room, sender);
+        if (!this.sessions[key]) {
+            this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
+            this.save();
+        }
+        return this.sessions[key];
     },
-    checkTimeout: function(sender, replier) {
-        var s = this.sessions[sender];
+    
+    checkTimeout: function(room, sender, replier) {
+        var key = this.getKey(room, sender);
+        var s = this.get(room, sender);
+        
+        // 시간 갱신 전 먼저 만료 여부 검사
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId;
-            this.reset(sender);
-            if(backupId) { this.sessions[sender].tempId = backupId; this.save(); }
+            this.reset(room, sender);
+            if(backupId) { this.sessions[key].tempId = backupId; this.save(); }
             replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, "⌛ 세션이 만료되었습니다.", false, "다시 이용하시려면 '메뉴'를 입력하세요."));
             return true; 
         }
+        
         if (s) { s.lastTime = Date.now(); this.save(); }
         return false;
     },
-    reset: function(sender) {
-        this.sessions[sender] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
+    
+    reset: function(room, sender) {
+        var key = this.getKey(room, sender);
+        this.sessions[key] = { screen: "IDLE", temp: {}, lastTime: Date.now() };
         this.save();
     }
 };
@@ -315,9 +331,9 @@ var AuthController = {
         
         if (session.screen === "GUEST_INQUIRY") {
             Database.inquiries.push({ sender: "비회원(" + sender + ")", room: room, content: msg, time: Utils.get24HTime(), read: false });
-            Database.save(); SessionManager.reset(sender);
+            Database.save(); SessionManager.reset(room, sender);
             try { Utils.sendNotify(Config.AdminRoom, "🔔 새 문의가 접수되었습니다.\n보낸이: 비회원(" + sender + ")"); } catch(e){}
-            return SystemAction.go(replier, ContentManager.title.complete, "문의가 접수되었습니다.", function(){ AuthController.handle("refresh_screen", SessionManager.get(sender, replier), sender, replier, room); });
+            return SystemAction.go(replier, ContentManager.title.complete, "문의가 접수되었습니다.", function(){ AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
         }
     }
 };
@@ -394,9 +410,9 @@ var UserController = {
             if (msg === "5") { session.screen = "USER_INQUIRY"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "6") { 
                 var backupId = session.tempId; 
-                SessionManager.reset(sender); 
+                SessionManager.reset(room, sender); 
                 return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.logout, function() {
-                    AuthController.handle("refresh_screen", SessionManager.get(sender, replier), sender, replier, room);
+                    AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room);
                 });
             }
         }
@@ -557,7 +573,6 @@ var AdminController = {
                 
                 if (!iq.read) { iq.read = true; Database.save(); }
                 
-                // [수정] 날짜와 시간을 분리하여 표기
                 var timeParts = iq.time ? iq.time.split(" ") : ["알 수 없음", ""];
                 var iqDate = timeParts[0];
                 var iqTime = timeParts[1] || "정보 없음";
@@ -701,10 +716,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     try {
         Database.load(); 
         var realMsg = msg.trim();
-        var session = SessionManager.get(sender);
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
 
+        // 타임아웃 검사
+        if (SessionManager.checkTimeout(room, sender, replier)) return;
+
+        var session = SessionManager.get(room, sender);
         var isLogged = (session.tempId && Database.data[session.tempId]);
 
         if (realMsg === "메뉴") {
@@ -722,17 +740,16 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
         }
 
-        if (SessionManager.checkTimeout(sender, replier)) return;
-
+        // [수정] 취소 입력 시 로그아웃(tempId 삭제)되지 않도록 백업 처리 후 대기 상태로
         if (realMsg === "취소") { 
             var backupId = session.tempId; 
-            SessionManager.reset(sender); 
-            var newSession = SessionManager.get(sender, replier);
+            SessionManager.reset(room, sender); 
+            var newSession = SessionManager.get(room, sender);
             if (backupId) {
                 newSession.tempId = backupId;
                 SessionManager.save();
             }
-            return replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, "대기 상태로 돌아갑니다.", false, "다시 시작하려면 '메뉴'를 입력하세요."));
+            return replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.cancel, false, "다시 시작하려면 '메뉴'를 입력하세요."));
         }
 
         if (realMsg === "이전") {
@@ -780,7 +797,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         try { Api.replyRoom(Config.AdminRoom, errLog); } catch(err) {} 
         
         return SystemAction.go(replier, ContentManager.title.sysError, ContentManager.msg.sysError, function() {
-            SessionManager.reset(sender);
+            SessionManager.reset(room, sender);
         });
     }
 }
