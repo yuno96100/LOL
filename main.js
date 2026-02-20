@@ -13,7 +13,7 @@ var Config = {
     SESSION_PATH: "sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━",
     FIXED_LINE: 14,
-    WRAP_LIMIT: 20, 
+    WRAP_LIMIT: 18, 
     TIMEOUT_MS: 300000 
 };
 
