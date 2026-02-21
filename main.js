@@ -85,28 +85,112 @@ var Utils = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📊 [2. 데이터 (Data) - 챔피언 하드웨어 스펙]
+// 📊 [2. 데이터 (Data) - 챔피언 하드웨어 스펙 (6역할군 x AD/AP/하이브리드)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var ChampionData = {
-    "알리스타": { role: "탱커", hp: 650, mp: 350, ad: 60, ap: 0, def: 45, mdef: 32, as: 0.62, spd: 330, range: 125 },
-    "말파이트": { role: "탱커", hp: 630, mp: 280, ad: 62, ap: 0, def: 37, mdef: 32, as: 0.73, spd: 335, range: 125 },
-    "레오나": { role: "탱커", hp: 610, mp: 300, ad: 60, ap: 0, def: 47, mdef: 32, as: 0.62, spd: 335, range: 125 },
-    "가렌": { role: "전사", hp: 690, mp: 0, ad: 66, ap: 0, def: 36, mdef: 32, as: 0.62, spd: 340, range: 175 },
-    "다리우스": { role: "전사", hp: 650, mp: 260, ad: 64, ap: 0, def: 39, mdef: 32, as: 0.62, spd: 340, range: 175 },
-    "잭스": { role: "전사", hp: 615, mp: 338, ad: 68, ap: 0, def: 36, mdef: 32, as: 0.63, spd: 350, range: 125 },
-    "제드": { role: "암살자", hp: 600, mp: 200, ad: 63, ap: 0, def: 32, mdef: 32, as: 0.65, spd: 345, range: 125 },
-    "카타리나": { role: "암살자", hp: 600, mp: 0, ad: 58, ap: 50, def: 27, mdef: 32, as: 0.65, spd: 340, range: 125 },
-    "탈론": { role: "암살자", hp: 658, mp: 377, ad: 68, ap: 0, def: 30, mdef: 39, as: 0.62, spd: 335, range: 125 },
-    "럭스": { role: "마법사", hp: 560, mp: 480, ad: 53, ap: 60, def: 18, mdef: 30, as: 0.66, spd: 330, range: 550 },
-    "아리": { role: "마법사", hp: 590, mp: 418, ad: 53, ap: 55, def: 18, mdef: 30, as: 0.66, spd: 330, range: 550 },
-    "빅토르": { role: "마법사", hp: 560, mp: 405, ad: 53, ap: 60, def: 22, mdef: 30, as: 0.65, spd: 335, range: 525 },
-    "애쉬": { role: "원딜", hp: 640, mp: 280, ad: 59, ap: 0, def: 26, mdef: 30, as: 0.65, spd: 325, range: 600 },
-    "베인": { role: "원딜", hp: 600, mp: 231, ad: 60, ap: 0, def: 23, mdef: 30, as: 0.65, spd: 330, range: 550 },
-    "카이사": { role: "원딜", hp: 670, mp: 344, ad: 59, ap: 20, def: 28, mdef: 30, as: 0.64, spd: 335, range: 525 },
-    "소라카": { role: "서포터", hp: 605, mp: 425, ad: 50, ap: 40, def: 32, mdef: 30, as: 0.62, spd: 325, range: 550 },
-    "유미": { role: "서포터", hp: 500, mp: 440, ad: 49, ap: 45, def: 25, mdef: 25, as: 0.62, spd: 330, range: 500 },
-    "쓰레쉬": { role: "서포터", hp: 630, mp: 274, ad: 56, ap: 0, def: 28, mdef: 30, as: 0.62, spd: 330, range: 450 }
+    // 🛡️ [탱커]
+    "뽀삐": { // (AD 탱커) 깡 AD와 물리 방어력 특화
+        role: "탱커", type: "AD", range: 125, spd: 345,
+        hp: 610, hpRegen: 8.0, mp: 280, mpRegen: 7.0, baseAd: 64, def: 38, mdef: 32, as: 0.62,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "말파이트": { // (AP 탱커) 방어력 기반이지만 궁극기 등 AP 마법 피해 위주
+        role: "탱커", type: "AP", range: 125, spd: 335,
+        hp: 630, hpRegen: 7.0, mp: 280, mpRegen: 7.3, baseAd: 62, def: 37, mdef: 32, as: 0.73,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "쉔": { // (하이브리드 탱커) 기력 사용, 평타(AD)와 Q마법피해(AP) 혼합
+        role: "탱커", type: "하이브리드", range: 125, spd: 340,
+        hp: 610, hpRegen: 8.5, mp: 400, mpRegen: 50.0, baseAd: 60, def: 34, mdef: 32, as: 0.75, // 기력
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+
+    // 🪓 [전사]
+    "다리우스": { // (AD 전사) 강력한 깡 AD와 물리 방관, 피흡 탑재
+        role: "전사", type: "AD", range: 175, spd: 340,
+        hp: 650, hpRegen: 10.0, mp: 260, mpRegen: 6.6, baseAd: 64, def: 39, mdef: 32, as: 0.62,
+        bonusAd: 0, ap: 0, arPenPer: 15, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0
+    },
+    "모데카이저": { // (AP 전사) 노코스트, AP 템트리를 올리는 마법 딜탱
+        role: "전사", type: "AP", range: 175, spd: 335,
+        hp: 645, hpRegen: 5.0, mp: 0, mpRegen: 0, baseAd: 61, def: 37, mdef: 32, as: 0.62, // 노코스트
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0
+    },
+    "잭스": { // (하이브리드 전사) AD와 AP 계수가 모두 있어 템트리가 유동적임
+        role: "전사", type: "하이브리드", range: 125, spd: 350,
+        hp: 615, hpRegen: 8.5, mp: 338, mpRegen: 5.2, baseAd: 68, def: 36, mdef: 32, as: 0.63,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+
+    // 🗡️ [암살자]
+    "탈론": { // (AD 암살자) 물리 관통력과 로밍 특화
+        role: "암살자", type: "AD", range: 125, spd: 335,
+        hp: 658, hpRegen: 8.5, mp: 377, mpRegen: 7.6, baseAd: 68, def: 30, mdef: 39, as: 0.62,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "에코": { // (AP 암살자) 높은 AP 주문력 계수와 히트앤런 특화
+        role: "암살자", type: "AP", range: 125, spd: 340,
+        hp: 655, hpRegen: 9.0, mp: 280, mpRegen: 7.0, baseAd: 58, def: 32, mdef: 32, as: 0.68,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "아칼리": { // (하이브리드 암살자) 기력 사용, 총검/균열 등 AD/AP 복합 계수 활용
+        role: "암살자", type: "하이브리드", range: 125, spd: 345,
+        hp: 600, hpRegen: 9.0, mp: 200, mpRegen: 50.0, baseAd: 62, def: 23, mdef: 37, as: 0.62, // 기력
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0
+    },
+
+    // 🪄 [마법사]
+    "제이스": { // (AD 마법사/캐스터) 마법사처럼 포킹하지만 물리 데미지를 입힘
+        role: "마법사", type: "AD", range: 500, spd: 335,
+        hp: 590, hpRegen: 6.0, mp: 375, mpRegen: 6.0, baseAd: 57, def: 27, mdef: 30, as: 0.65,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "럭스": { // (AP 마법사) 전형적인 사거리 긴 마법 피해 포킹 챔피언
+        role: "마법사", type: "AP", range: 550, spd: 330,
+        hp: 560, hpRegen: 5.5, mp: 480, mpRegen: 8.0, baseAd: 53, def: 18, mdef: 30, as: 0.66,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "케일": { // (하이브리드 마법사) 평타 기반이지만 마법 피해와 물리 피해가 같이 들어감
+        role: "마법사", type: "하이브리드", range: 175, spd: 335, // 1렙 근거리 보정
+        hp: 600, hpRegen: 5.0, mp: 330, mpRegen: 8.0, baseAd: 50, def: 26, mdef: 22, as: 0.62,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+
+    // 🏹 [원딜]
+    "케이틀린": { // (AD 원딜) 긴 사거리와 치명타 기반의 정통 물리 원딜
+        role: "원딜", type: "AD", range: 650, spd: 325,
+        hp: 605, hpRegen: 3.5, mp: 315, mpRegen: 7.4, baseAd: 62, def: 28, mdef: 30, as: 0.68,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "직스": { // (AP 원딜/비원딜) 바텀에 서지만 철저하게 마법 피해로 라인을 밂
+        role: "원딜", type: "AP", range: 525, spd: 325,
+        hp: 566, hpRegen: 6.5, mp: 480, mpRegen: 8.0, baseAd: 54, def: 22, mdef: 30, as: 0.65,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "카이사": { // (하이브리드 원딜) 평타는 물리, 패시브와 W는 마법 피해로 들어가는 만능 딜러
+        role: "원딜", type: "하이브리드", range: 525, spd: 335,
+        hp: 670, hpRegen: 3.5, mp: 344, mpRegen: 8.2, baseAd: 59, def: 28, mdef: 30, as: 0.64,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+
+    // 🚑 [서포터]
+    "파이크": { // (AD 서포터) 물리 관통력을 올리는 암살형 서포터
+        role: "서포터", type: "AD", range: 150, spd: 330,
+        hp: 600, hpRegen: 7.0, mp: 415, mpRegen: 8.0, baseAd: 62, def: 45, mdef: 32, as: 0.66,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "소라카": { // (AP 서포터) AP 계수로 힐량을 늘리는 정통 유틸폿
+        role: "서포터", type: "AP", range: 550, spd: 325,
+        hp: 605, hpRegen: 2.5, mp: 425, mpRegen: 11.5, baseAd: 50, def: 32, mdef: 30, as: 0.62,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    },
+    "바드": { // (하이브리드 서포터) 종 패시브 마법 피해와 유틸성이 결합됨
+        role: "서포터", type: "하이브리드", range: 500, spd: 330,
+        hp: 630, hpRegen: 5.5, mp: 350, mpRegen: 6.0, baseAd: 52, def: 34, mdef: 30, as: 0.62,
+        bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0
+    }
 };
+
 var ChampionList = Object.keys(ChampionData);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
