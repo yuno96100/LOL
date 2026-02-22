@@ -894,17 +894,21 @@ var UserController = {
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
                 replier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
                 
-                var roomStr = String(room), senderStr = String(sender);
+                // 🌟 Thread 안전 변수 캡처 (오류 방지)
+                var roomStr = String(room), senderStr = String(sender), uData = data; 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
                             java.lang.Thread.sleep(Config.Timers.matchSearch);
                             var s = SessionManager.get(roomStr, senderStr);
                             if (s && s.screen === "BATTLE_MATCHING") {
-                                Api.replyRoom(roomStr, LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
+                                Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
                                 java.lang.Thread.sleep(Config.Timers.matchFound); 
+                                
+                                s = SessionManager.get(roomStr, senderStr); 
                                 s.screen = "BATTLE_PICK"; SessionManager.save();
-                                BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, Database.data[s.tempId]);
+                                // 🌟 자동으로 화면 전환 호출!
+                                BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, uData);
                             }
                         } catch(e) {}
                     }
@@ -1119,7 +1123,9 @@ var BattleController = {
         if (!session.battle) session.battle = {};
 
         if (msg === "refresh_screen") {
-            if (session.screen === "BATTLE_MATCHING") return replier.reply(LayoutManager.renderAlert(cB.screen.match, cB.ui.findMsg, cB.ui.searching));
+            // 🌟 도배 방지를 위해 렌더링 스킵
+            if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
+            
             if (session.screen === "BATTLE_PICK") {
                 var champs = userData.inventory.champions || [];
                 var list = champs.map(function(c, i) { return (i+1) + ". " + c + " (" + (ChampionData[c] ? ChampionData[c].role : "?") + ")"; }).join("\n");
@@ -1137,23 +1143,32 @@ var BattleController = {
                 session.screen = "BATTLE_LOADING"; SessionManager.save();
                 
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
-                var roomStr = String(room), sessionKey = SessionManager.getKey(String(room), String(sender));
+                
+                // 🌟 Thread 안전 변수 캡처 & VS 창 부활
+                var roomStr = String(room), senderStr = String(sender), uData = userData;
                 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
                             java.lang.Thread.sleep(Config.Timers.loading); 
-                            var cS = SessionManager.sessions[sessionKey];
+                            var cS = SessionManager.get(roomStr, senderStr);
                             if (cS && cS.screen === "BATTLE_LOADING") {
                                 cS.screen = "BATTLE_MAIN"; 
                                 var mHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.myChamp]));
                                 var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
                                 cS.battle.instance = {
                                     viewTab: "ME", turn: 1, strat: 0,
-                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, mental: 100, hw: mHw, sw: userData.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1 },
+                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, mental: 100, hw: mHw, sw: uData.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1 },
                                     ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, mental: 100, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0 }
                                 };
-                                SessionManager.save(); Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
+                                SessionManager.save(); 
+                                
+                                // 🌟 VS 창 출력!
+                                var vsText = "🎯 [ " + senderStr + " ]\n🤖 " + cS.battle.myChamp + "\n\n━━━━━━━ VS ━━━━━━━\n\n🎯 [ AI Bot ]\n🤖 " + cS.battle.enemy.champion;
+                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.analyzed, vsText, false, "잠시 후 전투 현황판이 출력됩니다."));
+                                
+                                java.lang.Thread.sleep(2500); // VS 창 2.5초 감상
+                                Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
                             }
                         } catch(e) {}
                     }
@@ -1203,7 +1218,7 @@ var BattleController = {
                 var stratMe = state.strat; state.strat = 0; 
                 var roomStr = String(room); var sessionKey = SessionManager.getKey(roomStr, String(sender));
 
-                replier.reply(LayoutManager.renderAlert(cB.ui.lckStartTitle.replace("{turn}", state.turn), cB.ui.lckStartMsg.replace("{sec}", Config.Timers.phaseDelay/1000), cB.ui.lckStartFoot));
+                replier.reply(LayoutManager.renderAlert(cB.ui.lckStartTitle.replace("{turn}", state.turn), cB.ui.lckStartMsg.replace("{sec}", Config.Timers.phaseDelay/1000), cB.ui.watchNext));
 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
@@ -1262,7 +1277,8 @@ var BattleController = {
                 return;
             }
         }
-        if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return replier.reply(ContentManager.footer.wait);
+        // 🌟 도배 시 응답 없음 처리 (조용히 무시)
+        if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
     }
 };
 
