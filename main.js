@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v3.5 (UI Refactoring & Stable Thread)
+ * 🏰 소환사의 협곡 Bot - v3.6 (Ultimate UI & Stable Thread)
  * - [M] Model: 데이터베이스, 세션, 18인 챔피언
- * - [V] View: 가독성 극대화 현황판, 2줄 리스트 출력, (1/3) 수치 표현
- * - [C] Controller: 카카오톡 도배방지 씹힘 해결(스레드 안정화), "준비완료" 지원
+ * - [V] View: 완벽한 세로형 UI, (1/3) 역할군 카운터, 2줄 리스트 출력
+ * - [C] Controller: 카카오톡 도배방지 씹힘 해결, 즉시 중계 시작, 자동 화면 복귀
  */  
- 
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v3.5 Stable Edition",
+    Version: "v3.6 Stable Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -17,21 +17,21 @@ var Config = {
     LINE_CHAR: "━", FIXED_LINE: 15, WRAP_LIMIT: 18, 
     TIMEOUT_MS: 300000, 
     
+    // ⏳ [핵심 설정] 창 유지 및 진행 딜레이 시간 (1000 = 1초)
     Timers: {
-        matchSearch: 2500,  
-        matchFound: 1500,   // 🌟 씹힘 방지를 위해 딜레이 약간 증가
-        loading: 2500,      // 🌟 씹힘 방지를 위해 딜레이 약간 증가
-        vsScreen: 3500,     // 🌟 대진표 감상 시간 보장
-        battleStart: 2500,  
-        phaseDelay: 10000,  
-        gameOver: 4000,     
-        systemAction: 1200  
+        matchSearch: 2000,  // [매칭중] 화면 유지 시간
+        matchFound: 1500,   // [매칭 완료] 후 픽창 이동 대기
+        loading: 2000,      // [로딩중] 픽 완료 후 진입 대기
+        vsScreen: 3500,     // 🌟 [전력 분석] VS 대진표 감상 시간
+        battleStart: 2500,  // 🌟 [협곡 진입] 환영 문구 감상 시간
+        phaseDelay: 8000,   // ⚔️ 페이즈 간 간격 (지루하지 않게 8초로 단축)
+        gameOver: 3000,     // [게임 종료] 결과창 유지 시간
+        systemAction: 1200  // 일반 UI 전환 대기 시간
     }
 };
 
 var MAX_LEVEL = 30;
 var POINT_PER_LEVEL = 5;
-
 var RoleList = ["탱커", "전사", "암살자", "마법사", "원딜", "서포터"];
 
 var Utils = {
@@ -80,6 +80,19 @@ var Utils = {
     }
 };
 
+// 🌟 역할군별 보유 수 카운팅 및 텍스트 렌더링 함수
+function getRoleMenuText(data) {
+    var roleTextArr = [];
+    var emojis = ["🛡️", "🪓", "🗡️", "🪄", "🏹", "🚑"];
+    for (var i = 0; i < RoleList.length; i++) {
+        var r = RoleList[i];
+        var allInRole = ChampionList.filter(function(c) { return ChampionData[c].role === r; }).length;
+        var myInRole = data.inventory.champions.filter(function(c) { return ChampionData[c].role === r; }).length;
+        roleTextArr.push((i+1) + ". " + emojis[i] + " " + r + " (" + myInRole + "/" + allInRole + ")");
+    }
+    return roleTextArr.join("\n");
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎨 [1. VIEW] 텍스트 콘텐츠 관리 (ContentManager & Layout)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -103,7 +116,7 @@ var ContentManager = {
         gMain: "비회원 메뉴", joinId: "회원가입", joinPw: "비밀번호 설정", loginId: "로그인", loginPw: "로그인",
         inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 확인",
         resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
-        shopItem: "아이템 상점", shopChamp: "챔피언 상점", // 🌟 타이틀에서 500G 제거
+        shopItem: "아이템 상점", shopChamp: "챔피언 상점", 
         modeSel: "대전 모드 선택", roleSelect: "역할군 선택", 
         aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 확인",
         aInqList: "문의 목록", aInqDet: "문의 상세", aInqRep: "답변 작성", aUserDetail: " 관리",
@@ -159,8 +172,7 @@ var ContentManager = {
         },
         screen: {
             match: "매칭 대기열", pick: "전투 준비", load: "로딩중", analyzed: "전력 분석 완료", 
-            start: "전투 진입중", // 🌟 타이틀 변경 완료
-            detail: "상세 스탯 정보", skillUp: "스킬 강화",
+            start: "전투 진입중", detail: "상세 스탯 정보", skillUp: "스킬 강화",
             phasePrefix: "⏱️ ", phaseSuffix: "페이즈 현장 중계", end: "🏆 게임 종료!"
         },
         ui: {
@@ -171,7 +183,6 @@ var ContentManager = {
             vsFormat: "🎯 [ {uName} ]\n🤖 {uChamp}\n\n━━━━━━━ VS ━━━━━━━\n\n🎯 [ AI Bot ]\n🤖 {aChamp}",
             battleStart: "🔥 소환사의 협곡에 오신 것을 환영합니다.\n잠시 후 미니언이 생성됩니다!",
             boardTitle: "📊 라인전 현황판 [ {turn}턴 ]", detailTitle: "🔍 상세 스탯 및 장비 창", skillUpTitle: "🆙 스킬 레벨업",
-            lckStartTitle: "⚔️ {turn}턴 LCK 교전 중계 시작", lckStartMsg: "약 {sec}초 간격으로 현장 상황이 중계됩니다.",
             watchNext: "다음 상황을 지켜봅니다...", endWait: "잠시 후 로비로 돌아갑니다.",
             win: "🎉 승리했습니다!", lose: "☠️ 패배했습니다..."
         },
@@ -251,7 +262,7 @@ var BattleDirector = {
     }
 };
 
-// 🌟 가독성을 대폭 개선한 현황판 렌더러
+// 🌟 완벽하게 세로로 찢어놓은 현황판 및 스킬창 렌더러
 var BattleView = { 
     Board: {
         render: function(state) {
@@ -266,21 +277,31 @@ var BattleView = {
             content += "💰 골드: " + t.gold + " G\n\n";
             
             content += "[ ⏳ 스킬 현황 ]\n";
-            content += "🔹 Q (Lv."+t.skLv.q+")   🔹 W (Lv."+t.skLv.w+")\n";
-            content += "🔹 E (Lv."+t.skLv.e+")\n";
-            var rState = (t.level < 6) ? "잠김" : (t.cd.r <= 0 ? "준비 완료" : t.cd.r + "초");
-            content += "🔸 궁극기 R (Lv."+t.skLv.r+"): " + rState + "\n";
+            content += "🔹 Q (Lv."+t.skLv.q+") : " + (t.cd.q<=0?"준비 완료":t.cd.q+"초") + "\n";
+            content += "🔹 W (Lv."+t.skLv.w+") : " + (t.cd.w<=0?"준비 완료":t.cd.w+"초") + "\n";
+            content += "🔹 E (Lv."+t.skLv.e+") : " + (t.cd.e<=0?"준비 완료":t.cd.e+"초") + "\n";
+            content += "🔸 R (Lv."+t.skLv.r+") : " + (t.level<6?"잠김":(t.cd.r<=0?"준비 완료":t.cd.r+"초")) + "\n";
             
-            if (isMe && t.sp > 0) content += "\n✨ [스킬 강화 가능! 포인트: " + t.sp + "]\n";
-            
-            var stratName = ["없음 (선택 필요)", "⚔️ 공격적인 라인전", "🛡️ 안정적인 파밍", "🏠 귀환 및 정비"][state.strat || 0];
+            var stratName = ["선택 안됨", "⚔️ 공격적인 라인전", "🛡️ 안정적인 파밍", "🏠 귀환 및 정비"][state.strat || 0];
             content += "\n💡 [ 대기실 메뉴 ]\n";
             content += "▶ 현재 전략: " + stratName + "\n\n";
             
-            content += "[ 정보 확인 ]\n0. " + (isMe ? "🤖 적 정보 보기" : "👤 내 정보 보기") + "  9. 🔍 상세 스탯\n\n";
-            content += "[ 이번 턴 전략 ]\n1. 공격  2. 파밍  3. 귀환\n\n";
-            if (isMe && t.sp > 0) content += "[ 챔피언 성장 ]\n5. 🆙 스킬 레벨업\n\n";
-            content += "[ 턴 시작 ]\n4. ✅ 준비완료"; 
+            content += "[ 정보 확인 ]\n";
+            content += "0. " + (isMe ? "🤖 적 정보 보기" : "👤 내 정보 보기") + "\n";
+            content += "9. 🔍 상세 스탯\n\n";
+            
+            content += "[ 이번 턴 전략 ]\n";
+            content += "1. ⚔️ 공격적인 라인전\n";
+            content += "2. 🛡️ 안정적인 파밍\n";
+            content += "3. 🏠 귀환 및 정비\n\n";
+            
+            if (isMe && t.sp > 0) {
+                content += "[ 챔피언 성장 ]\n";
+                content += "5. 🆙 스킬 레벨업 (SP: " + t.sp + ")\n\n";
+            }
+            
+            content += "[ 턴 시작 ]\n";
+            content += "4. ✅ 준비완료\n";
             
             var title = cU.boardTitle.replace("{turn}", state.turn);
             return LayoutManager.renderFrame(title, content, false, "번호 또는 '준비완료'를 입력하세요.\n(로비로 돌아가려면 '항복')");
@@ -298,10 +319,10 @@ var BattleView = {
         renderSkillUp: function(t) {
             var cU = ContentManager.battle.ui;
             var content = "보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
-            content += "1. Q - " + t.hw.skills.q.n + " (현재 Lv." + t.skLv.q + ")\n";
-            content += "2. W - " + t.hw.skills.w.n + " (현재 Lv." + t.skLv.w + ")\n";
-            content += "3. E - " + t.hw.skills.e.n + " (현재 Lv." + t.skLv.e + ")\n";
-            content += "4. R - " + t.hw.skills.r.n + " (현재 Lv." + t.skLv.r + ")\n";
+            content += "1. Q - " + t.hw.skills.q.n + "\n   └ 현재 Lv: " + t.skLv.q + "\n\n";
+            content += "2. W - " + t.hw.skills.w.n + "\n   └ 현재 Lv: " + t.skLv.w + "\n\n";
+            content += "3. E - " + t.hw.skills.e.n + "\n   └ 현재 Lv: " + t.skLv.e + "\n\n";
+            content += "4. R - " + t.hw.skills.r.n + "\n   └ 현재 Lv: " + t.skLv.r + "\n";
             
             return LayoutManager.renderFrame(cU.skillUpTitle, content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
         }
@@ -446,23 +467,16 @@ var SkillMechanics = {
     apply: function(effect, caster, target, dmg) {
         caster.status = caster.status || {}; target.status = target.status || {};
         var log = "";
-        
         if (effect.indexOf("slow") !== -1) { target.status.slowDur = 3; log = "🧊 적의 이동속도를 3초간 늦춥니다!"; }
         if (effect.indexOf("stun") !== -1) { target.status.stunDur = 2; log = "⚡ 적을 2초간 기절시켜 행동을 봉쇄합니다!"; }
         if (effect.indexOf("root") !== -1) { target.status.rootDur = 2; log = "🪤 적의 발을 2초간 묶습니다!"; }
         if (effect.indexOf("silence") !== -1) { target.status.silenceDur = 2; log = "🔇 적을 침묵시켜 2초간 스킬을 막습니다!"; }
-
         if (effect.indexOf("shield") !== -1) { caster.status.shield = (caster.status.shield || 0) + 150 + (caster.level*20); log = "🛡️ " + caster.status.shield + "의 보호막을 얻습니다!"; }
         if (effect.indexOf("invincible") !== -1) { caster.status.invincibleDur = 3; log = "✨ 3초간 모든 피해를 무시하는 무적 상태가 됩니다!"; }
         if (effect.indexOf("dodge") !== -1) { caster.status.dodgeDur = 2; log = "🌪️ 2초간 적의 기본 공격을 모두 회피합니다!"; }
-        
-        if (effect === "heal_missing_hp") { 
-            var heal = Math.floor((caster.hw.hp - caster.hp) * 0.15); caster.hp = Math.min(caster.hw.hp, caster.hp + heal); 
-            log = "💚 잃은 체력에 비례해 " + heal + "의 체력을 흡수합니다!"; 
-        }
+        if (effect === "heal_missing_hp") { var heal = Math.floor((caster.hw.hp - caster.hp) * 0.15); caster.hp = Math.min(caster.hw.hp, caster.hp + heal); log = "💚 잃은 체력에 비례해 " + heal + "의 체력을 흡수합니다!"; }
         if (effect === "shred_res") { target.status.defShredDur = 4; log = "💔 4초간 적의 방어력과 마법 저항력을 파괴합니다!"; }
         if (effect === "execute" || effect === "true_execute") { log = "💀 치명적인 고정 피해로 적을 찢어버립니다!"; }
-        
         return log;
     }
 };
@@ -474,59 +488,42 @@ var BattleEngine = {
     },
     getSk: function(hw, key, skLv) {
         if (key === '평타' || skLv === 0) return null;
-        var origin = hw.skills[key];
-        var idx = skLv - 1; 
+        var origin = hw.skills[key]; var idx = skLv - 1; 
         return { key: key, n: origin.n, cd: origin.cd[idx], b: origin.b[idx], ad: origin.ad, ap: origin.ap, mhp: origin.mhp, def: origin.def, eMhp: origin.eMhp, eCurHp: origin.eCurHp, eMisHp: origin.eMisHp, t: origin.t, e: origin.e, rng: origin.rng, tt: origin.tt, mv: origin.mv };
     },
     calcHit: function(atkSw, defSw, atkHw, defHw, defStatus, bonus) { 
         var finalDefSpd = (defStatus.slowDur > 0) ? defHw.spd * 0.7 : defHw.spd;
-        var swDiff = (atkSw.acc - defSw.ref) * 0.5; 
-        var spdDiff = (atkHw.spd - finalDefSpd) * 0.1; 
+        var swDiff = (atkSw.acc - defSw.ref) * 0.5; var spdDiff = (atkHw.spd - finalDefSpd) * 0.1; 
         var chance = 50 + swDiff + spdDiff + bonus;
-        if (defStatus.rootDur > 0) chance += 20; 
-        if (defStatus.stunDur > 0) chance = 100; 
+        if (defStatus.rootDur > 0) chance += 20; if (defStatus.stunDur > 0) chance = 100; 
         return (Math.random() * 100 <= Math.max(10, Math.min(100, chance))); 
     },
-    calcProb: function(base, mySwStat, enSwStat, myHw, enHw, bonus) {
-        return Math.max(10, Math.min(90, base + (mySwStat - enSwStat) * 0.5 + (bonus || 0)));
-    },
+    calcProb: function(base, mySwStat, enSwStat, myHw, enHw, bonus) { return Math.max(10, Math.min(90, base + (mySwStat - enSwStat) * 0.5 + (bonus || 0))); },
     calcDmg: function(sk, atkHw, defHw, defHp, defStatus) {
         var raw = (sk.b || 0) + (atkHw.baseAd + atkHw.bonusAd) * (sk.ad || 0) + (atkHw.ap * (sk.ap || 0)) + (atkHw.hp * (sk.mhp || 0)) + (atkHw.def * (sk.def || 0));
         raw += (defHw.hp * (sk.eMhp || 0)) + (defHp * (sk.eCurHp || 0)) + (Math.max(0, defHw.hp - defHp) * (sk.eMisHp || 0));
-
         if (sk.t === "TRUE" || sk.t === "UT") return raw;
-
         var def = (sk.t === "AP") ? defHw.mdef : defHw.def;
         if (defStatus.defShredDur > 0) def *= 0.75; 
-        var penPer = (sk.t === "AP") ? atkHw.mPenPer : atkHw.arPenPer;
-        var penFlat = (sk.t === "AP") ? atkHw.mPenFlat : atkHw.lethality;
-
+        var penPer = (sk.t === "AP") ? atkHw.mPenPer : atkHw.arPenPer; var penFlat = (sk.t === "AP") ? atkHw.mPenFlat : atkHw.lethality;
         var effDef = Math.max(0, def * (1 - penPer / 100) - penFlat);
         return raw * (100 / (100 + effDef));
     },
     evaluateAI: function(sk, me, enemy, isAggress) {
         if (me.status.silenceDur > 0 || me.status.stunDur > 0) return false;
         var goodJudgment = (Math.random() * 100 <= me.sw.int); 
-        
         if (sk.e.indexOf("shield") !== -1 || sk.e.indexOf("dodge") !== -1) return goodJudgment ? enemy.status.isAttacking : true; 
         if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.4) : true; 
         return true; 
     },
     playPhase: function(me, ai, stratMe, phaseIdx) {
-        var mRawDmg = 0, aRawDmg = 0;
-        var mHitCount = 0, aHitCount = 0;
-        var combatLogs = [];
-        var bLogs = ContentManager.battle.logs; 
-        
-        me.status = me.status || {}; ai.status = ai.status || {};
-        me.status.isAttacking = false; ai.status.isAttacking = false;
+        var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; var combatLogs = []; var bLogs = ContentManager.battle.logs; 
+        me.status = me.status || {}; ai.status = ai.status || {}; me.status.isAttacking = false; ai.status.isAttacking = false;
 
         if (stratMe === 3) {
-            me.cd = {q:0, w:0, e:0, r:0};
-            combatLogs.push(bLogs.baseHeal);
+            me.cd = {q:0, w:0, e:0, r:0}; combatLogs.push(bLogs.baseHeal);
         } else {
             var isAggress = (stratMe === 1);
-            
             for (var sec = 1; sec <= 30; sec++) {
                 if(me.status.stunDur > 0) me.status.stunDur--; if(ai.status.stunDur > 0) ai.status.stunDur--;
                 if(me.status.slowDur > 0) me.status.slowDur--; if(ai.status.slowDur > 0) ai.status.slowDur--;
@@ -542,27 +539,20 @@ var BattleEngine = {
                 me.aaTimer = (me.aaTimer || 0) + me.hw.as; ai.aaTimer = (ai.aaTimer || 0) + ai.hw.as;
 
                 if (me.status.stunDur === 0) {
-                    var usedSkill = false;
-                    var keys = ["q", "w", "e", "r"];
+                    var usedSkill = false; var keys = ["q", "w", "e", "r"];
                     for (var i=0; i<keys.length; i++) {
                         var k = keys[i]; var skLv = me.skLv[k];
                         if (skLv > 0 && me.cd[k] <= 0) {
                             var skObj = this.getSk(me.hw, k, skLv);
                             if (this.evaluateAI(skObj, me, ai, isAggress)) {
-                                me.cd[k] = skObj.cd; 
-                                me.status.isAttacking = true; usedSkill = true;
-                                
+                                me.cd[k] = skObj.cd; me.status.isAttacking = true; usedSkill = true;
                                 var hit = this.calcHit(me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0);
                                 if (hit) {
-                                    mHitCount++;
-                                    var dmg = this.calcDmg(skObj, me.hw, ai.hw, ai.hp, ai.status);
-                                    if(ai.status.invincibleDur > 0) dmg = 0;
-                                    aRawDmg += dmg;
+                                    mHitCount++; var dmg = this.calcDmg(skObj, me.hw, ai.hw, ai.hp, ai.status);
+                                    if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
                                     var fxLog = SkillMechanics.apply(skObj.e, me, ai, dmg);
                                     combatLogs.push(bLogs.hitMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
-                                } else {
-                                    combatLogs.push(bLogs.missMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n));
-                                }
+                                } else { combatLogs.push(bLogs.missMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n)); }
                                 break; 
                             }
                         }
@@ -570,30 +560,24 @@ var BattleEngine = {
                     if (!usedSkill && me.aaTimer >= 1.0) {
                         me.aaTimer -= 1.0; me.status.isAttacking = true;
                         if (ai.status.dodgeDur <= 0 && this.calcHit(me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0)) {
-                            mHitCount++;
-                            var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, me.hw, ai.hw, ai.hp, ai.status);
-                            if(ai.status.invincibleDur > 0) dmg = 0;
-                            aRawDmg += dmg;
+                            mHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, me.hw, ai.hw, ai.hp, ai.status);
+                            if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
                         }
                     }
                 }
 
                 if (ai.status.stunDur === 0) {
-                    var usedSkill = false;
-                    var keys = ["q", "w", "e", "r"];
+                    var usedSkill = false; var keys = ["q", "w", "e", "r"];
                     for (var i=0; i<keys.length; i++) {
                         var k = keys[i]; var skLv = ai.skLv[k];
                         if (skLv > 0 && ai.cd[k] <= 0) {
                             var skObj = this.getSk(ai.hw, k, skLv);
                             if (this.evaluateAI(skObj, ai, me, true)) {
-                                ai.cd[k] = skObj.cd; 
-                                ai.status.isAttacking = true; usedSkill = true;
+                                ai.cd[k] = skObj.cd; ai.status.isAttacking = true; usedSkill = true;
                                 var hit = this.calcHit(ai.sw, me.sw, ai.hw, me.hw, me.status, 0);
                                 if (hit) {
-                                    aHitCount++;
-                                    var dmg = this.calcDmg(skObj, ai.hw, me.hw, me.hp, me.status);
-                                    if(me.status.invincibleDur > 0) dmg = 0;
-                                    mRawDmg += dmg;
+                                    aHitCount++; var dmg = this.calcDmg(skObj, ai.hw, me.hw, me.hp, me.status);
+                                    if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
                                     var fxLog = SkillMechanics.apply(skObj.e, ai, me, dmg);
                                     combatLogs.push(bLogs.hitAi.replace("{sec}", sec).replace("{champ}", ai.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
                                 }
@@ -604,10 +588,8 @@ var BattleEngine = {
                     if (!usedSkill && ai.aaTimer >= 1.0) {
                         ai.aaTimer -= 1.0; ai.status.isAttacking = true;
                         if (me.status.dodgeDur <= 0 && this.calcHit(ai.sw, me.sw, ai.hw, me.hw, me.status, 0)) {
-                            aHitCount++;
-                            var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, ai.hw, me.hw, me.hp, me.status);
-                            if(me.status.invincibleDur > 0) dmg = 0;
-                            mRawDmg += dmg;
+                            aHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, ai.hw, me.hw, me.hp, me.status);
+                            if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
                         }
                     }
                 }
@@ -621,11 +603,8 @@ var BattleEngine = {
         var aRegen = ai.hw.hpRegen * 6 + Math.floor(mRawDmg * (ai.hw.omniVamp / 100));
         if (stratMe === 3) mRegen = 9999; 
         
-        var finalMDmg = Math.max(0, mRawDmg - mRegen);
-        var finalADmg = Math.max(0, aRawDmg - aRegen);
-
-        var isCannonPhase = (phaseIdx === 2);
-        var wave = { melee: 3, caster: 3, siege: isCannonPhase ? 1 : 0 };
+        var finalMDmg = Math.max(0, mRawDmg - mRegen); var finalADmg = Math.max(0, aRawDmg - aRegen);
+        var isCannonPhase = (phaseIdx === 2); var wave = { melee: 3, caster: 3, siege: isCannonPhase ? 1 : 0 };
         var mGold = 0, kMelee = 0, kCaster = 0, kSiege = 0;
         var csChance = this.calcProb(50, me.sw.com, ai.sw.int, me.hw, ai.hw, (stratMe === 2 ? 30 : -20) + (aHitCount>0 ? -15 : 10));
 
@@ -643,10 +622,7 @@ var BattleEngine = {
 
         if(combatLogs.length === 0) combatLogs.push(bLogs.noAction);
         if(combatLogs.length > 8) {
-            var summary = combatLogs.slice(0, 3);
-            summary.push(bLogs.skipMiddle);
-            summary.push(combatLogs[combatLogs.length-1]);
-            combatLogs = summary;
+            var summary = combatLogs.slice(0, 3); summary.push(bLogs.skipMiddle); summary.push(combatLogs[combatLogs.length-1]); combatLogs = summary;
         }
 
         return { lckLog: BattleDirector.generateLog(ctx), combatLogs: combatLogs.join("\n"), farmLogs: farmLogs.join("\n"), mDmg: Math.floor(finalMDmg), aDmg: Math.floor(finalADmg), gold: mGold };
@@ -656,7 +632,6 @@ var BattleEngine = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎮 [3. CONTROLLER] 라우팅 및 유저 입력 핸들러
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 var PrevScreenMap = {
     "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
     "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
@@ -678,19 +653,6 @@ var SystemAction = {
         if (nextFunc) nextFunc();
     }
 };
-
-// 🌟 동적 역할군 리스트 생성 함수 (1/3 표기 완벽 적용)
-function getRoleMenuText(data) {
-    var roleTextArr = [];
-    var emojis = ["🛡️", "🪓", "🗡️", "🪄", "🏹", "🚑"];
-    for (var i = 0; i < RoleList.length; i++) {
-        var r = RoleList[i];
-        var allInRole = ChampionList.filter(function(c) { return ChampionData[c].role === r; }).length;
-        var myInRole = data.inventory.champions.filter(function(c) { return ChampionData[c].role === r; }).length;
-        roleTextArr.push((i+1) + ". " + emojis[i] + " " + r + " (" + myInRole + "/" + allInRole + ")");
-    }
-    return " " + roleTextArr.join("\n ");
-}
 
 var AuthController = { 
     handle: function(msg, session, sender, replier, room) {
@@ -770,7 +732,7 @@ var UserController = {
             if (session.screen === "CHAMP_LIST_ROLE") return replier.reply(LayoutManager.renderFrame(s.roleSelect, getRoleMenuText(data), true, f.selectNum));
             if (session.screen === "CHAMP_LIST") {
                 var myChamps = data.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
-                var text = "📊 [" + session.temp.role + "] 보유 챔피언\n" + Utils.getFixedDivider() + "\n";
+                var text = "📊 [" + session.temp.role + "] 보유 챔피언\n" + Utils.getFixedDivider() + "\n\n";
                 text += (myChamps.length > 0) ? myChamps.map(function(c, i){ return (i+1) + ". " + c + "\n   └ [" + ChampionData[c].role + "]"; }).join("\n\n") : "보유 챔피언 없음";
                 return replier.reply(LayoutManager.renderFrame(s.champ, text, true, f.checkList));
             }
@@ -781,7 +743,7 @@ var UserController = {
             if (session.screen === "SHOP_CHAMPS_ROLE") return replier.reply(LayoutManager.renderFrame(s.roleSelect, getRoleMenuText(data), true, f.selectNum));
             if (session.screen === "SHOP_CHAMPS") {
                 var shopChamps = ChampionList.filter(function(c) { return ChampionData[c].role === session.temp.role; });
-                var text = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n[ " + session.temp.role + " 상점 ]\n";
+                var text = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n[ " + session.temp.role + " 상점 ]\n\n";
                 text += shopChamps.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":"") + "\n   └ [" + ChampionData[c].role + " / 500G]"; }).join("\n\n");
                 return replier.reply(LayoutManager.renderFrame(s.shopChamp, text, true, f.inputHireNum));
             }
@@ -808,7 +770,7 @@ var UserController = {
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
                 replier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
                 
-                var roomStr = room + ""; var senderStr = sender + ""; 
+                var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(data.stats)); 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
@@ -823,7 +785,7 @@ var UserController = {
                                 var currentData = Database.data[s.tempId];
                                 BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, currentData);
                             }
-                        } catch(e) {}
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 매칭 스레드 오류: " + e); }
                     }
                 })).start();
                 return;
@@ -1047,7 +1009,7 @@ var BattleController = {
         if (!session.battle) session.battle = {};
 
         if (msg === "refresh_screen") {
-            // 🌟 도배 방지: 로딩 및 매칭 중에는 화면 리프레시 스킵
+            // 🌟 로딩 및 스레드 중복 실행 방지
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
             
             if (session.screen === "BATTLE_PICK_ROLE") {
@@ -1084,6 +1046,7 @@ var BattleController = {
                 
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
                 
+                // 🌟 스레드 씹힘 방지 (API 호출 횟수 감소 및 하드카피)
                 var roomStr = room + ""; 
                 var senderStr = sender + ""; 
                 var uStats = JSON.parse(JSON.stringify(userData.stats)); 
@@ -1104,17 +1067,14 @@ var BattleController = {
                                 };
                                 SessionManager.save(); 
                                 
-                                // 🌟 [씹힘 방지 통합] VS 대진표와 전투 시작 문구를 하나의 프레임으로 묶어 API 호출 횟수 감소
                                 var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{aChamp}", cS.battle.enemy.champion);
                                 var combinedText = vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart;
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, combinedText, false, "잠시 후 전투 현황판이 출력됩니다."));
                                 
-                                // 충분한 딜레이 부여 (카톡 도배 방지 회피)
-                                java.lang.Thread.sleep(Config.Timers.vsScreen + 1000); 
-                                
+                                java.lang.Thread.sleep(Config.Timers.vsScreen); 
                                 Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
                             }
-                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e); }
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e.message); }
                     }
                 })).start();
                 return; 
@@ -1140,8 +1100,17 @@ var BattleController = {
                 if (me.skLv[key] >= me.hw.skills[key].max) return replier.reply(LayoutManager.renderAlert(cB.alerts.maxLvl.title, cB.alerts.maxLvl.msg));
                 
                 me.skLv[key]++; me.sp--; SessionManager.save();
-                replier.reply(LayoutManager.renderAlert(cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key])));
-                return replier.reply(vB.renderSkillUp(me));
+                
+                // 🌟 포인트 소진 시 자동 현황판 복귀 로직
+                var notiText = LayoutManager.renderAlert(cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key]));
+                if (me.sp <= 0) {
+                    session.screen = "BATTLE_MAIN"; SessionManager.save();
+                    replier.reply(notiText);
+                    return replier.reply(vB.render(session.battle.instance));
+                } else {
+                    replier.reply(notiText);
+                    return replier.reply(vB.renderSkillUp(me));
+                }
             }
             return;
         }
@@ -1149,30 +1118,21 @@ var BattleController = {
         if (session.screen === "BATTLE_MAIN") {
             var state = session.battle.instance;
             
-            if (msg === "0") { 
-                state.viewTab = (state.viewTab === "ME") ? "ENEMY" : "ME"; 
-                SessionManager.save(); 
-                return replier.reply(vB.render(state)); 
-            }
+            if (msg === "0") { state.viewTab = (state.viewTab === "ME") ? "ENEMY" : "ME"; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "9") { session.screen = "BATTLE_DETAIL"; SessionManager.save(); return replier.reply(vB.renderDetail(state.me)); }
             if (msg === "5" && state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
             
-            if (msg === "1" || msg === "2" || msg === "3") { 
-                state.strat = parseInt(msg); 
-                SessionManager.save();
-                return replier.reply(vB.render(state)); 
-            }
+            if (msg === "1" || msg === "2" || msg === "3") { state.strat = parseInt(msg); SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
             var cleanMsg = msg.replace(/\s+/g, "");
+            // 🌟 4번 또는 '준비완료' 입력 시 바로 즉시 중계 시작!
             if (msg === "4" || cleanMsg === "준비완료") {
                 if (state.strat === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg));
                 if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg));
 
                 var stratMe = state.strat; state.strat = 0; 
                 var roomStr = room + ""; var senderStr = sender + ""; var sessionKey = SessionManager.getKey(roomStr, senderStr);
-
-                replier.reply(LayoutManager.renderAlert(cB.ui.lckStartTitle.replace("{turn}", state.turn), cB.ui.lckStartMsg.replace("{sec}", Config.Timers.phaseDelay/1000), cB.ui.watchNext));
 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
@@ -1181,9 +1141,6 @@ var BattleController = {
                             var turnTotalGold = 0; var isGameOver = false;
 
                             for (var i = 1; i <= 3; i++) {
-                                java.lang.Thread.sleep(Config.Timers.phaseDelay); 
-                                if (isGameOver) break;
-
                                 var p = bM.playPhase(st.me, st.ai, stratMe, i);
                                 st.me.hp -= p.aDmg; st.ai.hp -= p.mDmg; 
                                 st.me.gold += p.gold; turnTotalGold += p.gold;
@@ -1197,16 +1154,18 @@ var BattleController = {
 
                                 var phaseTitle = cB.screen.phasePrefix + i + cB.screen.phaseSuffix;
                                 var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 🌾 파밍 기록 ]\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP\n💰 획득 골드: +" + p.gold + " G";
+                                
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseTitle, phaseContent, false, cB.ui.watchNext));
+
+                                if (isGameOver) break;
+                                java.lang.Thread.sleep(Config.Timers.phaseDelay); 
                             }
 
-                            java.lang.Thread.sleep(Config.Timers.gameOver); 
+                            java.lang.Thread.sleep(2000); 
                             if (st.me.mental <= 0 || st.ai.mental <= 0 || st.turn >= 18) {
                                 var isWin = (st.ai.mental <= 0) || (st.me.mental > st.ai.mental); 
                                 var reward = isWin ? 150 : 50; 
-                                
-                                Database.data[cS.tempId].gold += reward; 
-                                Database.save();
+                                Database.data[cS.tempId].gold += reward; Database.save();
                                 
                                 var endContent = (isWin ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + reward + " G";
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
@@ -1229,7 +1188,7 @@ var BattleController = {
 
                             st.turn++; st.viewTab = "ME"; SessionManager.save();
                             Api.replyRoom(roomStr, vB.render(st));
-                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 전투 중계 오류: " + e); }
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 전투 중계 오류: " + e.message); }
                     }
                 })).start();
                 return;
@@ -1248,7 +1207,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         var realMsg = msg.trim();
 
         if (realMsg === "업데이트" || realMsg === ".업데이트") return;
-
         if (SessionManager.checkTimeout(room, sender, replier)) return;
 
         var session = SessionManager.get(room, sender);
@@ -1273,35 +1231,21 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
             if (PrevScreenMap[session.screen]) {
                 session.screen = PrevScreenMap[session.screen];
-                
                 if (room === Config.AdminRoom) return AdminController.handle("refresh_screen", session, sender, replier, room);
-                
-                // 🌟 [버그 수정] "이전" 화면이 BATTLE_ 소속이라면 User가 아닌 Battle 컨트롤러로 넘겨야 함!
-                if (isLogged && session.screen.indexOf("BATTLE_") === 0) {
-                    return BattleController.handle("refresh_screen", session, sender, replier, room, Database.data[session.tempId]);
-                }
-                
+                if (isLogged && session.screen.indexOf("BATTLE_") === 0) return BattleController.handle("refresh_screen", session, sender, replier, room, Database.data[session.tempId]);
                 if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
                 return AuthController.handle("refresh_screen", session, sender, replier, room);
             }
             return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.noPrevious, function() {
                 if (room === Config.AdminRoom) return AdminController.handle("refresh_screen", session, sender, replier, room);
-                
-                if (isLogged && session.screen.indexOf("BATTLE_") === 0) {
-                    return BattleController.handle("refresh_screen", session, sender, replier, room, Database.data[session.tempId]);
-                }
-                
+                if (isLogged && session.screen.indexOf("BATTLE_") === 0) return BattleController.handle("refresh_screen", session, sender, replier, room, Database.data[session.tempId]);
                 if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
                 return AuthController.handle("refresh_screen", session, sender, replier, room);
             });
         }
 
         if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier, room);
-        
-        if (isLogged && session.screen && session.screen.indexOf("BATTLE_") === 0) {
-            return BattleController.handle(realMsg, session, sender, replier, room, Database.data[session.tempId]);
-        }
-        
+        if (isLogged && session.screen && session.screen.indexOf("BATTLE_") === 0) return BattleController.handle(realMsg, session, sender, replier, room, Database.data[session.tempId]);
         if (isLogged) return UserController.handle(realMsg, session, sender, replier, room);
         return AuthController.handle(realMsg, session, sender, replier, room);
 
