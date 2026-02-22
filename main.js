@@ -1047,7 +1047,7 @@ var BattleController = {
         if (!session.battle) session.battle = {};
 
         if (msg === "refresh_screen") {
-            // 🌟 도배로 인한 씹힘 방지: 로딩 및 매칭 중에는 화면 리프레시 스킵
+            // 🌟 도배 방지: 로딩 및 매칭 중에는 화면 리프레시 스킵
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
             
             if (session.screen === "BATTLE_PICK_ROLE") {
@@ -1084,7 +1084,6 @@ var BattleController = {
                 
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
                 
-                // 🌟 스레드 씹힘 방지용 변수 하드 카피
                 var roomStr = room + ""; 
                 var senderStr = sender + ""; 
                 var uStats = JSON.parse(JSON.stringify(userData.stats)); 
@@ -1105,16 +1104,17 @@ var BattleController = {
                                 };
                                 SessionManager.save(); 
                                 
+                                // 🌟 [씹힘 방지 통합] VS 대진표와 전투 시작 문구를 하나의 프레임으로 묶어 API 호출 횟수 감소
                                 var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{aChamp}", cS.battle.enemy.champion);
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText, false, "전력을 분석중입니다..."));
-                                java.lang.Thread.sleep(Config.Timers.vsScreen); 
+                                var combinedText = vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart;
+                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, combinedText, false, "잠시 후 전투 현황판이 출력됩니다."));
                                 
-                                Api.replyRoom(roomStr, LayoutManager.renderAlert(cB.screen.start, cB.ui.battleStart, "잠시 후 전투 현황판이 출력됩니다."));
-                                java.lang.Thread.sleep(Config.Timers.battleStart);
+                                // 충분한 딜레이 부여 (카톡 도배 방지 회피)
+                                java.lang.Thread.sleep(Config.Timers.vsScreen + 1000); 
                                 
                                 Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
                             }
-                        } catch(e) {}
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e); }
                     }
                 })).start();
                 return; 
@@ -1164,7 +1164,6 @@ var BattleController = {
             }
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
-            // 🌟 "4" 또는 "준비완료" 입력 시 턴 시작
             var cleanMsg = msg.replace(/\s+/g, "");
             if (msg === "4" || cleanMsg === "준비완료") {
                 if (state.strat === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg));
@@ -1230,7 +1229,7 @@ var BattleController = {
 
                             st.turn++; st.viewTab = "ME"; SessionManager.save();
                             Api.replyRoom(roomStr, vB.render(st));
-                        } catch(e) {}
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 전투 중계 오류: " + e); }
                     }
                 })).start();
                 return;
@@ -1274,12 +1273,24 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
             if (PrevScreenMap[session.screen]) {
                 session.screen = PrevScreenMap[session.screen];
+                
                 if (room === Config.AdminRoom) return AdminController.handle("refresh_screen", session, sender, replier, room);
+                
+                // 🌟 [버그 수정] "이전" 화면이 BATTLE_ 소속이라면 User가 아닌 Battle 컨트롤러로 넘겨야 함!
+                if (isLogged && session.screen.indexOf("BATTLE_") === 0) {
+                    return BattleController.handle("refresh_screen", session, sender, replier, room, Database.data[session.tempId]);
+                }
+                
                 if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
                 return AuthController.handle("refresh_screen", session, sender, replier, room);
             }
             return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.noPrevious, function() {
                 if (room === Config.AdminRoom) return AdminController.handle("refresh_screen", session, sender, replier, room);
+                
+                if (isLogged && session.screen.indexOf("BATTLE_") === 0) {
+                    return BattleController.handle("refresh_screen", session, sender, replier, room, Database.data[session.tempId]);
+                }
+                
                 if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
                 return AuthController.handle("refresh_screen", session, sender, replier, room);
             });
