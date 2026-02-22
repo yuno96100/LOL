@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v3.3 (The Final Masterpiece)
- * - [M] Model: 데이터베이스, 세션, 18인 챔피언 및 고유 스킬 엔진
- * - [V] View: 완벽한 UI 프레임, LCK 전투 중계, 중앙 집중화된 텍스트
- * - [C] Controller: 스레드(Thread) 안정화, 자동 창 전환, 완벽한 라우팅
+ * 🏰 소환사의 협곡 Bot - v3.4 (The Final Masterpiece + Role Filter)
+ * - [M] Model: 데이터베이스, 세션, 18인 챔피언
+ * - [V] View: 완벽한 UI 프레임, LCK 전투 중계
+ * - [C] Controller: 역할군(Role) 상위 카테고리 필터 적용 및 단축어 지원
  */  
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v3.3 Final Edition",
+    Version: "v3.4 Final Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -17,21 +17,23 @@ var Config = {
     LINE_CHAR: "━", FIXED_LINE: 15, WRAP_LIMIT: 18, 
     TIMEOUT_MS: 300000, 
     
-    // ⏳ [핵심 설정] 창 유지 및 진행 딜레이 시간 (1000 = 1초)
     Timers: {
-        matchSearch: 2500,  // [매칭중] 화면 유지 시간
-        matchFound: 1000,   // [매칭 완료] 팝업 후 픽창 이동 대기
-        loading: 2000,      // [로딩중] 픽 완료 후 진입 대기
-        vsScreen: 3000,     // 🌟 [전력 분석] VS 대진표 창 유지 시간
-        battleStart: 2000,  // 🌟 [협곡 진입] 전투 시작 환영 문구 유지 시간
-        phaseDelay: 10000,  // ⚔️ 페이즈별 전투 중계 간격 (10초)
-        gameOver: 4000,     // [게임 종료] 결과창 유지 시간
-        systemAction: 1200  // 일반 UI 전환 대기 시간
+        matchSearch: 2500,  
+        matchFound: 1000,   
+        loading: 2000,      
+        vsScreen: 3000,     
+        battleStart: 2000,  
+        phaseDelay: 10000,  
+        gameOver: 4000,     
+        systemAction: 1200  
     }
 };
 
 var MAX_LEVEL = 30;
 var POINT_PER_LEVEL = 5;
+
+// 🌟 역할군 배열 정의
+var RoleList = ["탱커", "전사", "암살자", "마법사", "원딜", "서포터"];
 
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
@@ -95,6 +97,7 @@ var ContentManager = {
         adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"],
         yesNo: ["1. 예", "2. 아니오"],
         adminInqDetail: ["1. 답변 전송", "2. 문의 삭제"],
+        roles: ["1. 🛡️ 탱커", "2. 🪓 전사", "3. 🗡️ 암살자", "4. 🪄 마법사", "5. 🏹 원딜", "6. 🚑 서포터"], // 🌟 역할군 메뉴 추가
         getAdminMain: function(unreadCount) { return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")]; }
     },
     adminMap: { editType: { "1": "gold", "2": "lp", "3": "level" }, editName: { "gold": "골드", "lp": "LP", "level": "레벨" }, actionName: { "2": "데이터 초기화", "3": "계정 삭제", "4": "차단/해제" } },
@@ -103,6 +106,7 @@ var ContentManager = {
         inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 확인",
         resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
         shopItem: "아이템 상점", shopChamp: "챔피언 상점 (500G)", modeSel: "대전 모드 선택",
+        roleSelect: "역할군 선택", // 🌟 역할군 선택 스크린 명
         aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 확인",
         aInqList: "문의 목록", aInqDet: "문의 상세", aInqRep: "답변 작성", aUserDetail: " 관리",
         aEditSel: "정보 수정", aEditIn: "값 수정", aEditCon: "수정 확인"
@@ -149,7 +153,6 @@ var ContentManager = {
         sysErrorLog: function(e) { return ["⛔ 오류 발생!", "💬 내용: " + e.message].join("\n"); }
     },
     
-    // 🌟 전투 시스템 전용 UI 및 텍스트 모음
     battle: {
         director: {
             Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 아~ {myChamp}! 완벽한 카이팅! 적은 닿지도 않습니다!", Assassinate: "🎙️ 캐스터: 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 라인 한가운데서 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 딜교환 실패! 스킬이 빗나가며 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 양 선수 모두 화려한 무빙! 주요 스킬이 허공을 가릅니다!" },
@@ -279,7 +282,7 @@ var BattleView = {
             content += "[ 턴 시작 ]\n4. ✅ 준비 완료";
             
             var title = cU.boardTitle.replace("{turn}", state.turn);
-            return LayoutManager.renderFrame(title, content, false, "원하는 행동의 번호를 입력하세요.\n(로비로 돌아가려면 '항복' 입력)");
+            return LayoutManager.renderFrame(title, content, false, "원하는 행동의 번호(또는 '준비완료')를 입력하세요.\n(로비로 돌아가려면 '항복' 입력)");
         },
         renderDetail: function(t) {
             var cU = ContentManager.battle.ui;
@@ -650,7 +653,7 @@ var BattleEngine = {
         var mRawDmg = 0, aRawDmg = 0;
         var mHitCount = 0, aHitCount = 0;
         var combatLogs = [];
-        var bLogs = ContentManager.battle.logs;
+        var bLogs = ContentManager.battle.logs; 
         
         me.status = me.status || {}; ai.status = ai.status || {};
         me.status.isAttacking = false; ai.status.isAttacking = false;
@@ -790,13 +793,15 @@ var BattleEngine = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎮 [3. CONTROLLER] 라우팅 및 유저 입력 핸들러
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// 🌟 [역할군 카테고리 추가] PrevScreenMap 맵핑
 var PrevScreenMap = {
     "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
     "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
     "STAT_INPUT": "STAT_SELECT", "STAT_INPUT_CONFIRM": "STAT_INPUT", "STAT_RESET_CONFIRM": "PROFILE_MAIN",
-    "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN", "CHAMP_LIST": "COLLECTION_MAIN",
-    "SHOP_MAIN": "MAIN", "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_MAIN", "USER_INQUIRY": "MAIN",
-    "MODE_SELECT": "MAIN", "BATTLE_PICK": "MODE_SELECT",
+    "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN", "CHAMP_LIST_ROLE": "COLLECTION_MAIN", "CHAMP_LIST": "CHAMP_LIST_ROLE",
+    "SHOP_MAIN": "MAIN", "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS_ROLE": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_CHAMPS_ROLE",
+    "USER_INQUIRY": "MAIN", "MODE_SELECT": "MAIN", "BATTLE_PICK_ROLE": "MODE_SELECT", "BATTLE_PICK": "BATTLE_PICK_ROLE",
     "ADMIN_SYS_INFO": "ADMIN_MAIN", "ADMIN_INQUIRY_LIST": "ADMIN_MAIN", "ADMIN_USER_SELECT": "ADMIN_MAIN",
     "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT", "ADMIN_ACTION_CONFIRM": "ADMIN_USER_DETAIL", 
     "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT", 
@@ -886,10 +891,27 @@ var UserController = {
             if (session.screen === "STAT_INPUT_CONFIRM") return replier.reply(LayoutManager.renderFrame(s.statCon, m.statEnhanceConfirm(session.temp.statName, session.temp.statAmt) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo), true, f.selectNum));
             if (session.screen === "COLLECTION_MAIN") return replier.reply(LayoutManager.renderFrame(s.col, LayoutManager.templates.menuList(null, ["1. 보유 칭호", "2. 보유 챔피언"]), true, f.selectNum));
             if (session.screen === "TITLE_EQUIP") return replier.reply(LayoutManager.renderFrame(s.title, "👑 현재 칭호: [" + data.title + "]\n" + Utils.getFixedDivider() + "\n" + data.inventory.titles.map(function(t, i) { return (i+1) + ". " + t + (t === data.title ? " [장착중]" : ""); }).join("\n"), true, f.inputTitle));
-            if (session.screen === "CHAMP_LIST") return replier.reply(LayoutManager.renderFrame(s.champ, "📊 수집 챔피언: " + data.inventory.champions.length + "명\n" + Utils.getFixedDivider() + "\n" + ((data.inventory.champions.length > 0) ? data.inventory.champions.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유 챔피언 없음"), true, f.checkList));
+            
+            // 🌟 보유 챔피언 확인 (역할군 -> 챔피언 리스트)
+            if (session.screen === "CHAMP_LIST_ROLE") return replier.reply(LayoutManager.renderFrame(s.roleSelect, LayoutManager.templates.menuList(null, ContentManager.menus.roles), true, f.selectNum));
+            if (session.screen === "CHAMP_LIST") {
+                var myChamps = data.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
+                var text = "📊 [" + session.temp.role + "] 보유 챔피언: " + myChamps.length + "명\n" + Utils.getFixedDivider() + "\n";
+                text += (myChamps.length > 0) ? myChamps.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유 챔피언 없음";
+                return replier.reply(LayoutManager.renderFrame(s.champ, text, true, f.checkList));
+            }
+            
             if (session.screen === "SHOP_MAIN") return replier.reply(LayoutManager.renderFrame(s.shop, LayoutManager.templates.menuList(null, ContentManager.menus.shopMain), true, f.selectCat));
             if (session.screen === "SHOP_ITEMS") return replier.reply(LayoutManager.renderFrame(s.shopItem, "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n" + LayoutManager.templates.menuList(null, ContentManager.menus.shopItems), true, f.inputBuyNum));
-            if (session.screen === "SHOP_CHAMPS") return replier.reply(LayoutManager.renderFrame(s.shopChamp, "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n" + ChampionList.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); }).join("\n"), true, f.inputHireNum));
+            
+            // 🌟 상점 챔피언 영입 (역할군 -> 챔피언 리스트)
+            if (session.screen === "SHOP_CHAMPS_ROLE") return replier.reply(LayoutManager.renderFrame(s.roleSelect, LayoutManager.templates.menuList(null, ContentManager.menus.roles), true, f.selectNum));
+            if (session.screen === "SHOP_CHAMPS") {
+                var shopChamps = ChampionList.filter(function(c) { return ChampionData[c].role === session.temp.role; });
+                var text = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n[ " + session.temp.role + " 상점 ]\n";
+                text += shopChamps.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":""); }).join("\n");
+                return replier.reply(LayoutManager.renderFrame(s.shopChamp, text, true, f.inputHireNum));
+            }
             if (session.screen === "USER_INQUIRY") return replier.reply(LayoutManager.renderFrame(s.inq, "운영진에게 보낼 내용을 입력해 주세요.", true, f.inputContent));
         }
 
@@ -924,7 +946,7 @@ var UserController = {
                                 java.lang.Thread.sleep(Config.Timers.matchFound); 
                                 
                                 s = SessionManager.get(roomStr, senderStr); 
-                                s.screen = "BATTLE_PICK"; SessionManager.save();
+                                s.screen = "BATTLE_PICK_ROLE"; SessionManager.save(); // 🌟 픽창 진입 전 역할군부터!
                                 BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, {inventory: Database.data[s.tempId].inventory, stats: uStats});
                             }
                         } catch(e) { Api.replyRoom(roomStr, "⚠️ 매칭 스레드 오류: " + e); }
@@ -940,6 +962,7 @@ var UserController = {
             if (msg === "2") { session.screen = "STAT_RESET_CONFIRM"; return UserController.handle("refresh_screen", session, sender, replier, room); }
         }
 
+        // 스탯 관련 로직 유지
         if (session.screen === "STAT_RESET_CONFIRM") {
             if (msg === "1") {
                 if ((data.items.statReset || 0) <= 0) return SystemAction.go(replier, t.error, m.noItem, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
@@ -947,21 +970,18 @@ var UserController = {
                 return SystemAction.go(replier, t.success, m.statResetSuccess, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
             } else if (msg === "2") { return SystemAction.go(replier, t.notice, m.adminCancel, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
         }
-
         if (session.screen === "STAT_SELECT") {
             if (ContentManager.statMap.keys[msg]) {
                 session.temp.statKey = ContentManager.statMap.keys[msg]; session.temp.statName = ContentManager.statMap.names[msg]; 
                 session.screen = "STAT_INPUT"; return UserController.handle("refresh_screen", session, sender, replier, room);
             }
         }
-
         if (session.screen === "STAT_INPUT") {
             var amt = parseInt(msg);
             if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, t.error, m.onlyNumber, function() { UserController.handle("refresh_screen", session, sender, replier, room); }); 
             if (data.point < amt) return SystemAction.go(replier, t.fail, "포인트가 부족합니다.", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             session.temp.statAmt = amt; session.screen = "STAT_INPUT_CONFIRM"; return UserController.handle("refresh_screen", session, sender, replier, room);
         }
-        
         if (session.screen === "STAT_INPUT_CONFIRM") {
             if (msg === "1") {
                 var amt = session.temp.statAmt;
@@ -973,17 +993,25 @@ var UserController = {
 
         if (session.screen === "COLLECTION_MAIN") {
              if (msg === "1") { session.screen = "TITLE_EQUIP"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-             if (msg === "2") { session.screen = "CHAMP_LIST"; return UserController.handle("refresh_screen", session, sender, replier, room); }
+             if (msg === "2") { session.screen = "CHAMP_LIST_ROLE"; return UserController.handle("refresh_screen", session, sender, replier, room); }
         }
         if (session.screen === "TITLE_EQUIP") {
             if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(replier, t.error, m.noTitleError, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             data.title = msg; Database.save();
             return SystemAction.go(replier, t.complete, m.titleEquipSuccess(msg), function() { session.screen = "COLLECTION_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
         }
+        
+        // 🌟 컬렉션 역할군 처리
+        if (session.screen === "CHAMP_LIST_ROLE") {
+            var rIdx = parseInt(msg) - 1;
+            if (RoleList[rIdx]) {
+                session.temp.role = RoleList[rIdx]; session.screen = "CHAMP_LIST"; return UserController.handle("refresh_screen", session, sender, replier, room);
+            }
+        }
 
         if (session.screen === "SHOP_MAIN") {
             if (msg === "1") { session.screen = "SHOP_ITEMS"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2") { session.screen = "SHOP_CHAMPS"; return UserController.handle("refresh_screen", session, sender, replier, room); }
+            if (msg === "2") { session.screen = "SHOP_CHAMPS_ROLE"; return UserController.handle("refresh_screen", session, sender, replier, room); }
         }
         if (session.screen === "SHOP_ITEMS") {
             var p = 0, n = "", act = "";
@@ -994,10 +1022,18 @@ var UserController = {
                 return SystemAction.go(replier, t.success, m.buySuccess(n), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
+        
+        // 🌟 챔피언 상점 역할군 처리
+        if (session.screen === "SHOP_CHAMPS_ROLE") {
+            var rIdx = parseInt(msg) - 1;
+            if (RoleList[rIdx]) {
+                session.temp.role = RoleList[rIdx]; session.screen = "SHOP_CHAMPS"; return UserController.handle("refresh_screen", session, sender, replier, room);
+            }
+        }
         if (session.screen === "SHOP_CHAMPS") {
-            var idx = parseInt(msg) - 1;
-            if (ChampionList[idx]) {
-                var target = ChampionList[idx];
+            var shopChamps = ChampionList.filter(function(c) { return ChampionData[c].role === session.temp.role; });
+            var target = shopChamps[parseInt(msg) - 1];
+            if (target) {
                 if (data.inventory.champions.indexOf(target) !== -1 || data.gold < 500) return SystemAction.go(replier, t.fail, m.champFail, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
                 data.gold -= 500; data.inventory.champions.push(target); Database.save();
                 return SystemAction.go(replier, t.success, m.champSuccess(target), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
@@ -1142,20 +1178,38 @@ var BattleController = {
         if (msg === "refresh_screen") {
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
             
+            // 🌟 전투 역할군 선택 렌더링
+            if (session.screen === "BATTLE_PICK_ROLE") {
+                return replier.reply(LayoutManager.renderFrame(ContentManager.screen.roleSelect, LayoutManager.templates.menuList(null, ContentManager.menus.roles), true, "번호 선택"));
+            }
             if (session.screen === "BATTLE_PICK") {
-                var champs = userData.inventory.champions || [];
-                var list = champs.map(function(c, i) { return (i+1) + ". " + c + " (" + (ChampionData[c] ? ChampionData[c].role : "?") + ")"; }).join("\n");
-                return replier.reply(LayoutManager.renderFrame(cB.screen.pick, cB.ui.pickIntro + list, true, "번호 선택"));
+                var pickChamps = userData.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
+                var list = pickChamps.map(function(c, i) { return (i+1) + ". " + c; }).join("\n");
+                var text = "🎯 [" + session.temp.role + "] 출전 챔피언 선택:\n\n" + (list || "해당 역할군에 보유한 챔피언이 없습니다.");
+                return replier.reply(LayoutManager.renderFrame(cB.screen.pick, text, true, "번호 선택"));
             }
             if (session.screen === "BATTLE_MAIN") return replier.reply(vB.render(session.battle.instance));
             if (session.screen === "BATTLE_DETAIL") return replier.reply(vB.renderDetail(session.battle.instance.me));
             if (session.screen === "BATTLE_SKILLUP") return replier.reply(vB.renderSkillUp(session.battle.instance.me));
         }
 
+        // 🌟 역할군 입력 처리
+        if (session.screen === "BATTLE_PICK_ROLE") {
+            var rIdx = parseInt(msg) - 1;
+            if (RoleList[rIdx]) {
+                session.temp.role = RoleList[rIdx]; 
+                session.screen = "BATTLE_PICK"; 
+                return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
+            }
+        }
+
         if (session.screen === "BATTLE_PICK") {
-            var idx = parseInt(msg) - 1; var champs = userData.inventory.champions || [];
-            if (champs && champs[idx]) {
-                session.battle.myChamp = champs[idx]; session.battle.enemy = bM.generateAI(); 
+            var idx = parseInt(msg) - 1; 
+            var pickChamps = userData.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
+            var targetChamp = pickChamps[idx];
+            
+            if (targetChamp) {
+                session.battle.myChamp = targetChamp; session.battle.enemy = bM.generateAI(); 
                 session.screen = "BATTLE_LOADING"; SessionManager.save();
                 
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
@@ -1180,18 +1234,13 @@ var BattleController = {
                                 };
                                 SessionManager.save(); 
                                 
-                                // 🌟 1. VS 대진표
                                 var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{aChamp}", cS.battle.enemy.champion);
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText, false, "전력을 분석중입니다..."));
-                                
                                 java.lang.Thread.sleep(Config.Timers.vsScreen); 
                                 
-                                // 🌟 2. 전투 시작(협곡 진입)
                                 Api.replyRoom(roomStr, LayoutManager.renderAlert(cB.screen.start, cB.ui.battleStart, "잠시 후 전투 현황판이 출력됩니다."));
-                                
                                 java.lang.Thread.sleep(Config.Timers.battleStart);
                                 
-                                // 🌟 3. 현황판
                                 Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
                             }
                         } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e); }
@@ -1229,7 +1278,6 @@ var BattleController = {
         if (session.screen === "BATTLE_MAIN") {
             var state = session.battle.instance;
             
-            // 🌟 내 정보 <-> 적 정보 탭 변경
             if (msg === "0") { 
                 state.viewTab = (state.viewTab === "ME") ? "ENEMY" : "ME"; 
                 SessionManager.save(); 
@@ -1238,7 +1286,6 @@ var BattleController = {
             if (msg === "9") { session.screen = "BATTLE_DETAIL"; SessionManager.save(); return replier.reply(vB.renderDetail(state.me)); }
             if (msg === "5" && state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
             
-            // 🌟 현재 전략 선택 표시 반영
             if (msg === "1" || msg === "2" || msg === "3") { 
                 state.strat = parseInt(msg); 
                 SessionManager.save();
@@ -1246,8 +1293,9 @@ var BattleController = {
             }
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
-            // 🌟 턴 시작
-            if (msg === "4") {
+            // 🌟 턴 시작 로직 ("4"번 또는 "준비완료" 입력 시)
+            var cleanMsg = msg.replace(/\s+/g, "");
+            if (msg === "4" || cleanMsg === "준비완료") {
                 if (state.strat === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg));
                 if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg));
 
@@ -1287,7 +1335,6 @@ var BattleController = {
                                 var isWin = (st.ai.mental <= 0) || (st.me.mental > st.ai.mental); 
                                 var reward = isWin ? 150 : 50; 
                                 
-                                // 🌟 유저 데이터 안전하게 직접 저장
                                 Database.data[cS.tempId].gold += reward; 
                                 Database.save();
                                 
