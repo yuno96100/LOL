@@ -725,7 +725,6 @@ var BattleView = {
     }
 };
 
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎮 [3. CONTROLLER] 라우팅 및 유저 입력 핸들러
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -852,18 +851,19 @@ var UserController = {
             if (msg === "1") {
                 if (data.inventory.champions.length === 0) return SystemAction.go(replier, t.fail, m.noChamp, function() { session.screen = "MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
                 
-                // [매칭 연출 후 픽창 위임]
+                // 🌟 매칭 연출 로직 복구 (undefined 및 생텍스트 해결)
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
-                replier.reply(LayoutManager.renderFrame(ContentManager.screen.match, ContentManager.msg.find, false, "매칭 시스템 작동 중..."));
+                replier.reply(LayoutManager.renderFrame(BattleView.Content.screen.match, BattleView.Content.msg.find, false, "매칭 시스템 작동 중..."));
                 
                 var roomStr = String(room), senderStr = String(sender);
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
-                            java.lang.Thread.sleep(2500);
+                            java.lang.Thread.sleep(2500); // 2.5초 대기
                             var s = SessionManager.get(roomStr, senderStr);
                             if (s && s.screen === "BATTLE_MATCHING") {
-                                Api.replyRoom(roomStr, "✅ 매칭 완료!");
+                                // 🌟 매칭 완료 프레임 씌우기
+                                Api.replyRoom(roomStr, LayoutManager.renderAlert(BattleView.Content.screen.match, BattleView.Content.msg.matchOk));
                                 java.lang.Thread.sleep(1000);
                                 s.screen = "BATTLE_PICK"; SessionManager.save();
                                 BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, Database.data[s.tempId]);
@@ -1083,7 +1083,7 @@ var BattleController = {
         if (!session.battle) session.battle = {};
 
         if (msg === "refresh_screen") {
-            if (session.screen === "BATTLE_MATCHING") return replier.reply(LayoutManager.renderFrame(vC.screen.match, vC.msg.find, false, "매칭 대기열..."));
+            if (session.screen === "BATTLE_MATCHING") return replier.reply("잠시만 기다려주세요..."); // 쓰레드 중복 방지
             if (session.screen === "BATTLE_PICK") {
                 var champs = userData.inventory.champions || [];
                 var list = champs.map(function(c, i) { return (i+1) + ". " + c + " (" + (ChampionData[c] ? ChampionData[c].role : "?") + ")"; }).join("\n");
@@ -1099,7 +1099,9 @@ var BattleController = {
             if (champs && champs[idx]) {
                 session.battle.myChamp = champs[idx]; session.battle.enemy = bM.generateAI(); 
                 session.screen = "BATTLE_LOADING"; SessionManager.save();
-                replier.reply("로딩중...");
+                
+                // 🌟 [생텍스트 해결] 로딩 프레임 출력
+                replier.reply(LayoutManager.renderAlert(vC.screen.load, vC.msg.loadRift));
                 var roomStr = String(room), sessionKey = SessionManager.getKey(String(room), String(sender));
                 
                 new java.lang.Thread(new java.lang.Runnable({
@@ -1133,7 +1135,12 @@ var BattleController = {
         if (session.screen === "BATTLE_SKILLUP") {
             var me = session.battle.instance.me;
             if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); }
+            
+            // 🌟 [편의성 패치] 1,2,3,4 숫자 입력 시 q,w,e,r 로 자동 매핑!
+            var keyMap = {"1":"q", "2":"w", "3":"e", "4":"r"};
             var key = msg.toLowerCase();
+            if (keyMap[key]) key = keyMap[key];
+
             if (["q", "w", "e", "r"].indexOf(key) !== -1) {
                 if (me.sp <= 0) return replier.reply("⚠️ 스킬 포인트(SP)가 부족합니다.");
                 if (key === 'r' && me.level < 6) return replier.reply("⚠️ 궁극기(R)는 6레벨 이상부터 배울 수 있습니다.");
