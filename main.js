@@ -681,18 +681,23 @@ var BattleDirector = {
     }
 };
 
-// 🎨 2-3. 전투 UI 렌더러
+// 🎨 2-3. 전투 UI 렌더러 (골드 추가, QWE 쿨타임 숨김, 스킬업 번호적용)
 var BattleView = { 
-    Content: { screen: { match: "매칭중", pick: "전투 준비", load: "로딩중", analyzed: "분석 완료", skillUp: "스킬 강화", detail: "상세 스탯 정보" }, msg: { find: "🔍 상대를 탐색합니다...", matchOk: "✅ 매칭 완료!", loadRift: "⏳ 협곡 진입중...", pickIntro: "출전할 챔피언 선택:\n\n", analyze: function(u,uc,a,ac){return "🎯 ["+u+"]\n🤖 "+uc+"\n\n━━━━ VS ━━━━\n\n🎯 ["+a+"]\n🤖 "+ac;} } },
+    Content: { screen: { match: "매칭중", pick: "전투 준비", load: "로딩중", analyzed: "분석 완료", skillUp: "스킬 강화", detail: "상세 스탯 정보" }, msg: { find: "🔍 상대를 탐색합니다...", matchOk: "✅ 매칭 완료!", loadRift: "⏳ 소환사의 협곡으로 진입합니다...", pickIntro: "출전할 챔피언 선택:\n\n", analyze: function(u,uc,a,ac){return "🎯 ["+u+"]\n🤖 "+uc+"\n\n━━━━ VS ━━━━\n\n🎯 ["+a+"]\n🤖 "+ac;} } },
     Board: {
         getBar: function(exp) { var fill = Math.floor(exp / 10); var bar = ""; for(var i=0; i<10; i++) bar += (i < fill) ? "█" : "░"; return bar; },
         render: function(state) {
             var t = state.me;
             var ui = "『 📊 라인전 현황판 [ " + state.turn + "턴 ] 』\n━━━━━━━━━━━━━━\n[ 👤 내 정보 (" + t.champ + ") ]\n";
-            ui += "🆙 Lv." + t.level + " [" + this.getBar(t.exp) + "] " + t.exp + "%\n🩸 HP: " + t.hp + " / " + t.hw.hp + "\n💧 MP: " + t.mp + " / " + t.hw.mp + "\n\n";
-            ui += "⏳ 스킬 레벨 및 쿨타임\n";
-            ui += "- Q(Lv."+t.skLv.q+"): "+(t.cd.q<=0?"준비":t.cd.q+"초")+" | W(Lv."+t.skLv.w+"): "+(t.cd.w<=0?"준비":t.cd.w+"초")+"\n";
-            ui += "- E(Lv."+t.skLv.e+"): "+(t.cd.e<=0?"준비":t.cd.e+"초")+" | R(Lv."+t.skLv.r+"): "+(t.level<6?"잠김":(t.cd.r<=0?"준비":t.cd.r+"초"))+"\n━━━━━━━━━━━━━━\n";
+            ui += "🆙 Lv." + t.level + " [" + this.getBar(t.exp) + "] " + t.exp + "%\n🩸 HP: " + t.hp + " / " + t.hw.hp + "\n💧 MP: " + t.mp + " / " + t.hw.mp + "\n";
+            ui += "💰 골드: " + t.gold + " G\n\n"; // 🌟 골드 표기 추가!
+            
+            ui += "⏳ 스킬 현황\n";
+            // 🌟 Q,W,E는 레벨만 표기
+            ui += "- Q(Lv."+t.skLv.q+") | W(Lv."+t.skLv.w+") | E(Lv."+t.skLv.e+")\n";
+            // 🌟 궁극기(R)만 쿨타임 표기
+            var rState = (t.level < 6) ? "잠김" : (t.cd.r <= 0 ? "준비 완료" : t.cd.r + "초");
+            ui += "- 궁극기 R(Lv."+t.skLv.r+"): " + rState + "\n━━━━━━━━━━━━━━\n";
             
             if (t.sp > 0) ui += "✨ [스킬 강화 가능! 포인트: " + t.sp + "]\n\n";
             
@@ -709,12 +714,12 @@ var BattleView = {
             ui += "🎒 [ 보유 아이템 ]\n(상점 시스템 업데이트 예정)\n━━━━━━━━━━━━━━\n0. 🔙 기본 현황판으로 돌아가기";
             return ui;
         },
-        renderSkillUp: function(t) {
+        renderSkillUp: function(t) { // 🌟 숫자 입력 가이드로 변경
             var ui = "『 🆙 스킬 레벨업 』\n보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
-            ui += "Q. " + t.hw.skills.q.n + " (현재 Lv." + t.skLv.q + ")\n";
-            ui += "W. " + t.hw.skills.w.n + " (현재 Lv." + t.skLv.w + ")\n";
-            ui += "E. " + t.hw.skills.e.n + " (현재 Lv." + t.skLv.e + ")\n";
-            ui += "R. " + t.hw.skills.r.n + " (현재 Lv." + t.skLv.r + ")\n\n0. 🔙 돌아가기";
+            ui += "1. Q - " + t.hw.skills.q.n + " (현재 Lv." + t.skLv.q + ")\n";
+            ui += "2. W - " + t.hw.skills.w.n + " (현재 Lv." + t.skLv.w + ")\n";
+            ui += "3. E - " + t.hw.skills.e.n + " (현재 Lv." + t.skLv.e + ")\n";
+            ui += "4. R - " + t.hw.skills.r.n + " (현재 Lv." + t.skLv.r + ")\n\n0. 🔙 돌아가기";
             return ui;
         }
     }
