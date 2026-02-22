@@ -148,7 +148,7 @@ var ContentManager = {
         sysErrorLog: function(e) { return ["⛔ 오류 발생!", "💬 내용: " + e.message].join("\n"); }
     },
     
-    // 🌟 [신규 분리] 전투 시스템 전용 UI 및 텍스트 모음
+// 🌟 [신규 분리] 전투 시스템 전용 UI 및 텍스트 모음
     battle: {
         director: {
             Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 아~ {myChamp}! 완벽한 카이팅! 적은 닿지도 않습니다!", Assassinate: "🎙️ 캐스터: 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 라인 한가운데서 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 딜교환 실패! 스킬이 빗나가며 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 양 선수 모두 화려한 무빙! 주요 스킬이 허공을 가릅니다!" },
@@ -156,7 +156,7 @@ var ContentManager = {
             baseRecall: "🏠 우물로 귀환하여 전열을 가다듬습니다."
         },
         screen: {
-            match: "매칭 대기열", pick: "전투 준비", load: "로딩중", detail: "상세 스탯 정보", skillUp: "스킬 강화",
+            match: "매칭 대기열", pick: "전투 준비", load: "로딩중", analyzed: "전력 분석 완료", detail: "상세 스탯 정보", skillUp: "스킬 강화",
             phasePrefix: "⏱️ ", phaseSuffix: "페이즈 현장 중계", end: "🏆 게임 종료!"
         },
         ui: {
@@ -191,7 +191,6 @@ var ContentManager = {
             noPrev: { title: "이전 불가", msg: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)" }
         }
     }
-};
 
 var LayoutManager = {
     renderFrame: function(title, content, showNav, footer) {
