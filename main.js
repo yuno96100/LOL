@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v3.6 (Ultimate UI & Stable Thread)
+ * 🏰 소환사의 협곡 Bot - v3.7 (Clean UI & Stable Thread)
  * - [M] Model: 데이터베이스, 세션, 18인 챔피언
- * - [V] View: 완벽한 세로형 UI, (1/3) 역할군 카운터, 2줄 리스트 출력
- * - [C] Controller: 카카오톡 도배방지 씹힘 해결, 즉시 중계 시작, 자동 화면 복귀
- */   
+ * - [V] View: 직관적인 스킬 표기, 깔끔한 리스트, 전략 메뉴 최적화
+ * - [C] Controller: 카카오톡 도배방지 씹힘 해결, 준비완료 지원
+ */  
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v3.6 Stable Edition",
+    Version: "v3.7 Clean Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -17,16 +17,15 @@ var Config = {
     LINE_CHAR: "━", FIXED_LINE: 15, WRAP_LIMIT: 18, 
     TIMEOUT_MS: 300000, 
     
-    // ⏳ [핵심 설정] 창 유지 및 진행 딜레이 시간 (1000 = 1초)
     Timers: {
-        matchSearch: 2000,  // [매칭중] 화면 유지 시간
-        matchFound: 1500,   // [매칭 완료] 후 픽창 이동 대기
-        loading: 2000,      // [로딩중] 픽 완료 후 진입 대기
-        vsScreen: 3500,     // 🌟 [전력 분석] VS 대진표 감상 시간
-        battleStart: 2500,  // 🌟 [협곡 진입] 환영 문구 감상 시간
-        phaseDelay: 8000,   // ⚔️ 페이즈 간 간격 (지루하지 않게 8초로 단축)
-        gameOver: 3000,     // [게임 종료] 결과창 유지 시간
-        systemAction: 1200  // 일반 UI 전환 대기 시간
+        matchSearch: 2000,  
+        matchFound: 1500,   
+        loading: 2000,      
+        vsScreen: 3500,     
+        battleStart: 2500,  
+        phaseDelay: 8000,   
+        gameOver: 3000,     
+        systemAction: 1200  
     }
 };
 
@@ -80,7 +79,6 @@ var Utils = {
     }
 };
 
-// 🌟 역할군별 보유 수 카운팅 및 텍스트 렌더링 함수
 function getRoleMenuText(data) {
     var roleTextArr = [];
     var emojis = ["🛡️", "🪓", "🗡️", "🪄", "🏹", "🚑"];
@@ -109,6 +107,7 @@ var ContentManager = {
         adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"],
         yesNo: ["1. 예", "2. 아니오"],
         adminInqDetail: ["1. 답변 전송", "2. 문의 삭제"],
+        roles: ["1. 🛡️ 탱커", "2. 🪓 전사", "3. 🗡️ 암살자", "4. 🪄 마법사", "5. 🏹 원딜", "6. 🚑 서포터"], 
         getAdminMain: function(unreadCount) { return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")]; }
     },
     adminMap: { editType: { "1": "gold", "2": "lp", "3": "level" }, editName: { "gold": "골드", "lp": "LP", "level": "레벨" }, actionName: { "2": "데이터 초기화", "3": "계정 삭제", "4": "차단/해제" } },
@@ -262,7 +261,7 @@ var BattleDirector = {
     }
 };
 
-// 🌟 완벽하게 세로로 찢어놓은 현황판 및 스킬창 렌더러
+// 🌟 현황판 쿨타임 제거 & 세로 정렬 최적화
 var BattleView = { 
     Board: {
         render: function(state) {
@@ -276,21 +275,21 @@ var BattleView = {
             content += "💧 마나: " + t.mp + " / " + t.hw.mp + "\n";
             content += "💰 골드: " + t.gold + " G\n\n";
             
-            content += "[ ⏳ 스킬 현황 ]\n";
-            content += "🔹 Q (Lv."+t.skLv.q+") : " + (t.cd.q<=0?"준비 완료":t.cd.q+"초") + "\n";
-            content += "🔹 W (Lv."+t.skLv.w+") : " + (t.cd.w<=0?"준비 완료":t.cd.w+"초") + "\n";
-            content += "🔹 E (Lv."+t.skLv.e+") : " + (t.cd.e<=0?"준비 완료":t.cd.e+"초") + "\n";
-            content += "🔸 R (Lv."+t.skLv.r+") : " + (t.level<6?"잠김":(t.cd.r<=0?"준비 완료":t.cd.r+"초")) + "\n";
+            content += "[ ✨ 스킬 현황 ]\n";
+            content += "🔹 Q (Lv."+t.skLv.q+")   🔹 W (Lv."+t.skLv.w+")\n";
+            content += "🔹 E (Lv."+t.skLv.e+")   🔸 R (Lv."+t.skLv.r+")\n";
             
-            var stratName = ["선택 안됨", "⚔️ 공격적인 라인전", "🛡️ 안정적인 파밍", "🏠 귀환 및 정비"][state.strat || 0];
-            content += "\n💡 [ 대기실 메뉴 ]\n";
-            content += "▶ 현재 전략: " + stratName + "\n\n";
+            if (isMe && t.sp > 0) content += "\n✨ [스킬 강화 가능! 포인트: " + t.sp + "]\n";
+            
+            content += "\n💡 [ 대기실 메뉴 ]\n\n";
             
             content += "[ 정보 확인 ]\n";
             content += "0. " + (isMe ? "🤖 적 정보 보기" : "👤 내 정보 보기") + "\n";
             content += "9. 🔍 상세 스탯\n\n";
             
+            var stratName = ["선택 안됨", "⚔️ 공격적인 라인전", "🛡️ 안정적인 파밍", "🏠 귀환 및 정비"][state.strat || 0];
             content += "[ 이번 턴 전략 ]\n";
+            content += "▶ 현재 선택: " + stratName + "\n";
             content += "1. ⚔️ 공격적인 라인전\n";
             content += "2. 🛡️ 안정적인 파밍\n";
             content += "3. 🏠 귀환 및 정비\n\n";
@@ -467,16 +466,23 @@ var SkillMechanics = {
     apply: function(effect, caster, target, dmg) {
         caster.status = caster.status || {}; target.status = target.status || {};
         var log = "";
+        
         if (effect.indexOf("slow") !== -1) { target.status.slowDur = 3; log = "🧊 적의 이동속도를 3초간 늦춥니다!"; }
         if (effect.indexOf("stun") !== -1) { target.status.stunDur = 2; log = "⚡ 적을 2초간 기절시켜 행동을 봉쇄합니다!"; }
         if (effect.indexOf("root") !== -1) { target.status.rootDur = 2; log = "🪤 적의 발을 2초간 묶습니다!"; }
         if (effect.indexOf("silence") !== -1) { target.status.silenceDur = 2; log = "🔇 적을 침묵시켜 2초간 스킬을 막습니다!"; }
+
         if (effect.indexOf("shield") !== -1) { caster.status.shield = (caster.status.shield || 0) + 150 + (caster.level*20); log = "🛡️ " + caster.status.shield + "의 보호막을 얻습니다!"; }
         if (effect.indexOf("invincible") !== -1) { caster.status.invincibleDur = 3; log = "✨ 3초간 모든 피해를 무시하는 무적 상태가 됩니다!"; }
         if (effect.indexOf("dodge") !== -1) { caster.status.dodgeDur = 2; log = "🌪️ 2초간 적의 기본 공격을 모두 회피합니다!"; }
-        if (effect === "heal_missing_hp") { var heal = Math.floor((caster.hw.hp - caster.hp) * 0.15); caster.hp = Math.min(caster.hw.hp, caster.hp + heal); log = "💚 잃은 체력에 비례해 " + heal + "의 체력을 흡수합니다!"; }
+        
+        if (effect === "heal_missing_hp") { 
+            var heal = Math.floor((caster.hw.hp - caster.hp) * 0.15); caster.hp = Math.min(caster.hw.hp, caster.hp + heal); 
+            log = "💚 잃은 체력에 비례해 " + heal + "의 체력을 흡수합니다!"; 
+        }
         if (effect === "shred_res") { target.status.defShredDur = 4; log = "💔 4초간 적의 방어력과 마법 저항력을 파괴합니다!"; }
         if (effect === "execute" || effect === "true_execute") { log = "💀 치명적인 고정 피해로 적을 찢어버립니다!"; }
+        
         return log;
     }
 };
@@ -488,42 +494,59 @@ var BattleEngine = {
     },
     getSk: function(hw, key, skLv) {
         if (key === '평타' || skLv === 0) return null;
-        var origin = hw.skills[key]; var idx = skLv - 1; 
+        var origin = hw.skills[key];
+        var idx = skLv - 1; 
         return { key: key, n: origin.n, cd: origin.cd[idx], b: origin.b[idx], ad: origin.ad, ap: origin.ap, mhp: origin.mhp, def: origin.def, eMhp: origin.eMhp, eCurHp: origin.eCurHp, eMisHp: origin.eMisHp, t: origin.t, e: origin.e, rng: origin.rng, tt: origin.tt, mv: origin.mv };
     },
     calcHit: function(atkSw, defSw, atkHw, defHw, defStatus, bonus) { 
         var finalDefSpd = (defStatus.slowDur > 0) ? defHw.spd * 0.7 : defHw.spd;
-        var swDiff = (atkSw.acc - defSw.ref) * 0.5; var spdDiff = (atkHw.spd - finalDefSpd) * 0.1; 
+        var swDiff = (atkSw.acc - defSw.ref) * 0.5; 
+        var spdDiff = (atkHw.spd - finalDefSpd) * 0.1; 
         var chance = 50 + swDiff + spdDiff + bonus;
-        if (defStatus.rootDur > 0) chance += 20; if (defStatus.stunDur > 0) chance = 100; 
+        if (defStatus.rootDur > 0) chance += 20; 
+        if (defStatus.stunDur > 0) chance = 100; 
         return (Math.random() * 100 <= Math.max(10, Math.min(100, chance))); 
     },
-    calcProb: function(base, mySwStat, enSwStat, myHw, enHw, bonus) { return Math.max(10, Math.min(90, base + (mySwStat - enSwStat) * 0.5 + (bonus || 0))); },
+    calcProb: function(base, mySwStat, enSwStat, myHw, enHw, bonus) {
+        return Math.max(10, Math.min(90, base + (mySwStat - enSwStat) * 0.5 + (bonus || 0)));
+    },
     calcDmg: function(sk, atkHw, defHw, defHp, defStatus) {
         var raw = (sk.b || 0) + (atkHw.baseAd + atkHw.bonusAd) * (sk.ad || 0) + (atkHw.ap * (sk.ap || 0)) + (atkHw.hp * (sk.mhp || 0)) + (atkHw.def * (sk.def || 0));
         raw += (defHw.hp * (sk.eMhp || 0)) + (defHp * (sk.eCurHp || 0)) + (Math.max(0, defHw.hp - defHp) * (sk.eMisHp || 0));
+
         if (sk.t === "TRUE" || sk.t === "UT") return raw;
+
         var def = (sk.t === "AP") ? defHw.mdef : defHw.def;
         if (defStatus.defShredDur > 0) def *= 0.75; 
-        var penPer = (sk.t === "AP") ? atkHw.mPenPer : atkHw.arPenPer; var penFlat = (sk.t === "AP") ? atkHw.mPenFlat : atkHw.lethality;
+        var penPer = (sk.t === "AP") ? atkHw.mPenPer : atkHw.arPenPer;
+        var penFlat = (sk.t === "AP") ? atkHw.mPenFlat : atkHw.lethality;
+
         var effDef = Math.max(0, def * (1 - penPer / 100) - penFlat);
         return raw * (100 / (100 + effDef));
     },
     evaluateAI: function(sk, me, enemy, isAggress) {
         if (me.status.silenceDur > 0 || me.status.stunDur > 0) return false;
         var goodJudgment = (Math.random() * 100 <= me.sw.int); 
+        
         if (sk.e.indexOf("shield") !== -1 || sk.e.indexOf("dodge") !== -1) return goodJudgment ? enemy.status.isAttacking : true; 
         if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.4) : true; 
         return true; 
     },
     playPhase: function(me, ai, stratMe, phaseIdx) {
-        var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; var combatLogs = []; var bLogs = ContentManager.battle.logs; 
-        me.status = me.status || {}; ai.status = ai.status || {}; me.status.isAttacking = false; ai.status.isAttacking = false;
+        var mRawDmg = 0, aRawDmg = 0;
+        var mHitCount = 0, aHitCount = 0;
+        var combatLogs = [];
+        var bLogs = ContentManager.battle.logs; 
+        
+        me.status = me.status || {}; ai.status = ai.status || {};
+        me.status.isAttacking = false; ai.status.isAttacking = false;
 
         if (stratMe === 3) {
-            me.cd = {q:0, w:0, e:0, r:0}; combatLogs.push(bLogs.baseHeal);
+            me.cd = {q:0, w:0, e:0, r:0};
+            combatLogs.push(bLogs.baseHeal);
         } else {
             var isAggress = (stratMe === 1);
+            
             for (var sec = 1; sec <= 30; sec++) {
                 if(me.status.stunDur > 0) me.status.stunDur--; if(ai.status.stunDur > 0) ai.status.stunDur--;
                 if(me.status.slowDur > 0) me.status.slowDur--; if(ai.status.slowDur > 0) ai.status.slowDur--;
@@ -539,20 +562,27 @@ var BattleEngine = {
                 me.aaTimer = (me.aaTimer || 0) + me.hw.as; ai.aaTimer = (ai.aaTimer || 0) + ai.hw.as;
 
                 if (me.status.stunDur === 0) {
-                    var usedSkill = false; var keys = ["q", "w", "e", "r"];
+                    var usedSkill = false;
+                    var keys = ["q", "w", "e", "r"];
                     for (var i=0; i<keys.length; i++) {
                         var k = keys[i]; var skLv = me.skLv[k];
                         if (skLv > 0 && me.cd[k] <= 0) {
                             var skObj = this.getSk(me.hw, k, skLv);
                             if (this.evaluateAI(skObj, me, ai, isAggress)) {
-                                me.cd[k] = skObj.cd; me.status.isAttacking = true; usedSkill = true;
+                                me.cd[k] = skObj.cd; 
+                                me.status.isAttacking = true; usedSkill = true;
+                                
                                 var hit = this.calcHit(me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0);
                                 if (hit) {
-                                    mHitCount++; var dmg = this.calcDmg(skObj, me.hw, ai.hw, ai.hp, ai.status);
-                                    if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
+                                    mHitCount++;
+                                    var dmg = this.calcDmg(skObj, me.hw, ai.hw, ai.hp, ai.status);
+                                    if(ai.status.invincibleDur > 0) dmg = 0;
+                                    aRawDmg += dmg;
                                     var fxLog = SkillMechanics.apply(skObj.e, me, ai, dmg);
                                     combatLogs.push(bLogs.hitMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
-                                } else { combatLogs.push(bLogs.missMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n)); }
+                                } else {
+                                    combatLogs.push(bLogs.missMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n));
+                                }
                                 break; 
                             }
                         }
@@ -560,24 +590,30 @@ var BattleEngine = {
                     if (!usedSkill && me.aaTimer >= 1.0) {
                         me.aaTimer -= 1.0; me.status.isAttacking = true;
                         if (ai.status.dodgeDur <= 0 && this.calcHit(me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0)) {
-                            mHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, me.hw, ai.hw, ai.hp, ai.status);
-                            if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
+                            mHitCount++;
+                            var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, me.hw, ai.hw, ai.hp, ai.status);
+                            if(ai.status.invincibleDur > 0) dmg = 0;
+                            aRawDmg += dmg;
                         }
                     }
                 }
 
                 if (ai.status.stunDur === 0) {
-                    var usedSkill = false; var keys = ["q", "w", "e", "r"];
+                    var usedSkill = false;
+                    var keys = ["q", "w", "e", "r"];
                     for (var i=0; i<keys.length; i++) {
                         var k = keys[i]; var skLv = ai.skLv[k];
                         if (skLv > 0 && ai.cd[k] <= 0) {
                             var skObj = this.getSk(ai.hw, k, skLv);
                             if (this.evaluateAI(skObj, ai, me, true)) {
-                                ai.cd[k] = skObj.cd; ai.status.isAttacking = true; usedSkill = true;
+                                ai.cd[k] = skObj.cd; 
+                                ai.status.isAttacking = true; usedSkill = true;
                                 var hit = this.calcHit(ai.sw, me.sw, ai.hw, me.hw, me.status, 0);
                                 if (hit) {
-                                    aHitCount++; var dmg = this.calcDmg(skObj, ai.hw, me.hw, me.hp, me.status);
-                                    if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
+                                    aHitCount++;
+                                    var dmg = this.calcDmg(skObj, ai.hw, me.hw, me.hp, me.status);
+                                    if(me.status.invincibleDur > 0) dmg = 0;
+                                    mRawDmg += dmg;
                                     var fxLog = SkillMechanics.apply(skObj.e, ai, me, dmg);
                                     combatLogs.push(bLogs.hitAi.replace("{sec}", sec).replace("{champ}", ai.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
                                 }
@@ -588,8 +624,10 @@ var BattleEngine = {
                     if (!usedSkill && ai.aaTimer >= 1.0) {
                         ai.aaTimer -= 1.0; ai.status.isAttacking = true;
                         if (me.status.dodgeDur <= 0 && this.calcHit(ai.sw, me.sw, ai.hw, me.hw, me.status, 0)) {
-                            aHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, ai.hw, me.hw, me.hp, me.status);
-                            if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
+                            aHitCount++;
+                            var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, ai.hw, me.hw, me.hp, me.status);
+                            if(me.status.invincibleDur > 0) dmg = 0;
+                            mRawDmg += dmg;
                         }
                     }
                 }
@@ -603,8 +641,11 @@ var BattleEngine = {
         var aRegen = ai.hw.hpRegen * 6 + Math.floor(mRawDmg * (ai.hw.omniVamp / 100));
         if (stratMe === 3) mRegen = 9999; 
         
-        var finalMDmg = Math.max(0, mRawDmg - mRegen); var finalADmg = Math.max(0, aRawDmg - aRegen);
-        var isCannonPhase = (phaseIdx === 2); var wave = { melee: 3, caster: 3, siege: isCannonPhase ? 1 : 0 };
+        var finalMDmg = Math.max(0, mRawDmg - mRegen);
+        var finalADmg = Math.max(0, aRawDmg - aRegen);
+
+        var isCannonPhase = (phaseIdx === 2);
+        var wave = { melee: 3, caster: 3, siege: isCannonPhase ? 1 : 0 };
         var mGold = 0, kMelee = 0, kCaster = 0, kSiege = 0;
         var csChance = this.calcProb(50, me.sw.com, ai.sw.int, me.hw, ai.hw, (stratMe === 2 ? 30 : -20) + (aHitCount>0 ? -15 : 10));
 
@@ -622,7 +663,10 @@ var BattleEngine = {
 
         if(combatLogs.length === 0) combatLogs.push(bLogs.noAction);
         if(combatLogs.length > 8) {
-            var summary = combatLogs.slice(0, 3); summary.push(bLogs.skipMiddle); summary.push(combatLogs[combatLogs.length-1]); combatLogs = summary;
+            var summary = combatLogs.slice(0, 3);
+            summary.push(bLogs.skipMiddle);
+            summary.push(combatLogs[combatLogs.length-1]);
+            combatLogs = summary;
         }
 
         return { lckLog: BattleDirector.generateLog(ctx), combatLogs: combatLogs.join("\n"), farmLogs: farmLogs.join("\n"), mDmg: Math.floor(finalMDmg), aDmg: Math.floor(finalADmg), gold: mGold };
@@ -632,6 +676,7 @@ var BattleEngine = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎮 [3. CONTROLLER] 라우팅 및 유저 입력 핸들러
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 var PrevScreenMap = {
     "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
     "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
@@ -733,7 +778,8 @@ var UserController = {
             if (session.screen === "CHAMP_LIST") {
                 var myChamps = data.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
                 var text = "📊 [" + session.temp.role + "] 보유 챔피언\n" + Utils.getFixedDivider() + "\n\n";
-                text += (myChamps.length > 0) ? myChamps.map(function(c, i){ return (i+1) + ". " + c + "\n   └ [" + ChampionData[c].role + "]"; }).join("\n\n") : "보유 챔피언 없음";
+                // 🌟 역할군 제거
+                text += (myChamps.length > 0) ? myChamps.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유 챔피언 없음";
                 return replier.reply(LayoutManager.renderFrame(s.champ, text, true, f.checkList));
             }
             
@@ -744,7 +790,8 @@ var UserController = {
             if (session.screen === "SHOP_CHAMPS") {
                 var shopChamps = ChampionList.filter(function(c) { return ChampionData[c].role === session.temp.role; });
                 var text = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n[ " + session.temp.role + " 상점 ]\n\n";
-                text += shopChamps.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":"") + "\n   └ [" + ChampionData[c].role + " / 500G]"; }).join("\n\n");
+                // 🌟 역할군 태그 제거하고 간결하게 500G만 표시
+                text += shopChamps.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":" [500G]"); }).join("\n");
                 return replier.reply(LayoutManager.renderFrame(s.shopChamp, text, true, f.inputHireNum));
             }
             if (session.screen === "USER_INQUIRY") return replier.reply(LayoutManager.renderFrame(s.inq, "운영진에게 보낼 내용을 입력해 주세요.", true, f.inputContent));
@@ -770,7 +817,7 @@ var UserController = {
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
                 replier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
                 
-                var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(data.stats)); 
+                var roomStr = room + ""; var senderStr = sender + ""; 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
@@ -785,7 +832,7 @@ var UserController = {
                                 var currentData = Database.data[s.tempId];
                                 BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, currentData);
                             }
-                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 매칭 스레드 오류: " + e); }
+                        } catch(e) {}
                     }
                 })).start();
                 return;
@@ -1009,7 +1056,6 @@ var BattleController = {
         if (!session.battle) session.battle = {};
 
         if (msg === "refresh_screen") {
-            // 🌟 로딩 및 스레드 중복 실행 방지
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
             
             if (session.screen === "BATTLE_PICK_ROLE") {
@@ -1018,7 +1064,8 @@ var BattleController = {
             if (session.screen === "BATTLE_PICK") {
                 var pickChamps = userData.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
                 var text = "🎯 [" + session.temp.role + "] 출전 챔피언 선택:\n\n";
-                text += (pickChamps.length > 0) ? pickChamps.map(function(c, i) { return (i+1) + ". " + c + "\n   └ [" + ChampionData[c].role + "]"; }).join("\n\n") : "해당 역할군에 보유한 챔피언이 없습니다.";
+                // 🌟 챔피언 목록 역할군 제거 및 단일 표기
+                text += (pickChamps.length > 0) ? pickChamps.map(function(c, i) { return (i+1) + ". " + c; }).join("\n") : "해당 역할군에 보유한 챔피언이 없습니다.";
                 return replier.reply(LayoutManager.renderFrame(cB.screen.pick, text, true, "번호 선택"));
             }
             if (session.screen === "BATTLE_MAIN") return replier.reply(vB.render(session.battle.instance));
@@ -1046,10 +1093,7 @@ var BattleController = {
                 
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
                 
-                // 🌟 스레드 씹힘 방지 (API 호출 횟수 감소 및 하드카피)
-                var roomStr = room + ""; 
-                var senderStr = sender + ""; 
-                var uStats = JSON.parse(JSON.stringify(userData.stats)); 
+                var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(userData.stats)); 
                 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
@@ -1071,7 +1115,7 @@ var BattleController = {
                                 var combinedText = vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart;
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, combinedText, false, "잠시 후 전투 현황판이 출력됩니다."));
                                 
-                                java.lang.Thread.sleep(Config.Timers.vsScreen); 
+                                java.lang.Thread.sleep(Config.Timers.vsScreen + 1000); 
                                 Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
                             }
                         } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e.message); }
@@ -1101,7 +1145,6 @@ var BattleController = {
                 
                 me.skLv[key]++; me.sp--; SessionManager.save();
                 
-                // 🌟 포인트 소진 시 자동 현황판 복귀 로직
                 var notiText = LayoutManager.renderAlert(cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key]));
                 if (me.sp <= 0) {
                     session.screen = "BATTLE_MAIN"; SessionManager.save();
@@ -1126,7 +1169,8 @@ var BattleController = {
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
             var cleanMsg = msg.replace(/\s+/g, "");
-            // 🌟 4번 또는 '준비완료' 입력 시 바로 즉시 중계 시작!
+            
+            // 🌟 턴 시작 로직: "교전 중계 시작" 대기 제거하고 즉시 페이즈 1 돌입!
             if (msg === "4" || cleanMsg === "준비완료") {
                 if (state.strat === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg));
                 if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg));
@@ -1225,6 +1269,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.cancel, false, ContentManager.footer.reStart));
         }
 
+        // 🌟 "이전" 버튼 논리 버그 수정 완료
         if (realMsg === "이전") {
             if (session.screen && session.screen.indexOf("BATTLE_MAIN") !== -1) {
                 return replier.reply(LayoutManager.renderAlert(ContentManager.battle.alerts.noPrev.title, ContentManager.battle.alerts.noPrev.msg));
