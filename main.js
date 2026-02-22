@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v3.2 (MVC & Centralized Content)
- * - [M] Model: 데이터베이스, 세션, 스탯, 전투 연산 엔진
- * - [V] View: 레이아웃, 대사, 전투 중계 (ContentManager에 완벽 통합)
- * - [C] Controller: 라우팅, 유저 입력 처리, 화면 전환
+ * 🏰 소환사의 협곡 Bot - v3.3 (The Final Masterpiece)
+ * - [M] Model: 데이터베이스, 세션, 18인 챔피언 및 고유 스킬 엔진
+ * - [V] View: 완벽한 UI 프레임, LCK 전투 중계, 중앙 집중화된 텍스트
+ * - [C] Controller: 스레드(Thread) 안정화, 자동 창 전환, 완벽한 라우팅
  */  
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v3.2 Final Edition",
+    Version: "v3.3 Final Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -19,9 +19,11 @@ var Config = {
     
     // ⏳ [핵심 설정] 창 유지 및 진행 딜레이 시간 (1000 = 1초)
     Timers: {
-        matchSearch: 6000,  // [매칭중] 화면 유지 시간
-        matchFound: 6000,   // [매칭 완료] 팝업 후 픽창 이동 대기
-        loading: 6000,      // [로딩중] 픽 완료 후 진입 대기
+        matchSearch: 2500,  // [매칭중] 화면 유지 시간
+        matchFound: 1000,   // [매칭 완료] 팝업 후 픽창 이동 대기
+        loading: 2000,      // [로딩중] 픽 완료 후 진입 대기
+        vsScreen: 3000,     // 🌟 [전력 분석] VS 대진표 창 유지 시간
+        battleStart: 2000,  // 🌟 [협곡 진입] 전투 시작 환영 문구 유지 시간
         phaseDelay: 10000,  // ⚔️ 페이즈별 전투 중계 간격 (10초)
         gameOver: 4000,     // [게임 종료] 결과창 유지 시간
         systemAction: 1200  // 일반 UI 전환 대기 시간
@@ -80,7 +82,6 @@ var Utils = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎨 [1. VIEW] 텍스트 콘텐츠 관리 (ContentManager & Layout)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 var ContentManager = {
     menus: {
         guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
@@ -148,7 +149,7 @@ var ContentManager = {
         sysErrorLog: function(e) { return ["⛔ 오류 발생!", "💬 내용: " + e.message].join("\n"); }
     },
     
-// 🌟 [신규 분리] 전투 시스템 전용 UI 및 텍스트 모음
+    // 🌟 전투 시스템 전용 UI 및 텍스트 모음
     battle: {
         director: {
             Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 아~ {myChamp}! 완벽한 카이팅! 적은 닿지도 않습니다!", Assassinate: "🎙️ 캐스터: 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 라인 한가운데서 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 딜교환 실패! 스킬이 빗나가며 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 양 선수 모두 화려한 무빙! 주요 스킬이 허공을 가릅니다!" },
@@ -156,13 +157,17 @@ var ContentManager = {
             baseRecall: "🏠 우물로 귀환하여 전열을 가다듬습니다."
         },
         screen: {
-            match: "매칭 대기열", pick: "전투 준비", load: "로딩중", analyzed: "전력 분석 완료", detail: "상세 스탯 정보", skillUp: "스킬 강화",
+            match: "매칭 대기열", pick: "전투 준비", load: "로딩중", analyzed: "전력 분석 완료", 
+            start: "협곡 진입", detail: "상세 스탯 정보", skillUp: "스킬 강화",
             phasePrefix: "⏱️ ", phaseSuffix: "페이즈 현장 중계", end: "🏆 게임 종료!"
         },
         ui: {
             findMsg: "🔍 상대를 탐색합니다...", searching: "상대를 탐색하는 중입니다...",
             matchOk: "✅ 매칭 완료!", matchFoundInfo: "잠시 후 픽창으로 이동합니다.",
             loadRift: "⏳ 소환사의 협곡으로 진입합니다...", pickIntro: "출전할 챔피언 선택:\n\n",
+            vsTitle: "⚔️ 전투 대진표",
+            vsFormat: "🎯 [ {uName} ]\n🤖 {uChamp}\n\n━━━━━━━ VS ━━━━━━━\n\n🎯 [ AI Bot ]\n🤖 {aChamp}",
+            battleStart: "🔥 소환사의 협곡에 오신 것을 환영합니다.\n잠시 후 미니언이 생성됩니다!",
             boardTitle: "📊 라인전 현황판 [ {turn}턴 ]", detailTitle: "🔍 상세 스탯 및 장비 창", skillUpTitle: "🆙 스킬 레벨업",
             lckStartTitle: "⚔️ {turn}턴 LCK 교전 중계 시작", lckStartMsg: "약 {sec}초 간격으로 현장 상황이 중계됩니다.",
             watchNext: "다음 상황을 지켜봅니다...", endWait: "잠시 후 로비로 돌아갑니다.",
@@ -191,6 +196,7 @@ var ContentManager = {
             noPrev: { title: "이전 불가", msg: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)" }
         }
     }
+};
 
 var LayoutManager = {
     renderFrame: function(title, content, showNav, footer) {
@@ -247,38 +253,53 @@ var BattleView = {
     Board: {
         getBar: function(exp) { var fill = Math.floor(exp / 10); var bar = ""; for(var i=0; i<10; i++) bar += (i < fill) ? "█" : "░"; return bar; },
         render: function(state) {
-            var t = state.me; var cU = ContentManager.battle.ui;
-            var ui = "『 " + cU.boardTitle.replace("{turn}", state.turn) + " 』\n━━━━━━━━━━━━━━\n[ 👤 내 정보 (" + t.champ + ") ]\n";
-            ui += "🆙 Lv." + t.level + " [" + this.getBar(t.exp) + "] " + t.exp + "%\n🩸 HP: " + t.hp + " / " + t.hw.hp + "\n💧 MP: " + t.mp + " / " + t.hw.mp + "\n";
-            ui += "💰 골드: " + t.gold + " G\n\n";
-            ui += "⏳ 스킬 현황\n";
-            ui += "- Q(Lv."+t.skLv.q+") | W(Lv."+t.skLv.w+") | E(Lv."+t.skLv.e+")\n";
-            var rState = (t.level < 6) ? "잠김" : (t.cd.r <= 0 ? "준비 완료" : t.cd.r + "초");
-            ui += "- 궁극기 R(Lv."+t.skLv.r+"): " + rState + "\n━━━━━━━━━━━━━━\n";
+            var isMe = (state.viewTab === "ME");
+            var t = isMe ? state.me : state.ai; 
+            var cU = ContentManager.battle.ui;
             
-            if (t.sp > 0) ui += "✨ [스킬 강화 가능! 포인트: " + t.sp + "]\n\n";
-            ui += "💡 [ 대기실 메뉴 ]\n[ 정보 탭 ]\n0. 🤖 적 정보  9. 🔍 내 상세 스탯\n\n[ 이번 턴 전략 ]\n1. 공격  2. 파밍  3. 귀환\n\n";
-            if (t.sp > 0) ui += "[ 챔피언 성장 ]\n5. 🆙 스킬 레벨업 (SP 투자)\n\n";
-            ui += "[ 턴 시작 ]\n4. ✅ 준비 완료\n\n[ ✖항복 (로비로) ]";
-            return ui;
+            var content = "[ " + (isMe ? "👤 내 정보" : "🤖 적(AI) 정보") + " (" + t.champ + ") ]\n";
+            content += "🆙 Lv." + t.level + " [" + this.getBar(t.exp) + "] " + t.exp + "%\n";
+            content += "🩸 HP: " + t.hp + " / " + t.hw.hp + "\n💧 MP: " + t.mp + " / " + t.hw.mp + "\n";
+            content += "💰 골드: " + t.gold + " G\n\n";
+            
+            content += "⏳ 스킬 현황\n";
+            content += "- Q(Lv."+t.skLv.q+") | W(Lv."+t.skLv.w+") | E(Lv."+t.skLv.e+")\n";
+            var rState = (t.level < 6) ? "잠김" : (t.cd.r <= 0 ? "준비 완료" : t.cd.r + "초");
+            content += "- 궁극기 R(Lv."+t.skLv.r+"): " + rState + "\n";
+            
+            if (isMe && t.sp > 0) content += "\n✨ [스킬 강화 가능! 포인트: " + t.sp + "]\n";
+            
+            var stratName = ["없음 (선택 필요)", "⚔️ 공격적인 라인전", "🛡️ 안정적인 파밍", "🏠 귀환 및 정비"][state.strat || 0];
+            content += "\n💡 [ 대기실 메뉴 ]\n";
+            content += "▶ 현재 선택된 전략: [ " + stratName + " ]\n\n";
+            
+            content += "[ 정보 탭 ]\n0. " + (isMe ? "🤖 적 정보 보기" : "👤 내 정보 보기") + "  9. 🔍 내 상세 스탯\n\n";
+            content += "[ 이번 턴 전략 ]\n1. 공격  2. 파밍  3. 귀환\n\n";
+            if (isMe && t.sp > 0) content += "[ 챔피언 성장 ]\n5. 🆙 스킬 레벨업 (SP 투자)\n\n";
+            content += "[ 턴 시작 ]\n4. ✅ 준비 완료";
+            
+            var title = cU.boardTitle.replace("{turn}", state.turn);
+            return LayoutManager.renderFrame(title, content, false, "원하는 행동의 번호를 입력하세요.\n(로비로 돌아가려면 '항복' 입력)");
         },
         renderDetail: function(t) {
             var cU = ContentManager.battle.ui;
-            var ui = "『 " + cU.detailTitle + " 』\n━━━━━━━━━━━━━━\n[ 👤 챔피언: "+t.champ+" (Lv."+t.level+") ]\n\n";
-            ui += "⚔️ [ 공격 능력치 ]\n- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n- 물관: "+t.hw.lethality+" ("+t.hw.arPenPer+"%) | 마관: "+t.hw.mPenFlat+" ("+t.hw.mPenPer+"%)\n- 공속: "+t.hw.as+" | 치명타: "+t.hw.crit+"%\n\n";
-            ui += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
-            ui += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
-            ui += "🎒 [ 보유 아이템 ]\n(상점 시스템 업데이트 예정)\n━━━━━━━━━━━━━━\n0. 🔙 기본 현황판으로 돌아가기";
-            return ui;
+            var content = "[ 👤 챔피언: "+t.champ+" (Lv."+t.level+") ]\n\n";
+            content += "⚔️ [ 공격 능력치 ]\n- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n- 물관: "+t.hw.lethality+" ("+t.hw.arPenPer+"%) | 마관: "+t.hw.mPenFlat+" ("+t.hw.mPenPer+"%)\n- 공속: "+t.hw.as+" | 치명타: "+t.hw.crit+"%\n\n";
+            content += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
+            content += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
+            content += "🎒 [ 보유 아이템 ]\n(상점 업데이트 예정)";
+            
+            return LayoutManager.renderFrame(cU.detailTitle, content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
         },
         renderSkillUp: function(t) {
             var cU = ContentManager.battle.ui;
-            var ui = "『 " + cU.skillUpTitle + " 』\n보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
-            ui += "1. Q - " + t.hw.skills.q.n + " (현재 Lv." + t.skLv.q + ")\n";
-            ui += "2. W - " + t.hw.skills.w.n + " (현재 Lv." + t.skLv.w + ")\n";
-            ui += "3. E - " + t.hw.skills.e.n + " (현재 Lv." + t.skLv.e + ")\n";
-            ui += "4. R - " + t.hw.skills.r.n + " (현재 Lv." + t.skLv.r + ")\n\n0. 🔙 돌아가기";
-            return ui;
+            var content = "보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
+            content += "1. Q - " + t.hw.skills.q.n + " (현재 Lv." + t.skLv.q + ")\n";
+            content += "2. W - " + t.hw.skills.w.n + " (현재 Lv." + t.skLv.w + ")\n";
+            content += "3. E - " + t.hw.skills.e.n + " (현재 Lv." + t.skLv.e + ")\n";
+            content += "4. R - " + t.hw.skills.r.n + " (현재 Lv." + t.skLv.r + ")\n";
+            
+            return LayoutManager.renderFrame(cU.skillUpTitle, content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
         }
     }
 };
@@ -287,7 +308,6 @@ var BattleView = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 💾 [2. MODEL] 데이터, 상태 관리, 게임 핵심 로직
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 var ChampionData = {
     // 🛡️ [탱커]
     "뽀삐": { role: "탱커", type: "AD", range: 125, spd: 345, hp: 610, hpRegen: 8.0, mp: 280, mpRegen: 7.0, baseAd: 64, def: 38, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0,
@@ -630,7 +650,7 @@ var BattleEngine = {
         var mRawDmg = 0, aRawDmg = 0;
         var mHitCount = 0, aHitCount = 0;
         var combatLogs = [];
-        var bLogs = ContentManager.battle.logs; // 🌟 중앙 집중된 텍스트 가져오기
+        var bLogs = ContentManager.battle.logs;
         
         me.status = me.status || {}; ai.status = ai.status || {};
         me.status.isAttacking = false; ai.status.isAttacking = false;
@@ -770,7 +790,6 @@ var BattleEngine = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎮 [3. CONTROLLER] 라우팅 및 유저 입력 핸들러
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 var PrevScreenMap = {
     "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
     "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
@@ -779,8 +798,8 @@ var PrevScreenMap = {
     "SHOP_MAIN": "MAIN", "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_MAIN", "USER_INQUIRY": "MAIN",
     "MODE_SELECT": "MAIN", "BATTLE_PICK": "MODE_SELECT",
     "ADMIN_SYS_INFO": "ADMIN_MAIN", "ADMIN_INQUIRY_LIST": "ADMIN_MAIN", "ADMIN_USER_SELECT": "ADMIN_MAIN",
-    "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT", "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL",
-    "ADMIN_ACTION_CONFIRM": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT", 
+    "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT", "ADMIN_ACTION_CONFIRM": "ADMIN_USER_DETAIL", 
+    "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT", 
     "ADMIN_EDIT_INPUT_CONFIRM": "ADMIN_EDIT_INPUT", "ADMIN_INQUIRY_DETAIL": "ADMIN_INQUIRY_LIST", 
     "ADMIN_INQUIRY_REPLY": "ADMIN_INQUIRY_DETAIL"
 };
@@ -894,8 +913,7 @@ var UserController = {
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
                 replier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
                 
-                // 🌟 Thread 안전 변수 캡처 (오류 방지)
-                var roomStr = String(room), senderStr = String(sender), uData = data; 
+                var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(data.stats)); 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
@@ -907,10 +925,9 @@ var UserController = {
                                 
                                 s = SessionManager.get(roomStr, senderStr); 
                                 s.screen = "BATTLE_PICK"; SessionManager.save();
-                                // 🌟 자동으로 화면 전환 호출!
-                                BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, uData);
+                                BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, {inventory: Database.data[s.tempId].inventory, stats: uStats});
                             }
-                        } catch(e) {}
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 매칭 스레드 오류: " + e); }
                     }
                 })).start();
                 return;
@@ -1123,7 +1140,6 @@ var BattleController = {
         if (!session.battle) session.battle = {};
 
         if (msg === "refresh_screen") {
-            // 🌟 도배 방지를 위해 렌더링 스킵
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
             
             if (session.screen === "BATTLE_PICK") {
@@ -1144,8 +1160,9 @@ var BattleController = {
                 
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
                 
-                // 🌟 Thread 안전 변수 캡처 & VS 창 부활
-                var roomStr = String(room), senderStr = String(sender), uData = userData;
+                var roomStr = room + ""; 
+                var senderStr = sender + ""; 
+                var uStats = JSON.parse(JSON.stringify(userData.stats)); 
                 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
@@ -1158,19 +1175,26 @@ var BattleController = {
                                 var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
                                 cS.battle.instance = {
                                     viewTab: "ME", turn: 1, strat: 0,
-                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, mental: 100, hw: mHw, sw: uData.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1 },
+                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, mental: 100, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1 },
                                     ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, mental: 100, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0 }
                                 };
                                 SessionManager.save(); 
                                 
-                                // 🌟 VS 창 출력!
-                                var vsText = "🎯 [ " + senderStr + " ]\n🤖 " + cS.battle.myChamp + "\n\n━━━━━━━ VS ━━━━━━━\n\n🎯 [ AI Bot ]\n🤖 " + cS.battle.enemy.champion;
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.analyzed, vsText, false, "잠시 후 전투 현황판이 출력됩니다."));
+                                // 🌟 1. VS 대진표
+                                var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{aChamp}", cS.battle.enemy.champion);
+                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText, false, "전력을 분석중입니다..."));
                                 
-                                java.lang.Thread.sleep(2500); // VS 창 2.5초 감상
+                                java.lang.Thread.sleep(Config.Timers.vsScreen); 
+                                
+                                // 🌟 2. 전투 시작(협곡 진입)
+                                Api.replyRoom(roomStr, LayoutManager.renderAlert(cB.screen.start, cB.ui.battleStart, "잠시 후 전투 현황판이 출력됩니다."));
+                                
+                                java.lang.Thread.sleep(Config.Timers.battleStart);
+                                
+                                // 🌟 3. 현황판
                                 Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
                             }
-                        } catch(e) {}
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e); }
                     }
                 })).start();
                 return; 
@@ -1204,19 +1228,31 @@ var BattleController = {
 
         if (session.screen === "BATTLE_MAIN") {
             var state = session.battle.instance;
-            if (msg === "0") { state.viewTab = (state.viewTab === "ME") ? "ENEMY" : "ME"; return replier.reply(vB.render(state)); }
+            
+            // 🌟 내 정보 <-> 적 정보 탭 변경
+            if (msg === "0") { 
+                state.viewTab = (state.viewTab === "ME") ? "ENEMY" : "ME"; 
+                SessionManager.save(); 
+                return replier.reply(vB.render(state)); 
+            }
             if (msg === "9") { session.screen = "BATTLE_DETAIL"; SessionManager.save(); return replier.reply(vB.renderDetail(state.me)); }
             if (msg === "5" && state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
             
-            if (msg === "1" || msg === "2" || msg === "3") { state.strat = parseInt(msg); return replier.reply(vB.render(state)); }
+            // 🌟 현재 전략 선택 표시 반영
+            if (msg === "1" || msg === "2" || msg === "3") { 
+                state.strat = parseInt(msg); 
+                SessionManager.save();
+                return replier.reply(vB.render(state)); 
+            }
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
+            // 🌟 턴 시작
             if (msg === "4") {
                 if (state.strat === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg));
                 if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg));
 
                 var stratMe = state.strat; state.strat = 0; 
-                var roomStr = String(room); var sessionKey = SessionManager.getKey(roomStr, String(sender));
+                var roomStr = room + ""; var senderStr = sender + ""; var sessionKey = SessionManager.getKey(roomStr, senderStr);
 
                 replier.reply(LayoutManager.renderAlert(cB.ui.lckStartTitle.replace("{turn}", state.turn), cB.ui.lckStartMsg.replace("{sec}", Config.Timers.phaseDelay/1000), cB.ui.watchNext));
 
@@ -1248,14 +1284,19 @@ var BattleController = {
 
                             java.lang.Thread.sleep(Config.Timers.gameOver); 
                             if (st.me.mental <= 0 || st.ai.mental <= 0 || st.turn >= 18) {
-                                var isWin = (st.ai.mental <= 0) || (st.me.mental > st.ai.mental); var reward = isWin ? 150 : 50; userData.gold += reward; Database.save();
+                                var isWin = (st.ai.mental <= 0) || (st.me.mental > st.ai.mental); 
+                                var reward = isWin ? 150 : 50; 
+                                
+                                // 🌟 유저 데이터 안전하게 직접 저장
+                                Database.data[cS.tempId].gold += reward; 
+                                Database.save();
                                 
                                 var endContent = (isWin ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + reward + " G";
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
                                 
-                                SessionManager.reset(roomStr, String(sender)); var endS = SessionManager.get(roomStr, String(sender)); endS.tempId = cS.tempId; SessionManager.save();
+                                SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
                                 java.lang.Thread.sleep(Config.Timers.systemAction); 
-                                return UserController.handle("refresh_screen", endS, sender, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
+                                return UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
                             }
 
                             var expGain = (stratMe === 3) ? 0 : (stratMe === 2 && turnTotalGold <= 100) ? 70 : 100; 
@@ -1270,14 +1311,13 @@ var BattleController = {
                             }
 
                             st.turn++; st.viewTab = "ME"; SessionManager.save();
-                            Api.replyRoom(roomStr, BattleView.Board.render(st));
-                        } catch(e) {}
+                            Api.replyRoom(roomStr, vB.render(st));
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 전투 중계 오류: " + e); }
                     }
                 })).start();
                 return;
             }
         }
-        // 🌟 도배 시 응답 없음 처리 (조용히 무시)
         if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
     }
 };
