@@ -1,21 +1,31 @@
 /*
- * 🏰 소환사의 협곡 Bot - v3.0 (MVC Architecture & LCK Engine)
- * - [M] Model: 데이터베이스, 세션, 스탯, 전투 연산 엔진 (Engine, Mechanics)
- * - [V] View: 화면 레이아웃, 대사, 전투 중계 (Director, Board)
- * - [C] Controller: 라우팅, 유저 입력 처리, 화면 전환 (Handlers)
- */   
+ * 🏰 소환사의 협곡 Bot - v3.2 (MVC & Centralized Content)
+ * - [M] Model: 데이터베이스, 세션, 스탯, 전투 연산 엔진
+ * - [V] View: 레이아웃, 대사, 전투 중계 (ContentManager에 완벽 통합)
+ * - [C] Controller: 라우팅, 유저 입력 처리, 화면 전환
+ */  
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v3.0 MVC Edition",
+    Version: "v3.2 Final Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "sdcard/msgbot/Bots/main/sessions.json",
     LINE_CHAR: "━", FIXED_LINE: 15, WRAP_LIMIT: 18, 
-    TIMEOUT_MS: 300000 // 5분
+    TIMEOUT_MS: 300000, 
+    
+    // ⏳ [핵심 설정] 창 유지 및 진행 딜레이 시간 (1000 = 1초)
+    Timers: {
+        matchSearch: 2500,  // [매칭중] 화면 유지 시간
+        matchFound: 1000,   // [매칭 완료] 팝업 후 픽창 이동 대기
+        loading: 2000,      // [로딩중] 픽 완료 후 진입 대기
+        phaseDelay: 10000,  // ⚔️ 페이즈별 전투 중계 간격 (10초)
+        gameOver: 4000,     // [게임 종료] 결과창 유지 시간
+        systemAction: 1200  // 일반 UI 전환 대기 시간
+    }
 };
 
 var MAX_LEVEL = 30;
@@ -67,12 +77,218 @@ var Utils = {
     }
 };
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🎨 [1. VIEW] 텍스트 콘텐츠 관리 (ContentManager & Layout)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+var ContentManager = {
+    menus: {
+        guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
+        main: ["1. 내 정보", "2. 컬렉션 확인", "3. 대전 모드", "4. 상점 이용", "5. 운영진 문의", "6. 로그아웃"],
+        modeSelect: ["1. AI 대전", "2. 유저 PVP - (준비중)"],
+        profileSub: ["1. 능력치 강화", "2. 능력치 초기화"],
+        stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
+        shopMain: ["1. 아이템 상점", "2. 챔피언 상점"],
+        shopItems: ["1. 닉네임 변경권 (500G)", "2. 스탯 초기화권 (1500G)"],
+        adminUser: ["1. 정보 수정", "2. 데이터 초기화", "3. 계정 삭제", "4. 차단/해제"],
+        adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"],
+        yesNo: ["1. 예", "2. 아니오"],
+        adminInqDetail: ["1. 답변 전송", "2. 문의 삭제"],
+        getAdminMain: function(unreadCount) { return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")]; }
+    },
+    adminMap: { editType: { "1": "gold", "2": "lp", "3": "level" }, editName: { "gold": "골드", "lp": "LP", "level": "레벨" }, actionName: { "2": "데이터 초기화", "3": "계정 삭제", "4": "차단/해제" } },
+    screen: {
+        gMain: "비회원 메뉴", joinId: "회원가입", joinPw: "비밀번호 설정", loginId: "로그인", loginPw: "로그인",
+        inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 확인",
+        resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
+        shopItem: "아이템 상점", shopChamp: "챔피언 상점 (500G)", modeSel: "대전 모드 선택",
+        aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 확인",
+        aInqList: "문의 목록", aInqDet: "문의 상세", aInqRep: "답변 작성", aUserDetail: " 관리",
+        aEditSel: "정보 수정", aEditIn: "값 수정", aEditCon: "수정 확인"
+    },
+    footer: {
+        selectNum: "번호를 선택하세요.", inputId: "아이디 입력", inputPw: "비밀번호 입력", inputContent: "내용 입력",
+        selectAction: "작업을 선택하세요.", selectStat: "강화할 스탯 선택", inputPoint: "투자할 포인트를 입력하세요.",
+        inputTitle: "장착할 칭호 이름을 정확히 입력해 주세요.", checkList: "목록 확인 완료",
+        selectCat: "상점 카테고리를 선택하세요.", inputBuyNum: "구매할 번호를 입력하세요.", inputHireNum: "구입할 번호를 입력하세요.",
+        aSelectUser: "유저 번호 입력", aInputInq: "문의 번호 입력", aInputRep: "답변 내용을 입력하세요.",
+        reStart: "다시 시작하려면 '메뉴'를 입력하세요.", sysNotify: "시스템 알림", wait: "잠시만 기다려주세요..."
+    },
+    title: { error: "오류", fail: "실패", success: "성공", complete: "완료", notice: "알림", sysError: "시스템 오류" },
+    statMap: { keys: {"1":"acc", "2":"ref", "3":"com", "4":"int"}, names: {"1":"정확", "2":"반응", "3":"침착", "4":"직관"} },
+    ui: { replyMark: "🔔 [운영진 답변 도착]", sender: "👤 보낸이: ", date: "📅 날짜: ", time: "⏰ 시간: ", read: " ✅ ", unread: " ⬜ ", datePrefix: "📅 [", dateSuffix: "]", pTarget: "👤 대상: ", pTitle: "🏅 칭호: [", pTier: "🏅 티어: ", pLp: "🏆 점수: ", pGold: "💰 골드: ", pRecord: "⚔️ 전적: ", pLevel: "🆙 레벨: Lv.", pExp: "🔷 경험: ", pStatH: " [ 상세 능력치 ]", pAcc: "🎯 정확: ", pRef: "⚡ 반응: ", pCom: "🧘 침착: ", pInt: "🧠 직관: ", pPoint: "✨ 포인트: " },
+    msg: {
+        welcome: "소환사의 협곡에 오신 것을 환영합니다.\n원하시는 기능을 선택해 주세요.",
+        inputID_Join: "사용하실 아이디를 입력해 주세요.", inputID_Login: "로그인할 아이디를 입력해 주세요.", inputPW: "비밀번호를 입력해 주세요.",
+        registerComplete: "가입이 완료되었습니다!\n자동으로 로그인됩니다.", loginFail: "정보가 일치하지 않습니다.",
+        notEnoughGold: "골드가 부족합니다.", onlyNumber: "숫자만 입력해 주세요.",
+        invalidLevel: "레벨은 1부터 " + MAX_LEVEL + "까지만 설정할 수 있습니다.",
+        banned: "🚫 이용이 제한된 계정입니다.", inputNewVal: "새로운 값을 입력하세요.",
+        noChamp: "🚫 보유 중인 챔피언이 없어 출전할 수 없습니다.\n먼저 상점에서 챔피언을 영입해 주세요.",
+        pvpPrep: "랭크 게임은 현재 시스템 점검 중입니다.",
+        cancel: "작업을 중단하고 대기 상태로 전환합니다.", timeout: "⌛ 세션이 만료되었습니다.",
+        noPrevious: "이전 단계가 없습니다.", logout: "성공적으로 로그아웃되었습니다.",
+        noItem: "보유 중인 스탯 초기화권이 없습니다.", statResetSuccess: "스탯이 초기화되었습니다.",
+        noTitleError: "보유하지 않은 칭호입니다.", titleEquipSuccess: function(t) { return "칭호가 [" + t + "](으)로 변경되었습니다."; },
+        buySuccess: function(item) { return item + " 구매 완료!"; },
+        champFail: "이미 보유 중이거나 골드가 부족합니다.", champSuccess: function(c) { return c + "님이 합류했습니다!"; },
+        statResetConfirm: function(count) { return "능력치를 초기화하시겠습니까?\n보유권: " + count + "개"; },
+        statEnhanceConfirm: function(stat, amt) { return "[" + stat + "] 능력치를 " + amt + "만큼 강화하시겠습니까?"; },
+        statEnhanceSuccess: function(stat, amt) { return stat + " 수치가 " + amt + " 상승했습니다."; },
+        inqSubmitSuccess: "문의가 접수되었습니다.", notifyNewUser: function(id) { return "📢 [신규] " + id + "님 가입"; },
+        notifyNewInq: function(sender) { return "🔔 새 문의: " + sender; },
+        adminNoUser: "유저가 없습니다.", adminNoInq: "문의가 없습니다.",
+        adminSysInfo: function(used, users, ver) { return "📟 메모리: " + used + "MB\n👥 유저: " + users + "명\n🛡️ 버전: " + ver; },
+        adminEditConfirm: function(type, val) { return "[" + type + "] 수치를 " + val + "(으)로 수정하시겠습니까?"; },
+        adminActionConfirm: function(action) { return "[" + action + "] 작업을 진행하시겠습니까?"; },
+        adminCancel: "취소합니다.", adminInitSuccess: "초기화 완료.", adminDelSuccess: "계정 삭제 완료.", adminBanSuccess: "차단 상태 변경.",
+        adminInqDelSuccess: "문의 삭제 완료.", adminReplySuccess: "답변 전송 완료.", adminEditSuccess: "수정 완료.", adminEditCancel: "수정 취소.",
+        adminNotifyInit: "계정 초기화됨.", adminNotifyDelete: "계정 삭제됨.", adminNotifyBan: "차단됨.", adminNotifyUnban: "차단 해제됨.",
+        adminNotifyEdit: function(type, val) { return "[" + type + "] " + val + "(으)로 수정됨."; },
+        sysErrorLog: function(e) { return ["⛔ 오류 발생!", "💬 내용: " + e.message].join("\n"); }
+    },
+    
+    // 🌟 [신규 분리] 전투 시스템 전용 UI 및 텍스트 모음
+    battle: {
+        director: {
+            Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 아~ {myChamp}! 완벽한 카이팅! 적은 닿지도 않습니다!", Assassinate: "🎙️ 캐스터: 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 라인 한가운데서 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 딜교환 실패! 스킬이 빗나가며 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 양 선수 모두 화려한 무빙! 주요 스킬이 허공을 가릅니다!" },
+            Defensive: { NormalFarm: "🎙️ 해설: {myChamp} 선수, 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 대포 미니언!! 대포를 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 챙기는 틈을 타 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 콤보는 다 맞았어요!" },
+            baseRecall: "🏠 우물로 귀환하여 전열을 가다듬습니다."
+        },
+        screen: {
+            match: "매칭 대기열", pick: "전투 준비", load: "로딩중", detail: "상세 스탯 정보", skillUp: "스킬 강화",
+            phasePrefix: "⏱️ ", phaseSuffix: "페이즈 현장 중계", end: "🏆 게임 종료!"
+        },
+        ui: {
+            findMsg: "🔍 상대를 탐색합니다...", searching: "상대를 탐색하는 중입니다...",
+            matchOk: "✅ 매칭 완료!", matchFoundInfo: "잠시 후 픽창으로 이동합니다.",
+            loadRift: "⏳ 소환사의 협곡으로 진입합니다...", pickIntro: "출전할 챔피언 선택:\n\n",
+            boardTitle: "📊 라인전 현황판 [ {turn}턴 ]", detailTitle: "🔍 상세 스탯 및 장비 창", skillUpTitle: "🆙 스킬 레벨업",
+            lckStartTitle: "⚔️ {turn}턴 LCK 교전 중계 시작", lckStartMsg: "약 {sec}초 간격으로 현장 상황이 중계됩니다.",
+            watchNext: "다음 상황을 지켜봅니다...", endWait: "잠시 후 로비로 돌아갑니다.",
+            win: "🎉 승리했습니다!", lose: "☠️ 패배했습니다..."
+        },
+        logs: {
+            baseHeal: "🏠 우물에 도착하여 아이템을 정비하고 체력과 마나를 회복합니다.",
+            hitMe: "⏱️[{sec}초] 🔹 [{champ}]의 [{skill}] 적중! {fxLog}",
+            missMe: "⏱️[{sec}초] 💨 [{champ}]의 [{skill}] 빗나감!",
+            hitAi: "⏱️[{sec}초] 🔸 적 [{champ}]의 [{skill}] 적중! {fxLog}",
+            noAction: "💤 30초간 팽팽한 눈치싸움만 벌어지며 서로 유효타가 없었습니다.",
+            skipMiddle: "... (중략) 치열한 난타전이 이어집니다!",
+            farm: "💰 [CS 막타] 근거리 {m}/3, 원거리 {c}/3{s} (총 {g}G)",
+            farmMissed: "❌ 라인을 비운 사이 적이 미니언을 타워에 밀어넣습니다.",
+            cannonOk: ", 대포 1/1", cannonFail: ", ❌대포 놓침",
+            killMe: "\n\n☠️ 솔로 킬을 당했습니다! (멘탈 -20)",
+            killAi: "\n\n🔥 적을 솔로 킬 냈습니다! (적 멘탈 -20)"
+        },
+        alerts: {
+            noSp: { title: "스킬 강화 불가", msg: "⚠️ 스킬 포인트(SP)가 부족합니다." },
+            reqLvl6: { title: "스킬 강화 불가", msg: "⚠️ 궁극기(R)는 6레벨 이상부터 배울 수 있습니다." },
+            maxLvl: { title: "스킬 강화 불가", msg: "⚠️ 이미 최대 레벨입니다." },
+            skillUpOk: { title: "스킬 강화 완료", msg: "✨ [{skill}] 스킬이 Lv.{lvl}(으)로 강화되었습니다!" },
+            noStrat: { title: "전투 시작 불가", msg: "⚠️ 전략을 먼저 선택하세요! (1, 2, 3)" },
+            noSkill: { title: "전투 시작 불가", msg: "⚠️ 전투 시작 전 [5. 스킬 레벨업]에서 스킬을 먼저 배워주세요!" },
+            noPrev: { title: "이전 불가", msg: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)" }
+        }
+    }
+};
+
+var LayoutManager = {
+    renderFrame: function(title, content, showNav, footer) {
+        var div = Utils.getFixedDivider();
+        var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content);
+        if (showNav === true) res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
+        else if (Array.isArray(showNav)) res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
+        if (footer) res += "\n" + div + "\n💡 " + Utils.wrapText(footer).replace(/\n/g, "\n   ");
+        return res;
+    },
+    renderAlert: function(title, content, footer) { 
+        return this.renderFrame(title, content, false, footer || ContentManager.footer.wait); 
+    },
+    renderProfileHead: function(data, targetName) {
+        var div = Utils.getFixedDivider(), u = ContentManager.ui, tier = Utils.getTierInfo(data.lp);
+        var win = data.win || 0, lose = data.lose || 0, total = win + lose, winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
+        var st = data.stats, expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
+        return [
+            u.pTarget + targetName + (data.banned ? " [🚫차단]" : ""), u.pTitle + data.title + "]", div,
+            u.pTier + tier.icon + tier.name, u.pLp + data.lp + " LP", u.pGold + (data.gold || 0).toLocaleString() + " G",
+            u.pRecord + win + "승 " + lose + "패 (" + winRate + "%)", u.pLevel + data.level, u.pExp + expDisplay + ")", div,
+            u.pStatH, u.pAcc + st.acc, u.pRef + st.ref, u.pCom + st.com, u.pInt + st.int, div, u.pPoint + (data.point || 0) + " P"
+        ].join("\n");
+    },
+    templates: {
+        menuList: function(subtitle, items) { return " " + (items || []).join("\n "); },
+        inputRequest: function(subtitle, currentVal, info) { return [" 현재 상태 : " + currentVal, " " + info, "", " 값을 입력하세요."].join("\n"); }
+    }
+};
+
+var BattleDirector = {
+    generateLog: function(ctx) {
+        var bDir = ContentManager.battle.director;
+        var totalDmg = ctx.mDmg + ctx.aDmg; var txt = "";
+        if (ctx.strat === 1) { 
+            if (ctx.mHits > ctx.aHits * 2) txt = bDir.Aggressive.Kiting;
+            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (totalDmg < 150) ? bDir.Aggressive.MildTrade : bDir.Aggressive.Bloodbath;
+            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = bDir.Aggressive.Countered;
+            else txt = bDir.Aggressive.MissAll;
+        } else if (ctx.strat === 2) {
+            if (ctx.isCannonPhase && !ctx.gotCannon) txt = bDir.Defensive.CannonMissed;
+            else {
+                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (totalDmg < 50) ? bDir.Defensive.NormalFarm : bDir.Defensive.PerfectCS;
+                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = bDir.Defensive.GreedyCS;
+                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = bDir.Defensive.ZonedOut;
+                else txt = bDir.Defensive.Disaster;
+            }
+        } else return bDir.baseRecall;
+        return txt.replace(/{myChamp}/g, ctx.myChamp).replace(/{aiChamp}/g, ctx.aiChamp);
+    }
+};
+
+var BattleView = { 
+    Board: {
+        getBar: function(exp) { var fill = Math.floor(exp / 10); var bar = ""; for(var i=0; i<10; i++) bar += (i < fill) ? "█" : "░"; return bar; },
+        render: function(state) {
+            var t = state.me; var cU = ContentManager.battle.ui;
+            var ui = "『 " + cU.boardTitle.replace("{turn}", state.turn) + " 』\n━━━━━━━━━━━━━━\n[ 👤 내 정보 (" + t.champ + ") ]\n";
+            ui += "🆙 Lv." + t.level + " [" + this.getBar(t.exp) + "] " + t.exp + "%\n🩸 HP: " + t.hp + " / " + t.hw.hp + "\n💧 MP: " + t.mp + " / " + t.hw.mp + "\n";
+            ui += "💰 골드: " + t.gold + " G\n\n";
+            ui += "⏳ 스킬 현황\n";
+            ui += "- Q(Lv."+t.skLv.q+") | W(Lv."+t.skLv.w+") | E(Lv."+t.skLv.e+")\n";
+            var rState = (t.level < 6) ? "잠김" : (t.cd.r <= 0 ? "준비 완료" : t.cd.r + "초");
+            ui += "- 궁극기 R(Lv."+t.skLv.r+"): " + rState + "\n━━━━━━━━━━━━━━\n";
+            
+            if (t.sp > 0) ui += "✨ [스킬 강화 가능! 포인트: " + t.sp + "]\n\n";
+            ui += "💡 [ 대기실 메뉴 ]\n[ 정보 탭 ]\n0. 🤖 적 정보  9. 🔍 내 상세 스탯\n\n[ 이번 턴 전략 ]\n1. 공격  2. 파밍  3. 귀환\n\n";
+            if (t.sp > 0) ui += "[ 챔피언 성장 ]\n5. 🆙 스킬 레벨업 (SP 투자)\n\n";
+            ui += "[ 턴 시작 ]\n4. ✅ 준비 완료\n\n[ ✖항복 (로비로) ]";
+            return ui;
+        },
+        renderDetail: function(t) {
+            var cU = ContentManager.battle.ui;
+            var ui = "『 " + cU.detailTitle + " 』\n━━━━━━━━━━━━━━\n[ 👤 챔피언: "+t.champ+" (Lv."+t.level+") ]\n\n";
+            ui += "⚔️ [ 공격 능력치 ]\n- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n- 물관: "+t.hw.lethality+" ("+t.hw.arPenPer+"%) | 마관: "+t.hw.mPenFlat+" ("+t.hw.mPenPer+"%)\n- 공속: "+t.hw.as+" | 치명타: "+t.hw.crit+"%\n\n";
+            ui += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
+            ui += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
+            ui += "🎒 [ 보유 아이템 ]\n(상점 시스템 업데이트 예정)\n━━━━━━━━━━━━━━\n0. 🔙 기본 현황판으로 돌아가기";
+            return ui;
+        },
+        renderSkillUp: function(t) {
+            var cU = ContentManager.battle.ui;
+            var ui = "『 " + cU.skillUpTitle + " 』\n보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
+            ui += "1. Q - " + t.hw.skills.q.n + " (현재 Lv." + t.skLv.q + ")\n";
+            ui += "2. W - " + t.hw.skills.w.n + " (현재 Lv." + t.skLv.w + ")\n";
+            ui += "3. E - " + t.hw.skills.e.n + " (현재 Lv." + t.skLv.e + ")\n";
+            ui += "4. R - " + t.hw.skills.r.n + " (현재 Lv." + t.skLv.r + ")\n\n0. 🔙 돌아가기";
+            return ui;
+        }
+    }
+};
+
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💾 [1. MODEL] 데이터, 상태 관리, 게임 핵심 로직 (Engine)
+// 💾 [2. MODEL] 데이터, 상태 관리, 게임 핵심 로직
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// 📊 1-1. 챔피언 마스터 데이터베이스
 var ChampionData = {
     // 🛡️ [탱커]
     "뽀삐": { role: "탱커", type: "AD", range: 125, spd: 345, hp: 610, hpRegen: 8.0, mp: 280, mpRegen: 7.0, baseAd: 64, def: 38, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0,
@@ -232,7 +448,6 @@ var ChampionData = {
 };
 var ChampionList = Object.keys(ChampionData);
 
-// 💾 1-2. 데이터베이스 매니저
 var Database = {
     data: {}, inquiries: [], isLoaded: false,
     load: function() {
@@ -271,7 +486,6 @@ var Database = {
     }
 };
 
-// 💾 1-3. 세션 매니저
 var SessionManager = {
     sessions: {}, isLoaded: false,
     init: function() {
@@ -343,7 +557,6 @@ var SessionManager = {
 
 SessionManager.init();
 
-// ⚙️ 1-4. 스킬 효과 메커니즘 
 var SkillMechanics = {
     apply: function(effect, caster, target, dmg) {
         caster.status = caster.status || {}; target.status = target.status || {};
@@ -369,7 +582,6 @@ var SkillMechanics = {
     }
 };
 
-// ⚙️ 1-5. 배틀 엔진 코어 (시간, AI, 데미지 연산)
 var BattleEngine = {
     generateAI: function() {
         var rChamp = ChampionList[Math.floor(Math.random() * ChampionList.length)];
@@ -419,13 +631,14 @@ var BattleEngine = {
         var mRawDmg = 0, aRawDmg = 0;
         var mHitCount = 0, aHitCount = 0;
         var combatLogs = [];
+        var bLogs = ContentManager.battle.logs; // 🌟 중앙 집중된 텍스트 가져오기
         
         me.status = me.status || {}; ai.status = ai.status || {};
         me.status.isAttacking = false; ai.status.isAttacking = false;
 
         if (stratMe === 3) {
             me.cd = {q:0, w:0, e:0, r:0};
-            combatLogs.push("🏠 우물에 도착하여 아이템을 정비하고 체력과 마나를 회복합니다.");
+            combatLogs.push(bLogs.baseHeal);
         } else {
             var isAggress = (stratMe === 1);
             
@@ -461,9 +674,9 @@ var BattleEngine = {
                                     if(ai.status.invincibleDur > 0) dmg = 0;
                                     aRawDmg += dmg;
                                     var fxLog = SkillMechanics.apply(skObj.e, me, ai, dmg);
-                                    combatLogs.push("⏱️["+sec+"초] 🔹 ["+me.champ+"]의 ["+skObj.n+"] 적중! " + fxLog);
+                                    combatLogs.push(bLogs.hitMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
                                 } else {
-                                    combatLogs.push("⏱️["+sec+"초] 💨 ["+me.champ+"]의 ["+skObj.n+"] 빗나감!");
+                                    combatLogs.push(bLogs.missMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n));
                                 }
                                 break; 
                             }
@@ -497,7 +710,7 @@ var BattleEngine = {
                                     if(me.status.invincibleDur > 0) dmg = 0;
                                     mRawDmg += dmg;
                                     var fxLog = SkillMechanics.apply(skObj.e, ai, me, dmg);
-                                    combatLogs.push("⏱️["+sec+"초] 🔸 적 ["+ai.champ+"]의 ["+skObj.n+"] 적중! " + fxLog);
+                                    combatLogs.push(bLogs.hitAi.replace("{sec}", sec).replace("{champ}", ai.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
                                 }
                                 break;
                             }
@@ -536,16 +749,17 @@ var BattleEngine = {
             for(var m=0; m<wave.melee; m++) if(Math.random()*100 <= csChance) { kMelee++; mGold += 21; }
             for(var c=0; c<wave.caster; c++) if(Math.random()*100 <= csChance) { kCaster++; mGold += 14; }
             if(wave.siege > 0 && Math.random()*100 <= (csChance - 10)) { kSiege++; mGold += 60; }
-            farmLogs.push("💰 [CS 막타] 근거리 "+kMelee+"/3, 원거리 "+kCaster+"/3" + (isCannonPhase?(kSiege>0?", 대포 1/1":", ❌대포 놓침"):"") + " (총 "+mGold+"G)");
-        } else farmLogs.push("❌ 라인을 비운 사이 적이 미니언을 타워에 밀어넣습니다.");
+            var cnnStr = isCannonPhase ? (kSiege > 0 ? bLogs.cannonOk : bLogs.cannonFail) : "";
+            farmLogs.push(bLogs.farm.replace("{m}", kMelee).replace("{c}", kCaster).replace("{s}", cnnStr).replace("{g}", mGold));
+        } else farmLogs.push(bLogs.farmMissed);
 
         var csPercent = ((kMelee+kCaster+kSiege)/(wave.melee+wave.caster+wave.siege)) * 100;
         var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: (kSiege > 0), mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
 
-        if(combatLogs.length === 0) combatLogs.push("💤 30초간 팽팽한 눈치싸움만 벌어지며 서로 유효타가 없었습니다.");
+        if(combatLogs.length === 0) combatLogs.push(bLogs.noAction);
         if(combatLogs.length > 8) {
             var summary = combatLogs.slice(0, 3);
-            summary.push("... (중략) 치열한 난타전이 이어집니다!");
+            summary.push(bLogs.skipMiddle);
             summary.push(combatLogs[combatLogs.length-1]);
             combatLogs = summary;
         }
@@ -554,182 +768,10 @@ var BattleEngine = {
     }
 };
 
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎨 [2. VIEW] 화면 렌더링, 레이아웃, 해설 디렉터
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-// 🎨 2-1. 공통 콘텐츠 & UI 레이아웃 매니저
-var ContentManager = {
-    menus: {
-        guest: ["1. 회원가입", "2. 로그인", "3. 운영진 문의"],
-        main: ["1. 내 정보", "2. 컬렉션 확인", "3. 대전 모드", "4. 상점 이용", "5. 운영진 문의", "6. 로그아웃"],
-        modeSelect: ["1. AI 대전", "2. 유저 PVP - (준비중)"],
-        profileSub: ["1. 능력치 강화", "2. 능력치 초기화"],
-        stats: ["1. 정확", "2. 반응", "3. 침착", "4. 직관"],
-        shopMain: ["1. 아이템 상점", "2. 챔피언 상점"],
-        shopItems: ["1. 닉네임 변경권 (500G)", "2. 스탯 초기화권 (1500G)"],
-        adminUser: ["1. 정보 수정", "2. 데이터 초기화", "3. 계정 삭제", "4. 차단/해제"],
-        adminEdit: ["1. 골드 수정", "2. LP 수정", "3. 레벨 수정"],
-        yesNo: ["1. 예", "2. 아니오"],
-        adminInqDetail: ["1. 답변 전송", "2. 문의 삭제"],
-        getAdminMain: function(unreadCount) { return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")]; }
-    },
-    adminMap: { editType: { "1": "gold", "2": "lp", "3": "level" }, editName: { "gold": "골드", "lp": "LP", "level": "레벨" }, actionName: { "2": "데이터 초기화", "3": "계정 삭제", "4": "차단/해제" } },
-    screen: {
-        gMain: "비회원 메뉴", joinId: "회원가입", joinPw: "비밀번호 설정", loginId: "로그인", loginPw: "로그인",
-        inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 확인",
-        resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
-        shopItem: "아이템 상점", shopChamp: "챔피언 상점 (500G)", modeSel: "대전 모드 선택",
-        aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 확인",
-        aInqList: "문의 목록", aInqDet: "문의 상세", aInqRep: "답변 작성", aUserDetail: " 관리",
-        aEditSel: "정보 수정", aEditIn: "값 수정", aEditCon: "수정 확인"
-    },
-    footer: {
-        selectNum: "번호를 선택하세요.", inputId: "아이디 입력", inputPw: "비밀번호 입력", inputContent: "내용 입력",
-        selectAction: "작업을 선택하세요.", selectStat: "강화할 스탯 선택", inputPoint: "투자할 포인트를 입력하세요.",
-        inputTitle: "장착할 칭호 이름을 정확히 입력해 주세요.", checkList: "목록 확인 완료",
-        selectCat: "상점 카테고리를 선택하세요.", inputBuyNum: "구매할 번호를 입력하세요.", inputHireNum: "구입할 번호를 입력하세요.",
-        aSelectUser: "유저 번호 입력", aInputInq: "문의 번호 입력", aInputRep: "답변 내용을 입력하세요.",
-        reStart: "다시 시작하려면 '메뉴'를 입력하세요.", sysNotify: "시스템 알림", wait: "잠시만 기다려주세요..."
-    },
-    title: { error: "오류", fail: "실패", success: "성공", complete: "완료", notice: "알림", sysError: "시스템 오류" },
-    statMap: { keys: {"1":"acc", "2":"ref", "3":"com", "4":"int"}, names: {"1":"정확", "2":"반응", "3":"침착", "4":"직관"} },
-    ui: { replyMark: "🔔 [운영진 답변 도착]", sender: "👤 보낸이: ", date: "📅 날짜: ", time: "⏰ 시간: ", read: " ✅ ", unread: " ⬜ ", datePrefix: "📅 [", dateSuffix: "]", pTarget: "👤 대상: ", pTitle: "🏅 칭호: [", pTier: "🏅 티어: ", pLp: "🏆 점수: ", pGold: "💰 골드: ", pRecord: "⚔️ 전적: ", pLevel: "🆙 레벨: Lv.", pExp: "🔷 경험: ", pStatH: " [ 상세 능력치 ]", pAcc: "🎯 정확: ", pRef: "⚡ 반응: ", pCom: "🧘 침착: ", pInt: "🧠 직관: ", pPoint: "✨ 포인트: " },
-    msg: {
-        welcome: "소환사의 협곡에 오신 것을 환영합니다.\n원하시는 기능을 선택해 주세요.",
-        inputID_Join: "사용하실 아이디를 입력해 주세요.", inputID_Login: "로그인할 아이디를 입력해 주세요.", inputPW: "비밀번호를 입력해 주세요.",
-        registerComplete: "가입이 완료되었습니다!\n자동으로 로그인됩니다.", loginFail: "정보가 일치하지 않습니다.",
-        notEnoughGold: "골드가 부족합니다.", onlyNumber: "숫자만 입력해 주세요.",
-        invalidLevel: "레벨은 1부터 " + MAX_LEVEL + "까지만 설정할 수 있습니다.",
-        banned: "🚫 이용이 제한된 계정입니다.", inputNewVal: "새로운 값을 입력하세요.",
-        noChamp: "🚫 보유 중인 챔피언이 없어 출전할 수 없습니다.\n먼저 상점에서 챔피언을 영입해 주세요.",
-        pvpPrep: "랭크 게임은 현재 시스템 점검 중입니다.",
-        cancel: "작업을 중단하고 대기 상태로 전환합니다.", timeout: "⌛ 세션이 만료되었습니다.",
-        noPrevious: "이전 단계가 없습니다.", logout: "성공적으로 로그아웃되었습니다.",
-        noItem: "보유 중인 스탯 초기화권이 없습니다.", statResetSuccess: "스탯이 초기화되었습니다.",
-        noTitleError: "보유하지 않은 칭호입니다.", titleEquipSuccess: function(t) { return "칭호가 [" + t + "](으)로 변경되었습니다."; },
-        buySuccess: function(item) { return item + " 구매 완료!"; },
-        champFail: "이미 보유 중이거나 골드가 부족합니다.", champSuccess: function(c) { return c + "님이 합류했습니다!"; },
-        statResetConfirm: function(count) { return "능력치를 초기화하시겠습니까?\n보유권: " + count + "개"; },
-        statEnhanceConfirm: function(stat, amt) { return "[" + stat + "] 능력치를 " + amt + "만큼 강화하시겠습니까?"; },
-        statEnhanceSuccess: function(stat, amt) { return stat + " 수치가 " + amt + " 상승했습니다."; },
-        inqSubmitSuccess: "문의가 접수되었습니다.", notifyNewUser: function(id) { return "📢 [신규] " + id + "님 가입"; },
-        notifyNewInq: function(sender) { return "🔔 새 문의: " + sender; },
-        adminNoUser: "유저가 없습니다.", adminNoInq: "문의가 없습니다.",
-        adminSysInfo: function(used, users, ver) { return "📟 메모리: " + used + "MB\n👥 유저: " + users + "명\n🛡️ 버전: " + ver; },
-        adminEditConfirm: function(type, val) { return "[" + type + "] 수치를 " + val + "(으)로 수정하시겠습니까?"; },
-        adminActionConfirm: function(action) { return "[" + action + "] 작업을 진행하시겠습니까?"; },
-        adminCancel: "취소합니다.", adminInitSuccess: "초기화 완료.", adminDelSuccess: "계정 삭제 완료.", adminBanSuccess: "차단 상태 변경.",
-        adminInqDelSuccess: "문의 삭제 완료.", adminReplySuccess: "답변 전송 완료.", adminEditSuccess: "수정 완료.", adminEditCancel: "수정 취소.",
-        adminNotifyInit: "계정 초기화됨.", adminNotifyDelete: "계정 삭제됨.", adminNotifyBan: "차단됨.", adminNotifyUnban: "차단 해제됨.",
-        adminNotifyEdit: function(type, val) { return "[" + type + "] " + val + "(으)로 수정됨."; },
-        sysErrorLog: function(e) { return ["⛔ 오류 발생!", "💬 내용: " + e.message].join("\n"); }
-    }
-};
-
-var LayoutManager = {
-    renderFrame: function(title, content, showNav, footer) {
-        var div = Utils.getFixedDivider();
-        var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content);
-        if (showNav === true) res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
-        else if (Array.isArray(showNav)) res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
-        if (footer) res += "\n" + div + "\n💡 " + Utils.wrapText(footer).replace(/\n/g, "\n   ");
-        return res;
-    },
-    renderAlert: function(title, content) { return this.renderFrame(title, content, false, ContentManager.footer.wait); },
-    renderProfileHead: function(data, targetName) {
-        var div = Utils.getFixedDivider(), u = ContentManager.ui, tier = Utils.getTierInfo(data.lp);
-        var win = data.win || 0, lose = data.lose || 0, total = win + lose, winRate = total === 0 ? 0 : Math.floor((win / total) * 100);
-        var st = data.stats, expDisplay = (data.level >= MAX_LEVEL) ? "MAX" : data.exp + "/" + (data.level * 100);
-        return [
-            u.pTarget + targetName + (data.banned ? " [🚫차단]" : ""), u.pTitle + data.title + "]", div,
-            u.pTier + tier.icon + tier.name, u.pLp + data.lp + " LP", u.pGold + (data.gold || 0).toLocaleString() + " G",
-            u.pRecord + win + "승 " + lose + "패 (" + winRate + "%)", u.pLevel + data.level, u.pExp + expDisplay + ")", div,
-            u.pStatH, u.pAcc + st.acc, u.pRef + st.ref, u.pCom + st.com, u.pInt + st.int, div, u.pPoint + (data.point || 0) + " P"
-        ].join("\n");
-    },
-    templates: {
-        menuList: function(subtitle, items) { return " " + (items || []).join("\n "); },
-        inputRequest: function(subtitle, currentVal, info) { return [" 현재 상태 : " + currentVal, " " + info, "", " 값을 입력하세요."].join("\n"); }
-    }
-};
-
-// 🎙️ 2-2. 전투 해설 디렉터
-var BattleDirector = {
-    Templates: {
-        Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 아~ {myChamp}! 완벽한 카이팅! 적은 닿지도 않습니다!", Assassinate: "🎙️ 캐스터: 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 라인 한가운데서 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 딜교환 실패! 스킬이 빗나가며 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 양 선수 모두 화려한 무빙! 주요 스킬이 허공을 가릅니다!" },
-        Defensive: { NormalFarm: "🎙️ 해설: {myChamp} 선수, 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 대포 미니언!! 대포를 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 챙기는 틈을 타 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 콤보는 다 맞았어요!" }
-    },
-    generateLog: function(ctx) {
-        var totalDmg = ctx.mDmg + ctx.aDmg; var txt = "";
-        if (ctx.strat === 1) { 
-            if (ctx.mHits > ctx.aHits * 2) txt = this.Templates.Aggressive.Kiting;
-            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (totalDmg < 150) ? this.Templates.Aggressive.MildTrade : this.Templates.Aggressive.Bloodbath;
-            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = this.Templates.Aggressive.Countered;
-            else txt = this.Templates.Aggressive.MissAll;
-        } else if (ctx.strat === 2) {
-            if (ctx.isCannonPhase && !ctx.gotCannon) txt = this.Templates.Defensive.CannonMissed;
-            else {
-                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (totalDmg < 50) ? this.Templates.Defensive.NormalFarm : this.Templates.Defensive.PerfectCS;
-                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = this.Templates.Defensive.GreedyCS;
-                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = this.Templates.Defensive.ZonedOut;
-                else txt = this.Templates.Defensive.Disaster;
-            }
-        } else return "🏠 우물로 귀환하여 전열을 가다듬습니다.";
-        return txt.replace(/{myChamp}/g, ctx.myChamp).replace(/{aiChamp}/g, ctx.aiChamp);
-    }
-};
-
-// 🎨 2-3. 전투 UI 렌더러 (골드 추가, QWE 쿨타임 숨김, 스킬업 번호적용)
-var BattleView = { 
-    Content: { screen: { match: "매칭중", pick: "전투 준비", load: "로딩중", analyzed: "분석 완료", skillUp: "스킬 강화", detail: "상세 스탯 정보" }, msg: { find: "🔍 상대를 탐색합니다...", matchOk: "✅ 매칭 완료!", loadRift: "⏳ 소환사의 협곡으로 진입합니다...", pickIntro: "출전할 챔피언 선택:\n\n", analyze: function(u,uc,a,ac){return "🎯 ["+u+"]\n🤖 "+uc+"\n\n━━━━ VS ━━━━\n\n🎯 ["+a+"]\n🤖 "+ac;} } },
-    Board: {
-        getBar: function(exp) { var fill = Math.floor(exp / 10); var bar = ""; for(var i=0; i<10; i++) bar += (i < fill) ? "█" : "░"; return bar; },
-        render: function(state) {
-            var t = state.me;
-            var ui = "『 📊 라인전 현황판 [ " + state.turn + "턴 ] 』\n━━━━━━━━━━━━━━\n[ 👤 내 정보 (" + t.champ + ") ]\n";
-            ui += "🆙 Lv." + t.level + " [" + this.getBar(t.exp) + "] " + t.exp + "%\n🩸 HP: " + t.hp + " / " + t.hw.hp + "\n💧 MP: " + t.mp + " / " + t.hw.mp + "\n";
-            ui += "💰 골드: " + t.gold + " G\n\n"; // 🌟 골드 표기 추가!
-            
-            ui += "⏳ 스킬 현황\n";
-            // 🌟 Q,W,E는 레벨만 표기
-            ui += "- Q(Lv."+t.skLv.q+") | W(Lv."+t.skLv.w+") | E(Lv."+t.skLv.e+")\n";
-            // 🌟 궁극기(R)만 쿨타임 표기
-            var rState = (t.level < 6) ? "잠김" : (t.cd.r <= 0 ? "준비 완료" : t.cd.r + "초");
-            ui += "- 궁극기 R(Lv."+t.skLv.r+"): " + rState + "\n━━━━━━━━━━━━━━\n";
-            
-            if (t.sp > 0) ui += "✨ [스킬 강화 가능! 포인트: " + t.sp + "]\n\n";
-            
-            ui += "💡 [ 대기실 메뉴 ]\n[ 정보 탭 ]\n0. 🤖 적 정보  9. 🔍 내 상세 스탯\n\n[ 이번 턴 전략 ]\n1. 공격  2. 파밍  3. 귀환\n\n";
-            if (t.sp > 0) ui += "[ 챔피언 성장 ]\n5. 🆙 스킬 레벨업 (SP 투자)\n\n";
-            ui += "[ 턴 시작 ]\n4. ✅ 준비 완료\n\n[ ✖항복 (로비로) ]";
-            return ui;
-        },
-        renderDetail: function(t) {
-            var ui = "『 🔍 상세 스탯 및 장비 창 』\n━━━━━━━━━━━━━━\n[ 👤 챔피언: "+t.champ+" (Lv."+t.level+") ]\n\n";
-            ui += "⚔️ [ 공격 능력치 ]\n- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n- 물관: "+t.hw.lethality+" ("+t.hw.arPenPer+"%) | 마관: "+t.hw.mPenFlat+" ("+t.hw.mPenPer+"%)\n- 공속: "+t.hw.as+" | 치명타: "+t.hw.crit+"%\n\n";
-            ui += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
-            ui += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
-            ui += "🎒 [ 보유 아이템 ]\n(상점 시스템 업데이트 예정)\n━━━━━━━━━━━━━━\n0. 🔙 기본 현황판으로 돌아가기";
-            return ui;
-        },
-        renderSkillUp: function(t) { // 🌟 숫자 입력 가이드로 변경
-            var ui = "『 🆙 스킬 레벨업 』\n보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
-            ui += "1. Q - " + t.hw.skills.q.n + " (현재 Lv." + t.skLv.q + ")\n";
-            ui += "2. W - " + t.hw.skills.w.n + " (현재 Lv." + t.skLv.w + ")\n";
-            ui += "3. E - " + t.hw.skills.e.n + " (현재 Lv." + t.skLv.e + ")\n";
-            ui += "4. R - " + t.hw.skills.r.n + " (현재 Lv." + t.skLv.r + ")\n\n0. 🔙 돌아가기";
-            return ui;
-        }
-    }
-};
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎮 [3. CONTROLLER] 라우팅 및 유저 입력 핸들러
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// 🎮 3-1. 라우팅 맵 & 시스템 액션
 var PrevScreenMap = {
     "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
     "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
@@ -747,12 +789,11 @@ var PrevScreenMap = {
 var SystemAction = {
     go: function(replier, title, msg, nextFunc) {
         replier.reply(LayoutManager.renderAlert(title, msg));
-        java.lang.Thread.sleep(1200); 
+        java.lang.Thread.sleep(Config.Timers.systemAction); 
         if (nextFunc) nextFunc();
     }
 };
 
-// 🎮 3-2. 비회원 컨트롤러
 var AuthController = { 
     handle: function(msg, session, sender, replier, room) {
         var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title;
@@ -797,7 +838,6 @@ var AuthController = {
     }
 };
 
-// 🎮 3-3. 메인 유저 컨트롤러
 var UserController = {
     handle: function(msg, session, sender, replier, room) {
         var data = Database.data[session.tempId]; 
@@ -851,20 +891,19 @@ var UserController = {
             if (msg === "1") {
                 if (data.inventory.champions.length === 0) return SystemAction.go(replier, t.fail, m.noChamp, function() { session.screen = "MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
                 
-                // 🌟 매칭 연출 로직 복구 (undefined 및 생텍스트 해결)
+                var cU = ContentManager.battle.ui;
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
-                replier.reply(LayoutManager.renderFrame(BattleView.Content.screen.match, BattleView.Content.msg.find, false, "매칭 시스템 작동 중..."));
+                replier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
                 
                 var roomStr = String(room), senderStr = String(sender);
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
-                            java.lang.Thread.sleep(2500); // 2.5초 대기
+                            java.lang.Thread.sleep(Config.Timers.matchSearch);
                             var s = SessionManager.get(roomStr, senderStr);
                             if (s && s.screen === "BATTLE_MATCHING") {
-                                // 🌟 매칭 완료 프레임 씌우기
-                                Api.replyRoom(roomStr, LayoutManager.renderAlert(BattleView.Content.screen.match, BattleView.Content.msg.matchOk));
-                                java.lang.Thread.sleep(1000);
+                                Api.replyRoom(roomStr, LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
+                                java.lang.Thread.sleep(Config.Timers.matchFound); 
                                 s.screen = "BATTLE_PICK"; SessionManager.save();
                                 BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, Database.data[s.tempId]);
                             }
@@ -952,7 +991,6 @@ var UserController = {
     }
 };
 
-// 🎮 3-4. 관리자 컨트롤러
 var AdminController = { 
     handle: function(msg, session, sender, replier, room) {
         var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title, ui = ContentManager.ui;
@@ -1076,18 +1114,17 @@ var AdminController = {
     }
 };
 
-// 🎮 3-5. 전투 전용 컨트롤러 (View와 Model의 징검다리)
 var BattleController = {
     handle: function(msg, session, sender, replier, room, userData) {
-        var vC = BattleView.Content; var vB = BattleView.Board; var bM = BattleEngine;
+        var cB = ContentManager.battle; var vB = BattleView.Board; var bM = BattleEngine;
         if (!session.battle) session.battle = {};
 
         if (msg === "refresh_screen") {
-            if (session.screen === "BATTLE_MATCHING") return replier.reply("잠시만 기다려주세요..."); // 쓰레드 중복 방지
+            if (session.screen === "BATTLE_MATCHING") return replier.reply(LayoutManager.renderAlert(cB.screen.match, cB.ui.findMsg, cB.ui.searching));
             if (session.screen === "BATTLE_PICK") {
                 var champs = userData.inventory.champions || [];
                 var list = champs.map(function(c, i) { return (i+1) + ". " + c + " (" + (ChampionData[c] ? ChampionData[c].role : "?") + ")"; }).join("\n");
-                return replier.reply(LayoutManager.renderFrame(vC.screen.pick, vC.msg.pickIntro + list, true, "번호 선택"));
+                return replier.reply(LayoutManager.renderFrame(cB.screen.pick, cB.ui.pickIntro + list, true, "번호 선택"));
             }
             if (session.screen === "BATTLE_MAIN") return replier.reply(vB.render(session.battle.instance));
             if (session.screen === "BATTLE_DETAIL") return replier.reply(vB.renderDetail(session.battle.instance.me));
@@ -1100,14 +1137,13 @@ var BattleController = {
                 session.battle.myChamp = champs[idx]; session.battle.enemy = bM.generateAI(); 
                 session.screen = "BATTLE_LOADING"; SessionManager.save();
                 
-                // 🌟 [생텍스트 해결] 로딩 프레임 출력
-                replier.reply(LayoutManager.renderAlert(vC.screen.load, vC.msg.loadRift));
+                replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
                 var roomStr = String(room), sessionKey = SessionManager.getKey(String(room), String(sender));
                 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
-                            java.lang.Thread.sleep(2000); 
+                            java.lang.Thread.sleep(Config.Timers.loading); 
                             var cS = SessionManager.sessions[sessionKey];
                             if (cS && cS.screen === "BATTLE_LOADING") {
                                 cS.screen = "BATTLE_MAIN"; 
@@ -1136,18 +1172,17 @@ var BattleController = {
             var me = session.battle.instance.me;
             if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); }
             
-            // 🌟 [편의성 패치] 1,2,3,4 숫자 입력 시 q,w,e,r 로 자동 매핑!
             var keyMap = {"1":"q", "2":"w", "3":"e", "4":"r"};
             var key = msg.toLowerCase();
             if (keyMap[key]) key = keyMap[key];
 
             if (["q", "w", "e", "r"].indexOf(key) !== -1) {
-                if (me.sp <= 0) return replier.reply("⚠️ 스킬 포인트(SP)가 부족합니다.");
-                if (key === 'r' && me.level < 6) return replier.reply("⚠️ 궁극기(R)는 6레벨 이상부터 배울 수 있습니다.");
-                if (me.skLv[key] >= me.hw.skills[key].max) return replier.reply("⚠️ 이미 최대 레벨입니다.");
+                if (me.sp <= 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSp.title, cB.alerts.noSp.msg));
+                if (key === 'r' && me.level < 6) return replier.reply(LayoutManager.renderAlert(cB.alerts.reqLvl6.title, cB.alerts.reqLvl6.msg));
+                if (me.skLv[key] >= me.hw.skills[key].max) return replier.reply(LayoutManager.renderAlert(cB.alerts.maxLvl.title, cB.alerts.maxLvl.msg));
                 
                 me.skLv[key]++; me.sp--; SessionManager.save();
-                replier.reply("✨ [" + me.hw.skills[key].n + "] 스킬이 Lv." + me.skLv[key] + "(으)로 강화되었습니다!");
+                replier.reply(LayoutManager.renderAlert(cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key])));
                 return replier.reply(vB.renderSkillUp(me));
             }
             return;
@@ -1163,13 +1198,13 @@ var BattleController = {
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
             if (msg === "4") {
-                if (state.strat === 0) return replier.reply("⚠️ 전략을 먼저 선택하세요! (1, 2, 3)");
-                if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return replier.reply("⚠️ 전투를 시작하기 전에 [5. 스킬 레벨업]에서 스킬을 먼저 배워주세요!");
+                if (state.strat === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg));
+                if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg));
 
                 var stratMe = state.strat; state.strat = 0; 
                 var roomStr = String(room); var sessionKey = SessionManager.getKey(roomStr, String(sender));
 
-                replier.reply("『 ⚔️ " + state.turn + "턴 LCK 교전 중계 시작 』\n━━━━━━━━━━━━━━\n(약 10초 간격으로 현장 상황이 중계됩니다.)");
+                replier.reply(LayoutManager.renderAlert(cB.ui.lckStartTitle.replace("{turn}", state.turn), cB.ui.lckStartMsg.replace("{sec}", Config.Timers.phaseDelay/1000), cB.ui.lckStartFoot));
 
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
@@ -1178,7 +1213,7 @@ var BattleController = {
                             var turnTotalGold = 0; var isGameOver = false;
 
                             for (var i = 1; i <= 3; i++) {
-                                java.lang.Thread.sleep(10000);
+                                java.lang.Thread.sleep(Config.Timers.phaseDelay); 
                                 if (isGameOver) break;
 
                                 var p = bM.playPhase(st.me, st.ai, stratMe, i);
@@ -1189,19 +1224,24 @@ var BattleController = {
                                 if (st.ai.hp > st.ai.hw.hp) st.ai.hp = st.ai.hw.hp;
 
                                 var mentalLog = "";
-                                if (st.me.hp <= 0) { st.me.mental -= 20; st.me.hp = st.me.hw.hp; mentalLog = "\n☠️ 솔로 킬을 당했습니다! (멘탈 -20)"; isGameOver = true; }
-                                if (st.ai.hp <= 0) { st.ai.mental -= 20; st.ai.hp = st.ai.hw.hp; mentalLog = "\n🔥 적을 솔로 킬 냈습니다! (적 멘탈 -20)"; isGameOver = true; }
+                                if (st.me.hp <= 0) { st.me.mental -= 20; st.me.hp = st.me.hw.hp; mentalLog = cB.logs.killMe; isGameOver = true; }
+                                if (st.ai.hp <= 0) { st.ai.mental -= 20; st.ai.hp = st.ai.hw.hp; mentalLog = cB.logs.killAi; isGameOver = true; }
 
-                                var phaseMsg = "『 ⏱️ [ " + i + "페이즈 ] 현장 중계 』\n━━━━━━━━━━━━━━\n" + p.lckLog + mentalLog + "\n\n⚔️ [ 타임라인 기록 ]\n" + p.combatLogs + "\n\n🌾 [ 파밍 기록 ]\n" + p.farmLogs + "\n\n📊 [ 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP\n💰 획득 골드: +" + p.gold + " G";
-                                Api.replyRoom(roomStr, phaseMsg);
+                                var phaseTitle = cB.screen.phasePrefix + i + cB.screen.phaseSuffix;
+                                var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 🌾 파밍 기록 ]\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP\n💰 획득 골드: +" + p.gold + " G";
+                                Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseTitle, phaseContent, false, cB.ui.watchNext));
                             }
 
-                            java.lang.Thread.sleep(4000); 
+                            java.lang.Thread.sleep(Config.Timers.gameOver); 
                             if (st.me.mental <= 0 || st.ai.mental <= 0 || st.turn >= 18) {
                                 var isWin = (st.ai.mental <= 0) || (st.me.mental > st.ai.mental); var reward = isWin ? 150 : 50; userData.gold += reward; Database.save();
-                                Api.replyRoom(roomStr, "━━━━━━━━━━━━━━\n🏆 [ 게임 종료! ]\n" + (isWin ? "승리했습니다!" : "패배했습니다...") + "\n보상 골드: +" + reward + "G\n(잠시 후 로비로 돌아갑니다.)");
+                                
+                                var endContent = (isWin ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + reward + " G";
+                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
+                                
                                 SessionManager.reset(roomStr, String(sender)); var endS = SessionManager.get(roomStr, String(sender)); endS.tempId = cS.tempId; SessionManager.save();
-                                java.lang.Thread.sleep(2000); return UserController.handle("refresh_screen", endS, sender, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
+                                java.lang.Thread.sleep(Config.Timers.systemAction); 
+                                return UserController.handle("refresh_screen", endS, sender, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
                             }
 
                             var expGain = (stratMe === 3) ? 0 : (stratMe === 2 && turnTotalGold <= 100) ? 70 : 100; 
@@ -1257,7 +1297,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "이전") {
             if (session.screen && session.screen.indexOf("BATTLE_MAIN") !== -1) {
-                return replier.reply("⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)");
+                return replier.reply(LayoutManager.renderAlert(ContentManager.battle.alerts.noPrev.title, ContentManager.battle.alerts.noPrev.msg));
             }
             if (PrevScreenMap[session.screen]) {
                 session.screen = PrevScreenMap[session.screen];
@@ -1274,7 +1314,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (room === Config.AdminRoom) return AdminController.handle(realMsg, session, sender, replier, room);
         
-        // 🌟 [위임] 전투 화면일 경우 독립된 BattleController로 제어권 인계
         if (isLogged && session.screen && session.screen.indexOf("BATTLE_") === 0) {
             return BattleController.handle(realMsg, session, sender, replier, room, Database.data[session.tempId]);
         }
