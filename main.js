@@ -3,7 +3,7 @@
  * - [M] Model: 평타/타겟팅 명중 밸런스 픽스, AI 파밍 지능 도입
  * - [V] View: 현황판 CS 표기, 스탯창 골드 이관, 파밍 비교 로그 출력
  * - [C] Controller: 백그라운드 세션 알림 스레드 완전 삭제, 준비완료 지원
- */  
+ */   
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
@@ -18,14 +18,14 @@ var Config = {
     TIMEOUT_MS: 300000, 
     
     Timers: {
-        matchSearch: 2000,  
-        matchFound: 1500,   
-        loading: 2000,      
-        vsScreen: 3500,     
-        battleStart: 2500,  
+        matchSearch: 3000,  
+        matchFound: 2500,   
+        loading: 3000,      
+        vsScreen: 4500,     
+        battleStart: 3500,  
         phaseDelay: 8000,   
         gameOver: 3000,     
-        systemAction: 1200  
+        systemAction: 2200  
     }
 };
 
