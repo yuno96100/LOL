@@ -176,7 +176,7 @@ var ContentManager = {
         },
         ui: {
             findMsg: "🔍 상대를 탐색합니다...", searching: "상대를 탐색하는 중입니다...",
-            matchOk: "✅ 매칭 완료!", matchFoundInfo: "잠시 후 픽창으로 이동합니다.",
+            matchOk: "✅ 매칭 완료!", matchFoundInfo: "잠시 후 전투준비 화면으로 이동합니다.",
             loadRift: "⏳ 소환사의 협곡으로 진입합니다...", pickIntro: "출전할 챔피언 선택:\n\n",
             vsTitle: "⚔️ 전투 대진표",
             vsFormat: "🎯 [ {uName} ]\n🤖 {uChamp}\n\n━━━━━━━ VS ━━━━━━━\n\n🎯 [ AI Bot ]\n🤖 {aChamp}",
