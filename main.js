@@ -779,7 +779,7 @@ var UserController = {
                             java.lang.Thread.sleep(Config.Timers.matchSearch);
                             var s = SessionManager.get(roomStr, senderStr);
                             if (s && s.screen === "BATTLE_MATCHING") {
-                                Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
+                                Api.replyRoom(roomStr, LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
                                 java.lang.Thread.sleep(Config.Timers.matchFound); 
                                 
                                 s = SessionManager.get(roomStr, senderStr); 
