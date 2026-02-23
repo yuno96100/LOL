@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v4.1 (Skill Dictionary & Perfect UI)
- * - [M] Model: 데이터베이스, 세션, 18인 챔피언 마스터 데이터
- * - [V] View: 스킬 메타데이터(계수, 사거리, 효과) 백과사전식 렌더링 도입
- * - [C] Controller: 백그라운드 세션 알림 스레드 완전 삭제, UI 아이콘 정리
- */   
+ * 🏰 소환사의 협곡 Bot - v4.2 (Real Laning Phase & Balance Patch)
+ * - [M] Model: 평타/타겟팅 명중 밸런스 픽스, AI 파밍 지능 도입
+ * - [V] View: 현황판 CS 표기, 스탯창 골드 이관, 파밍 비교 로그 출력
+ * - [C] Controller: 백그라운드 세션 알림 스레드 완전 삭제, 준비완료 지원
+ */  
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v4.1 Dictionary Edition",
+    Version: "v4.2 Balance Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -169,7 +169,6 @@ var ContentManager = {
             Defensive: { NormalFarm: "🎙️ 해설: {myChamp} 선수, 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 대포 미니언!! 대포를 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 챙기는 틈을 타 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 콤보는 다 맞았어요!" },
             baseRecall: "🏠 우물로 귀환하여 전열을 가다듬습니다."
         },
-        // 🌟 스킬 효과 번역 사전 (백과사전 렌더링용)
         effectMap: {
             "shield_on_hit": "적중 시 보호막 획득", "slow_field": "광역 둔화 지대 생성", "block_dash_ms": "돌진 차단 및 이동속도 증가", "wall_stun": "지형(벽) 충돌 시 대상 기절", "knockup_away": "적을 멀리 날려버림 (에어본)",
             "shield_regen": "비전투 시 바위 보호막 재생", "steal_ms": "대상 이동속도 강탈", "armor_up_aoe": "방어력 증가 및 주위 마법 피해", "atkSpdDown": "적중 대상 공격속도 둔화", "aoe_stun": "광역 에어본 및 기절",
@@ -213,9 +212,8 @@ var ContentManager = {
             hitAi: "⏱️[{sec}초] 🔸 적 [{champ}]의 [{skill}] 적중! {fxLog}",
             noAction: "💤 30초간 팽팽한 눈치싸움만 벌어지며 서로 유효타가 없었습니다.",
             skipMiddle: "... (중략) 치열한 난타전이 이어집니다!",
-            farm: "💰 [CS 막타] 근거리 {m}/3, 원거리 {c}/3{s} (총 {g}G)",
+            farm: "🌾 [ 파밍 결과 ]\n👤 나: {mCs}개 획득 (+{mGold}G)\n🤖 적: {aCs}개 획득 (+{aGold}G)",
             farmMissed: "❌ 라인을 비운 사이 적이 미니언을 타워에 밀어넣습니다.",
-            cannonOk: ", 대포 1/1", cannonFail: ", ❌대포 놓침",
             killMe: "\n\n☠️ 솔로 킬을 당했습니다! (멘탈 -20)",
             killAi: "\n\n🔥 적을 솔로 킬 냈습니다! (적 멘탈 -20)"
         },
@@ -224,8 +222,8 @@ var ContentManager = {
             reqLvl6: { title: "스킬 강화 불가", msg: "⚠️ 궁극기(R)는 6레벨 이상부터 배울 수 있습니다." },
             maxLvl: { title: "스킬 강화 불가", msg: "⚠️ 이미 최대 레벨입니다." },
             skillUpOk: { title: "스킬 강화 완료", msg: "✨ [{skill}] 스킬이 Lv.{lvl}(으)로 강화되었습니다!" },
-            noStrat: { title: "전투 시작 불가", msg: "⚠️ 전략을 먼저 선택하세요! (4, 5, 6번 중 하나)" },
-            noSkill: { title: "전투 시작 불가", msg: "⚠️ 전투 시작 전 [7. 스킬 레벨업]에서 스킬을 먼저 배워주세요!" },
+            noStrat: { title: "전투 시작 불가", msg: "⚠️ 전략을 먼저 선택하세요! (3, 4, 5번 중 하나)" },
+            noSkill: { title: "전투 시작 불가", msg: "⚠️ 전투 시작 전 [6. 스킬 레벨업]에서 스킬을 먼저 배워주세요!" },
             noPrev: { title: "이전 불가", msg: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)" }
         }
     }
@@ -293,7 +291,7 @@ var BattleView = {
             content += "🆙 Lv." + t.level + " (" + t.exp + "%)\n";
             content += "🩸 체력: " + t.hp + " / " + t.hw.hp + "\n";
             content += "💧 마나: " + t.mp + " / " + t.hw.mp + "\n";
-            content += "💰 골드: " + t.gold + " G\n\n";
+            content += "🌾 CS: " + t.cs + " 개\n\n";
             
             content += "[ ✨ 스킬 현황 ]\n";
             content += "🔹 Q (Lv."+t.skLv.q+") \n";
@@ -328,6 +326,7 @@ var BattleView = {
         renderDetail: function(t) {
             var cU = ContentManager.battle.ui;
             var content = "[ 👤 챔피언: "+t.champ+" (Lv."+t.level+") ]\n\n";
+            content += "💰 보유 골드: " + t.gold + " G\n\n";
             content += "⚔️ [ 공격 능력치 ]\n- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n- 물관: "+t.hw.lethality+" ("+t.hw.arPenPer+"%) | 마관: "+t.hw.mPenFlat+" ("+t.hw.mPenPer+"%)\n- 공속: "+t.hw.as+" | 치명타: "+t.hw.crit+"%\n\n";
             content += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
             content += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
@@ -430,24 +429,24 @@ var BattleView = {
 // 💾 [2. MODEL] 데이터, 상태 관리, 게임 핵심 로직
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var ChampionData = {
-    "뽀삐": { role: "탱커", type: "AD", range: 125, spd: 345, hp: 610, hpRegen: 8.0, mp: 280, mpRegen: 7.0, baseAd: 64, def: 38, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"강철의 외교관", e:"shield_on_hit", d:"전투 시작 시 적중하면 쉴드를 얻는 방패를 던집니다." }, skills: { q: { n:"방패 강타", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[60, 90, 120, 150, 180], ad:0.9, eMhp:0.08, t:"AD", e:"slow_field", rng:430, tt:"NT" }, w: { n:"굳건한 태세", max:5, cd:[20, 18, 16, 14, 12], b:[0,0,0,0,0], t:"UT", e:"block_dash_ms", rng:400, tt:"S" }, e: { n:"용감 돌진", max:5, cd:[14, 13, 12, 11, 10], b:[60, 80, 100, 120, 140], ad:0.5, t:"AD", e:"wall_stun", rng:475, tt:"T" }, r: { n:"수호자의 심판", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[200, 300, 400], ad:1.0, t:"AD", e:"knockup_away", rng:500, tt:"NT" } } },
-    "말파이트": { role: "탱커", type: "AP", range: 125, spd: 335, hp: 630, hpRegen: 7.0, mp: 280, mpRegen: 7.3, baseAd: 62, def: 37, mdef: 32, as: 0.73, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"화강암 방패", e:"shield_regen", d:"피격되지 않으면 최대 체력 10% 쉴드 생성" }, skills: { q: { n:"지진의 파편", max:5, cd:[8,8,8,8,8], b:[70, 120, 170, 220, 270], ap:0.6, t:"AP", e:"steal_ms", rng:625, tt:"T" }, w: { n:"천둥소리", max:5, cd:[12, 11.5, 11, 10.5, 10], b:[30, 45, 60, 75, 90], ap:0.3, def:0.15, t:"AP", e:"armor_up_aoe", rng:0, tt:"S" }, e: { n:"지면 강타", max:5, cd:[7, 6.5, 6, 5.5, 5], b:[60, 95, 130, 165, 200], ap:0.4, def:0.3, t:"AP", e:"atkSpdDown", rng:400, tt:"S" }, r: { n:"멈출 수 없는 힘", max:3, req:[6, 11, 16], cd:[130, 105, 80], b:[200, 300, 400], ap:0.9, t:"AP", e:"aoe_stun", rng:1000, tt:"NT" } } },
-    "쉔": { role: "탱커", type: "하이브리드", range: 125, spd: 340, hp: 610, hpRegen: 8.5, mp: 400, mpRegen: 50.0, baseAd: 60, def: 34, mdef: 32, as: 0.75, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"기 염동력", e:"shield_on_skill", d:"스킬 사용 시 보호막 생성" }, skills: { q: { n:"황혼 강습", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[60, 90, 120, 150, 180], ap:0.3, eMhp:0.05, t:"AP", e:"empower_auto", rng:200, tt:"S" }, w: { n:"의지의 결계", max:5, cd:[18, 16.5, 15, 13.5, 12], b:[0,0,0,0,0], t:"UT", e:"aoe_dodge", rng:400, tt:"S" }, e: { n:"그림자 돌진", max:5, cd:[18, 16, 14, 12, 10], b:[60, 80, 100, 120, 140], mhp:0.15, t:"AD", e:"taunt", rng:600, tt:"NT" }, r: { n:"단결된 의지", max:3, req:[6, 11, 16], cd:[200, 180, 160], b:[0,0,0], ap:1.3, t:"UT", e:"global_shield_tp", rng:9999, tt:"T" } } },
-    "다리우스": { role: "전사", type: "AD", range: 175, spd: 340, hp: 650, hpRegen: 10.0, mp: 260, mpRegen: 6.6, baseAd: 64, def: 39, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 15, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0, p: { n:"과다출혈", e:"bleed_stack", d:"5스택 시 녹서스의 힘(AD폭발) 발동" }, skills: { q: { n:"학살", max:5, cd:[9, 8, 7, 6, 5], b:[50, 80, 110, 140, 170], ad:1.4, t:"AD", e:"heal_missing_hp", rng:425, tt:"S" }, w: { n:"마비 일격", max:5, cd:[5, 4.5, 4, 3.5, 3], b:[20, 40, 60, 80, 100], ad:1.6, t:"AD", e:"heavy_slow", rng:200, tt:"T" }, e: { n:"포획", max:5, cd:[24, 21, 18, 15, 12], b:[0,0,0,0,0], t:"UT", e:"pull_arPen", rng:535, tt:"NT" }, r: { n:"녹서스의 단두대", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[150, 250, 350], ad:1.5, t:"TRUE", e:"true_execute", rng:460, tt:"T" } } },
-    "모데카이저": { role: "전사", type: "AP", range: 175, spd: 335, hp: 645, hpRegen: 5.0, mp: 0, mpRegen: 0, baseAd: 61, def: 37, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0, p: { n:"암흑 탄생", e:"aoe_aura_on_3_hit", d:"3회 적중 시 광역 마법 피해 오라 생성" }, skills: { q: { n:"말살", max:5, cd:[9, 8, 7, 6, 5], b:[75, 95, 115, 135, 155], ap:0.6, t:"AP", e:"iso_dmg", rng:675, tt:"NT" }, w: { n:"불멸", max:5, cd:[12, 11, 10, 9, 8], b:[0,0,0,0,0], t:"UT", e:"shield_to_heal", rng:0, tt:"S" }, e: { n:"죽음의 손아귀", max:5, cd:[18, 16, 14, 12, 10], b:[70, 85, 100, 115, 130], ap:0.6, t:"AP", e:"pull_magic_pen", rng:700, tt:"NT" }, r: { n:"죽음의 세계", max:3, req:[6, 11, 16], cd:[140, 120, 100], b:[0,0,0], t:"UT", e:"stat_steal", rng:650, tt:"T" } } },
-    "잭스": { role: "전사", type: "하이브리드", range: 125, spd: 350, hp: 615, hpRegen: 8.5, mp: 338, mpRegen: 5.2, baseAd: 68, def: 36, mdef: 32, as: 0.63, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"가차없는 맹공", e:"atk_spd_stack", d:"평타 시 공격 속도 중첩 증가" }, skills: { q: { n:"도약 공격", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[65, 105, 145, 185, 225], ad:1.0, ap:0.6, t:"AD", e:"gap_close", rng:700, tt:"T" }, w: { n:"무기 강화", max:5, cd:[3, 3, 3, 3, 3], b:[50, 85, 120, 155, 190], ap:0.6, t:"AP", e:"auto_reset_bonus", rng:0, tt:"S" }, e: { n:"반격", max:5, cd:[14, 12.5, 11, 9.5, 8], b:[55, 90, 125, 160, 195], ad:0.5, t:"AD", e:"dodge_stun", rng:300, tt:"S" }, r: { n:"무기의 달인", max:3, req:[6, 11, 16], cd:[100, 90, 80], b:[150, 250, 350], ap:0.7, t:"AP", e:"bonus_resist", rng:0, tt:"S" } } },
-    "탈론": { role: "암살자", type: "AD", range: 125, spd: 335, hp: 658, hpRegen: 8.5, mp: 377, mpRegen: 7.6, baseAd: 68, def: 30, mdef: 39, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"검의 최후", e:"bleed_on_3_hit", d:"스킬 3회 적중 후 평타 시 출혈 고정피해 발생" }, skills: { q: { n:"녹서스식 외교", max:5, cd:[6, 5.5, 5, 4.5, 4], b:[65, 90, 115, 140, 165], ad:1.1, t:"AD", e:"melee_crit_heal", rng:400, tt:"T" }, w: { n:"갈퀴손", max:5, cd:[9, 8.5, 8, 7.5, 7], b:[90, 120, 150, 180, 210], ad:1.2, t:"AD", e:"return_slow", rng:900, tt:"NT" }, e: { n:"암살자의 길", max:5, cd:[2, 2, 2, 2, 2], b:[0,0,0,0,0], t:"UT", e:"jump_wall", rng:725, tt:"NT" }, r: { n:"그림자 강습", max:3, req:[6, 11, 16], cd:[100, 80, 60], b:[180, 270, 360], ad:2.0, t:"AD", e:"invis_ms_aoe", rng:550, tt:"S" } } },
-    "에코": { role: "암살자", type: "AP", range: 125, spd: 340, hp: 655, hpRegen: 9.0, mp: 280, mpRegen: 7.0, baseAd: 58, def: 32, mdef: 32, as: 0.68, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"Z 드라이브 공진", e:"bonus_dmg_ms_on_3_hit", d:"3회 적중 시 마법피해와 이속 증가" }, skills: { q: { n:"시간의 톱니바퀴", max:5, cd:[9, 8.5, 8, 7.5, 7], b:[60, 75, 90, 105, 120], ap:0.3, t:"AP", e:"out_in_slow", rng:1075, tt:"NT" }, w: { n:"평행 시간 교차", max:5, cd:[22, 20, 18, 16, 14], b:[0,0,0,0,0], t:"UT", e:"delayed_stun_shield", rng:1600, tt:"NT" }, e: { n:"시간 도약", max:5, cd:[9, 8.5, 8, 7.5, 7], b:[50, 75, 100, 125, 150], ap:0.4, t:"AP", e:"dash_blink_bonus", rng:300, tt:"NT" }, r: { n:"시공간 붕괴", max:3, req:[6, 11, 16], cd:[110, 90, 70], b:[150, 300, 450], ap:1.5, t:"AP", e:"time_rewind", rng:0, tt:"S" } } },
-    "아칼리": { role: "암살자", type: "하이브리드", range: 125, spd: 345, hp: 600, hpRegen: 9.0, mp: 200, mpRegen: 50.0, baseAd: 62, def: 23, mdef: 37, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0, p: { n:"암살자의 표식", e:"bonus_range_dmg", d:"스킬 적중 후 다음 평타 사거리 및 피해량 대폭 증가" }, skills: { q: { n:"오연투척검", max:5, cd:[4, 3.5, 3, 2.5, 2], b:[45, 70, 95, 120, 145], ad:0.6, ap:0.6, t:"AP", e:"tip_slow", rng:500, tt:"NT" }, w: { n:"황혼의 장막", max:5, cd:[20, 19, 18, 17, 16], b:[0,0,0,0,0], t:"UT", e:"invis_energy", rng:250, tt:"S" }, e: { n:"표창 곡예", max:5, cd:[16, 14.5, 13, 11.5, 10], b:[50, 75, 100, 125, 150], ad:0.7, ap:0.5, t:"AP", e:"mark_dash_back", rng:825, tt:"NT" }, r: { n:"무결처형", max:3, req:[6, 11, 16], cd:[100, 80, 60], b:[150, 225, 300], ad:0.5, ap:0.8, eMisHp:0.1, t:"AP", e:"execute_dash", rng:675, tt:"T" } } },
-    "제이스": { role: "마법사", type: "AD", range: 500, spd: 335, hp: 590, hpRegen: 6.0, mp: 375, mpRegen: 6.0, baseAd: 57, def: 27, mdef: 30, as: 0.65, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"마법공학 축전기", e:"ms_up_on_transform", d:"무기 변환 시 이동속도 증가" }, skills: { q: { n:"전격 폭발/하늘로!", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[55, 110, 165, 220, 275], ad:1.2, t:"AD", e:"shock_blast", rng:1050, tt:"NT" }, w: { n:"전류 역장/초전하", max:5, cd:[10, 9, 8, 7, 6], b:[0,0,0,0,0], t:"UT", e:"hyper_charge", rng:0, tt:"S" }, e: { n:"가속 관문/천둥 강타", max:5, cd:[16, 15, 14, 13, 12], b:[40, 70, 100, 130, 160], eMhp:0.08, t:"AP", e:"accel_gate_knockback", rng:650, tt:"S" }, r: { n:"머큐리 해머 변환", max:3, req:[6, 11, 16], cd:[6, 6, 6], b:[0,0,0], t:"UT", e:"form_change", rng:0, tt:"S" } } },
-    "럭스": { role: "마법사", type: "AP", range: 550, spd: 330, hp: 560, hpRegen: 5.5, mp: 480, mpRegen: 8.0, baseAd: 53, def: 18, mdef: 30, as: 0.66, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"일루미네이션", e:"bonus_dmg_on_marked", d:"스킬 적중 대상에게 표식을 남기며 평타 시 마법피해" }, skills: { q: { n:"빛의 속박", max:5, cd:[11, 10.5, 10, 9.5, 9], b:[80, 120, 160, 200, 240], ap:0.6, t:"AP", e:"root_two", rng:1300, tt:"NT" }, w: { n:"프리즘 보호막", max:5, cd:[14, 13, 12, 11, 10], b:[40, 65, 90, 115, 140], ap:0.35, t:"UT", e:"return_shield", rng:1075, tt:"NT" }, e: { n:"광휘의 특이점", max:5, cd:[10, 9.5, 9, 8.5, 8], b:[70, 120, 170, 220, 270], ap:0.8, t:"AP", e:"aoe_slow_pop", rng:1100, tt:"NT" }, r: { n:"최후의 섬광", max:3, req:[6, 11, 16], cd:[80, 60, 40], b:[300, 400, 500], ap:1.2, t:"AP", e:"ignite_mark_laser", rng:3400, tt:"NT" } } },
-    "케일": { role: "마법사", type: "하이브리드", range: 175, spd: 335, hp: 600, hpRegen: 5.0, mp: 330, mpRegen: 8.0, baseAd: 50, def: 26, mdef: 22, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"거룩한 승천", e:"scale_by_level", d:"레벨업에 따라 공격 속도, 사거리(원거리 변환) 진화" }, skills: { q: { n:"광휘의 일격", max:5, cd:[12, 11, 10, 9, 8], b:[60, 100, 140, 180, 220], ad:0.6, ap:0.5, t:"AP", e:"shred_res_slow", rng:900, tt:"NT" }, w: { n:"천상의 축복", max:5, cd:[15, 14, 13, 12, 11], b:[0,0,0,0,0], ap:0.25, t:"UT", e:"heal_ms", rng:900, tt:"S" }, e: { n:"화염 주문검", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[0,0,0,0,0], ap:0.2, eMisHp:0.08, t:"AP", e:"missing_hp_ranged", rng:0, tt:"S" }, r: { n:"신성한 심판", max:3, req:[6, 11, 16], cd:[160, 120, 80], b:[200, 350, 500], ad:1.0, ap:0.8, t:"AP", e:"invincible_aoe", rng:900, tt:"S" } } },
-    "케이틀린": { role: "원딜", type: "AD", range: 650, spd: 325, hp: 605, hpRegen: 3.5, mp: 315, mpRegen: 7.4, baseAd: 62, def: 28, mdef: 30, as: 0.68, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"헤드샷", e:"headshot_stack", d:"평타 누적 시 확정 치명타 피해" }, skills: { q: { n:"필트오버 피스메이커", max:5, cd:[10, 9, 8, 7, 6], b:[50, 90, 130, 170, 210], ad:1.3, t:"AD", e:"pierce_dmg", rng:1300, tt:"NT" }, w: { n:"요들잡이 덫", max:5, cd:[15, 13.5, 12, 10.5, 9], b:[0,0,0,0,0], t:"UT", e:"root_headshot", rng:800, tt:"NT" }, e: { n:"90구경 투망", max:5, cd:[16, 14.5, 13, 11.5, 10], b:[70, 110, 150, 190, 230], ap:0.8, t:"AP", e:"slow_headshot_back", rng:750, tt:"NT" }, r: { n:"비장의 한 발", max:3, req:[6, 11, 16], cd:[90, 75, 60], b:[300, 525, 750], ad:2.0, t:"AD", e:"snipe_execute", rng:3500, tt:"T" } } },
-    "직스": { role: "원딜", type: "AP", range: 525, spd: 325, hp: 566, hpRegen: 6.5, mp: 480, mpRegen: 8.0, baseAd: 54, def: 22, mdef: 30, as: 0.65, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"반동 초소형 폭탄", e:"bonus_ap_dmg_on_auto", d:"일정 시간마다 평타에 강력한 마법 피해 추가" }, skills: { q: { n:"반동 폭탄", max:5, cd:[6, 5.5, 5, 4.5, 4], b:[85, 135, 185, 235, 285], ap:0.65, t:"AP", e:"bounce_bomb", rng:850, tt:"NT" }, w: { n:"휴대용 폭약", max:5, cd:[20, 18, 16, 14, 12], b:[70, 120, 170, 220, 270], ap:0.5, t:"AP", e:"knockback_self_enemy", rng:1000, tt:"NT" }, e: { n:"마법공학 지뢰밭", max:5, cd:[16, 15, 14, 13, 12], b:[40, 70, 100, 130, 160], ap:0.3, t:"AP", e:"minefield_slow", rng:900, tt:"NT" }, r: { n:"지옥 화염 폭탄", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[300, 400, 500], ap:1.1, t:"AP", e:"mega_inferno_bomb", rng:5300, tt:"NT" } } },
-    "카이사": { role: "원딜", type: "하이브리드", range: 525, spd: 335, hp: 670, hpRegen: 3.5, mp: 344, mpRegen: 8.2, baseAd: 59, def: 28, mdef: 30, as: 0.64, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"두 번째 피부", e:"plasma_stack_eMisHp", d:"5스택 시 적 잃은 체력 비례 폭발 마법 피해" }, skills: { q: { n:"이카시아 폭우", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[40, 55, 70, 85, 100], ad:0.5, ap:0.25, t:"AD", e:"iso_missiles", rng:600, tt:"NT" }, w: { n:"공허의 추적자", max:5, cd:[22, 20, 18, 16, 14], b:[30, 55, 80, 105, 130], ad:1.3, ap:0.45, t:"AP", e:"plasma_stack_reveal", rng:3000, tt:"NT" }, e: { n:"고속 충전", max:5, cd:[16, 15, 14, 13, 12], b:[0,0,0,0,0], t:"UT", e:"invis_ms_atkSpd", rng:0, tt:"S" }, r: { n:"사냥본능", max:3, req:[6, 11, 16], cd:[130, 110, 90], b:[0,0,0], t:"UT", e:"shield_dash_far", rng:3000, tt:"T" } } },
-    "파이크": { role: "서포터", type: "AD", range: 150, spd: 330, hp: 600, hpRegen: 7.0, mp: 415, mpRegen: 8.0, baseAd: 62, def: 45, mdef: 32, as: 0.66, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"가라앉은 자들의 축복", e:"grey_health_regen", d:"적의 시야 밖에서 입은 피해 빠르게 회복" }, skills: { q: { n:"뼈 작살", max:5, cd:[10, 9.5, 9, 8.5, 8], b:[80, 130, 180, 230, 280], ad:1.2, t:"AD", e:"pull_slow_90", rng:400, tt:"NT" }, w: { n:"유령 잠수", max:5, cd:[14, 13, 12, 11, 10], b:[0,0,0,0,0], t:"UT", e:"invis_ms_regen", rng:0, tt:"S" }, e: { n:"망자의 물살", max:5, cd:[15, 14, 13, 12, 11], b:[90, 120, 150, 180, 210], ad:1.0, t:"AD", e:"phantom_stun", rng:400, tt:"NT" }, r: { n:"깊은 바다의 처형", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[250, 400, 550], ad:0.8, t:"TRUE", e:"blink_execute_reset", rng:750, tt:"NT" } } },
-    "소라카": { role: "서포터", type: "AP", range: 550, spd: 325, hp: 605, hpRegen: 2.5, mp: 425, mpRegen: 11.5, baseAd: 50, def: 32, mdef: 30, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"구원", e:"ms_up_towards_low_hp", d:"체력이 낮은 아군을 향할 때 이속 증가" }, skills: { q: { n:"별부름", max:5, cd:[8, 7, 6, 5, 4], b:[85, 130, 175, 220, 265], ap:0.35, t:"AP", e:"rejuvenation_slow", rng:800, tt:"NT" }, w: { n:"은하의 마력", max:5, cd:[4, 3.5, 3, 2.5, 2], b:[0,0,0,0,0], ap:0.6, t:"UT", e:"heal_ally_cost_hp", rng:550, tt:"T" }, e: { n:"별의 균형", max:5, cd:[20, 19, 18, 17, 16], b:[70, 110, 150, 190, 230], ap:0.4, t:"AP", e:"silence_root", rng:925, tt:"NT" }, r: { n:"기원", max:3, req:[6, 11, 16], cd:[130, 115, 100], b:[0,0,0], ap:0.5, t:"UT", e:"global_heal_low_hp_bonus", rng:9999, tt:"S" } } },
-    "바드": { role: "서포터", type: "하이브리드", range: 500, spd: 330, hp: 630, hpRegen: 5.5, mp: 350, mpRegen: 6.0, baseAd: 52, def: 34, mdef: 30, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"방랑자의 부름", e:"meep_bonus_dmg", d:"종을 모아 평타에 광역 둔화 마법피해 추가" }, skills: { q: { n:"우주의 결속", max:5, cd:[11, 10, 9, 8, 7], b:[80, 125, 170, 215, 260], ap:0.65, t:"AP", e:"stun_if_wall", rng:950, tt:"NT" }, w: { n:"수호자의 성소", max:5, cd:[14, 14, 14, 14, 14], b:[0,0,0,0,0], ap:0.3, t:"UT", e:"heal_ms_shrine", rng:800, tt:"NT" }, e: { n:"신비한 차원문", max:5, cd:[18, 17, 16, 15, 14], b:[0,0,0,0,0], t:"UT", e:"magical_journey", rng:900, tt:"NT" }, r: { n:"운명의 소용돌이", max:3, req:[6, 11, 16], cd:[110, 90, 70], b:[0,0,0], t:"UT", e:"stasis_aoe", rng:3300, tt:"NT" } } }
+    "뽀삐": { role: "탱커", type: "AD", range: 125, spd: 345, hp: 610, hpRegen: 8.0, mp: 280, mpRegen: 7.0, baseAd: 64, def: 38, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"강철의 외교관", e:"shield_on_hit" }, skills: { q: { n:"방패 강타", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[60, 90, 120, 150, 180], ad:0.9, eMhp:0.08, t:"AD", e:"slow_field", rng:430, tt:"NT" }, w: { n:"굳건한 태세", max:5, cd:[20, 18, 16, 14, 12], b:[0,0,0,0,0], t:"UT", e:"block_dash_ms", rng:400, tt:"S" }, e: { n:"용감한 돌진", max:5, cd:[14, 13, 12, 11, 10], b:[60, 80, 100, 120, 140], ad:0.5, t:"AD", e:"wall_stun", rng:475, tt:"T" }, r: { n:"수호자의 심판", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[200, 300, 400], ad:1.0, t:"AD", e:"knockup_away", rng:500, tt:"NT" } } },
+    "말파이트": { role: "탱커", type: "AP", range: 125, spd: 335, hp: 630, hpRegen: 7.0, mp: 280, mpRegen: 7.3, baseAd: 62, def: 37, mdef: 32, as: 0.73, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"화강암 방패", e:"shield_regen" }, skills: { q: { n:"지진의 파편", max:5, cd:[8,8,8,8,8], b:[70, 120, 170, 220, 270], ap:0.6, t:"AP", e:"steal_ms", rng:625, tt:"T" }, w: { n:"천둥소리", max:5, cd:[12, 11.5, 11, 10.5, 10], b:[30, 45, 60, 75, 90], ap:0.3, def:0.15, t:"AP", e:"armor_up_aoe", rng:0, tt:"S" }, e: { n:"지면 강타", max:5, cd:[7, 6.5, 6, 5.5, 5], b:[60, 95, 130, 165, 200], ap:0.4, def:0.3, t:"AP", e:"atkSpdDown", rng:400, tt:"S" }, r: { n:"멈출 수 없는 힘", max:3, req:[6, 11, 16], cd:[130, 105, 80], b:[200, 300, 400], ap:0.9, t:"AP", e:"aoe_stun", rng:1000, tt:"NT" } } },
+    "쉔": { role: "탱커", type: "하이브리드", range: 125, spd: 340, hp: 610, hpRegen: 8.5, mp: 400, mpRegen: 50.0, baseAd: 60, def: 34, mdef: 32, as: 0.75, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"기 염동력", e:"shield_on_skill" }, skills: { q: { n:"황혼 강습", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[60, 90, 120, 150, 180], ap:0.3, eMhp:0.05, t:"AP", e:"empower_auto", rng:200, tt:"S" }, w: { n:"의지의 결계", max:5, cd:[18, 16.5, 15, 13.5, 12], b:[0,0,0,0,0], t:"UT", e:"aoe_dodge", rng:400, tt:"S" }, e: { n:"그림자 돌진", max:5, cd:[18, 16, 14, 12, 10], b:[60, 80, 100, 120, 140], mhp:0.15, t:"AD", e:"taunt", rng:600, tt:"NT" }, r: { n:"단결된 의지", max:3, req:[6, 11, 16], cd:[200, 180, 160], b:[0,0,0], ap:1.3, t:"UT", e:"global_shield_tp", rng:9999, tt:"T" } } },
+    "다리우스": { role: "전사", type: "AD", range: 175, spd: 340, hp: 650, hpRegen: 10.0, mp: 260, mpRegen: 6.6, baseAd: 64, def: 39, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 15, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0, p: { n:"과다출혈", e:"bleed_stack" }, skills: { q: { n:"학살", max:5, cd:[9, 8, 7, 6, 5], b:[50, 80, 110, 140, 170], ad:1.4, t:"AD", e:"heal_missing_hp", rng:425, tt:"S" }, w: { n:"마비 일격", max:5, cd:[5, 4.5, 4, 3.5, 3], b:[20, 40, 60, 80, 100], ad:1.6, t:"AD", e:"heavy_slow", rng:200, tt:"T" }, e: { n:"포획", max:5, cd:[24, 21, 18, 15, 12], b:[0,0,0,0,0], t:"UT", e:"pull_arPen", rng:535, tt:"NT" }, r: { n:"녹서스의 단두대", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[150, 250, 350], ad:1.5, t:"TRUE", e:"true_execute", rng:460, tt:"T" } } },
+    "모데카이저": { role: "전사", type: "AP", range: 175, spd: 335, hp: 645, hpRegen: 5.0, mp: 0, mpRegen: 0, baseAd: 61, def: 37, mdef: 32, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0, p: { n:"암흑 탄생", e:"aoe_aura_on_3_hit" }, skills: { q: { n:"말살", max:5, cd:[9, 8, 7, 6, 5], b:[75, 95, 115, 135, 155], ap:0.6, t:"AP", e:"iso_dmg", rng:675, tt:"NT" }, w: { n:"불멸", max:5, cd:[12, 11, 10, 9, 8], b:[0,0,0,0,0], t:"UT", e:"shield_to_heal", rng:0, tt:"S" }, e: { n:"죽음의 손아귀", max:5, cd:[18, 16, 14, 12, 10], b:[70, 85, 100, 115, 130], ap:0.6, t:"AP", e:"pull_magic_pen", rng:700, tt:"NT" }, r: { n:"죽음의 세계", max:3, req:[6, 11, 16], cd:[140, 120, 100], b:[0,0,0], t:"UT", e:"stat_steal", rng:650, tt:"T" } } },
+    "잭스": { role: "전사", type: "하이브리드", range: 125, spd: 350, hp: 615, hpRegen: 8.5, mp: 338, mpRegen: 5.2, baseAd: 68, def: 36, mdef: 32, as: 0.63, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"가차없는 맹공", e:"atk_spd_stack" }, skills: { q: { n:"도약 공격", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[65, 105, 145, 185, 225], ad:1.0, ap:0.6, t:"AD", e:"gap_close", rng:700, tt:"T" }, w: { n:"무기 강화", max:5, cd:[3, 3, 3, 3, 3], b:[50, 85, 120, 155, 190], ap:0.6, t:"AP", e:"auto_reset_bonus", rng:0, tt:"S" }, e: { n:"반격", max:5, cd:[14, 12.5, 11, 9.5, 8], b:[55, 90, 125, 160, 195], ad:0.5, t:"AD", e:"dodge_stun", rng:300, tt:"S" }, r: { n:"무기의 달인", max:3, req:[6, 11, 16], cd:[100, 90, 80], b:[150, 250, 350], ap:0.7, t:"AP", e:"bonus_resist", rng:0, tt:"S" } } },
+    "탈론": { role: "암살자", type: "AD", range: 125, spd: 335, hp: 658, hpRegen: 8.5, mp: 377, mpRegen: 7.6, baseAd: 68, def: 30, mdef: 39, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"검의 최후", e:"bleed_on_3_hit" }, skills: { q: { n:"녹서스식 외교", max:5, cd:[6, 5.5, 5, 4.5, 4], b:[65, 90, 115, 140, 165], ad:1.1, t:"AD", e:"melee_crit_heal", rng:400, tt:"T" }, w: { n:"갈퀴손", max:5, cd:[9, 8.5, 8, 7.5, 7], b:[90, 120, 150, 180, 210], ad:1.2, t:"AD", e:"return_slow", rng:900, tt:"NT" }, e: { n:"암살자의 길", max:5, cd:[2, 2, 2, 2, 2], b:[0,0,0,0,0], t:"UT", e:"jump_wall", rng:725, tt:"NT" }, r: { n:"그림자 강습", max:3, req:[6, 11, 16], cd:[100, 80, 60], b:[180, 270, 360], ad:2.0, t:"AD", e:"invis_ms_aoe", rng:550, tt:"S" } } },
+    "에코": { role: "암살자", type: "AP", range: 125, spd: 340, hp: 655, hpRegen: 9.0, mp: 280, mpRegen: 7.0, baseAd: 58, def: 32, mdef: 32, as: 0.68, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"Z 드라이브 공진", e:"bonus_dmg_ms_on_3_hit" }, skills: { q: { n:"시간의 톱니바퀴", max:5, cd:[9, 8.5, 8, 7.5, 7], b:[60, 75, 90, 105, 120], ap:0.3, t:"AP", e:"out_in_slow", rng:1075, tt:"NT" }, w: { n:"평행 시간 교차", max:5, cd:[22, 20, 18, 16, 14], b:[0,0,0,0,0], t:"UT", e:"delayed_stun_shield", rng:1600, tt:"NT" }, e: { n:"시간 도약", max:5, cd:[9, 8.5, 8, 7.5, 7], b:[50, 75, 100, 125, 150], ap:0.4, t:"AP", e:"dash_blink_bonus", rng:300, tt:"NT" }, r: { n:"시공간 붕괴", max:3, req:[6, 11, 16], cd:[110, 90, 70], b:[150, 300, 450], ap:1.5, t:"AP", e:"time_rewind", rng:0, tt:"S" } } },
+    "아칼리": { role: "암살자", type: "하이브리드", range: 125, spd: 345, hp: 600, hpRegen: 9.0, mp: 200, mpRegen: 50.0, baseAd: 62, def: 23, mdef: 37, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 5, ah: 0, p: { n:"암살자의 표식", e:"bonus_range_dmg" }, skills: { q: { n:"오연투척검", max:5, cd:[4, 3.5, 3, 2.5, 2], b:[45, 70, 95, 120, 145], ad:0.6, ap:0.6, t:"AP", e:"tip_slow", rng:500, tt:"NT" }, w: { n:"황혼의 장막", max:5, cd:[20, 19, 18, 17, 16], b:[0,0,0,0,0], t:"UT", e:"invis_energy", rng:250, tt:"S" }, e: { n:"표창 곡예", max:5, cd:[16, 14.5, 13, 11.5, 10], b:[50, 75, 100, 125, 150], ad:0.7, ap:0.5, t:"AP", e:"mark_dash_back", rng:825, tt:"NT" }, r: { n:"무결처형", max:3, req:[6, 11, 16], cd:[100, 80, 60], b:[150, 225, 300], ad:0.5, ap:0.8, eMisHp:0.1, t:"AP", e:"execute_dash", rng:675, tt:"T" } } },
+    "제이스": { role: "마법사", type: "AD", range: 500, spd: 335, hp: 590, hpRegen: 6.0, mp: 375, mpRegen: 6.0, baseAd: 57, def: 27, mdef: 30, as: 0.65, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"마법공학 축전기", e:"ms_up_on_transform" }, skills: { q: { n:"전격 폭발/하늘로!", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[55, 110, 165, 220, 275], ad:1.2, t:"AD", e:"shock_blast", rng:1050, tt:"NT" }, w: { n:"전류 역장/초전하", max:5, cd:[10, 9, 8, 7, 6], b:[0,0,0,0,0], t:"UT", e:"hyper_charge", rng:0, tt:"S" }, e: { n:"가속 관문/천둥 강타", max:5, cd:[16, 15, 14, 13, 12], b:[40, 70, 100, 130, 160], eMhp:0.08, t:"AP", e:"accel_gate_knockback", rng:650, tt:"S" }, r: { n:"머큐리 해머 변환", max:3, req:[6, 11, 16], cd:[6, 6, 6], b:[0,0,0], t:"UT", e:"form_change", rng:0, tt:"S" } } },
+    "럭스": { role: "마법사", type: "AP", range: 550, spd: 330, hp: 560, hpRegen: 5.5, mp: 480, mpRegen: 8.0, baseAd: 53, def: 18, mdef: 30, as: 0.66, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"일루미네이션", e:"bonus_dmg_on_marked" }, skills: { q: { n:"빛의 속박", max:5, cd:[11, 10.5, 10, 9.5, 9], b:[80, 120, 160, 200, 240], ap:0.6, t:"AP", e:"root_two", rng:1300, tt:"NT" }, w: { n:"프리즘 보호막", max:5, cd:[14, 13, 12, 11, 10], b:[40, 65, 90, 115, 140], ap:0.35, t:"UT", e:"return_shield", rng:1075, tt:"NT" }, e: { n:"광휘의 특이점", max:5, cd:[10, 9.5, 9, 8.5, 8], b:[70, 120, 170, 220, 270], ap:0.8, t:"AP", e:"aoe_slow_pop", rng:1100, tt:"NT" }, r: { n:"최후의 섬광", max:3, req:[6, 11, 16], cd:[80, 60, 40], b:[300, 400, 500], ap:1.2, t:"AP", e:"ignite_mark_laser", rng:3400, tt:"NT" } } },
+    "케일": { role: "마법사", type: "하이브리드", range: 175, spd: 335, hp: 600, hpRegen: 5.0, mp: 330, mpRegen: 8.0, baseAd: 50, def: 26, mdef: 22, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"거룩한 승천", e:"scale_by_level" }, skills: { q: { n:"광휘의 일격", max:5, cd:[12, 11, 10, 9, 8], b:[60, 100, 140, 180, 220], ad:0.6, ap:0.5, t:"AP", e:"shred_res_slow", rng:900, tt:"NT" }, w: { n:"천상의 축복", max:5, cd:[15, 14, 13, 12, 11], b:[0,0,0,0,0], ap:0.25, t:"UT", e:"heal_ms", rng:900, tt:"S" }, e: { n:"화염 주문검", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[0,0,0,0,0], ap:0.2, eMisHp:0.08, t:"AP", e:"missing_hp_ranged", rng:0, tt:"S" }, r: { n:"신성한 심판", max:3, req:[6, 11, 16], cd:[160, 120, 80], b:[200, 350, 500], ad:1.0, ap:0.8, t:"AP", e:"invincible_aoe", rng:900, tt:"S" } } },
+    "케이틀린": { role: "원딜", type: "AD", range: 650, spd: 325, hp: 605, hpRegen: 3.5, mp: 315, mpRegen: 7.4, baseAd: 62, def: 28, mdef: 30, as: 0.68, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"헤드샷", e:"headshot_stack" }, skills: { q: { n:"필트오버 피스메이커", max:5, cd:[10, 9, 8, 7, 6], b:[50, 90, 130, 170, 210], ad:1.3, t:"AD", e:"pierce_dmg", rng:1300, tt:"NT" }, w: { n:"요들잡이 덫", max:5, cd:[15, 13.5, 12, 10.5, 9], b:[0,0,0,0,0], t:"UT", e:"root_headshot", rng:800, tt:"NT" }, e: { n:"90구경 투망", max:5, cd:[16, 14.5, 13, 11.5, 10], b:[70, 110, 150, 190, 230], ap:0.8, t:"AP", e:"slow_headshot_back", rng:750, tt:"NT" }, r: { n:"비장의 한 발", max:3, req:[6, 11, 16], cd:[90, 75, 60], b:[300, 525, 750], ad:2.0, t:"AD", e:"snipe_execute", rng:3500, tt:"T" } } },
+    "직스": { role: "원딜", type: "AP", range: 525, spd: 325, hp: 566, hpRegen: 6.5, mp: 480, mpRegen: 8.0, baseAd: 54, def: 22, mdef: 30, as: 0.65, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"반동 초소형 폭탄", e:"bonus_ap_dmg_on_auto" }, skills: { q: { n:"반동 폭탄", max:5, cd:[6, 5.5, 5, 4.5, 4], b:[85, 135, 185, 235, 285], ap:0.65, t:"AP", e:"bounce_bomb", rng:850, tt:"NT" }, w: { n:"휴대용 폭약", max:5, cd:[20, 18, 16, 14, 12], b:[70, 120, 170, 220, 270], ap:0.5, t:"AP", e:"knockback_self_enemy", rng:1000, tt:"NT" }, e: { n:"마법공학 지뢰밭", max:5, cd:[16, 15, 14, 13, 12], b:[40, 70, 100, 130, 160], ap:0.3, t:"AP", e:"minefield_slow", rng:900, tt:"NT" }, r: { n:"지옥 화염 폭탄", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[300, 400, 500], ap:1.1, t:"AP", e:"mega_inferno_bomb", rng:5300, tt:"NT" } } },
+    "카이사": { role: "원딜", type: "하이브리드", range: 525, spd: 335, hp: 670, hpRegen: 3.5, mp: 344, mpRegen: 8.2, baseAd: 59, def: 28, mdef: 30, as: 0.64, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"두 번째 피부", e:"plasma_stack_eMisHp" }, skills: { q: { n:"이카시아 폭우", max:5, cd:[8, 7.5, 7, 6.5, 6], b:[40, 55, 70, 85, 100], ad:0.5, ap:0.25, t:"AD", e:"iso_missiles", rng:600, tt:"NT" }, w: { n:"공허의 추적자", max:5, cd:[22, 20, 18, 16, 14], b:[30, 55, 80, 105, 130], ad:1.3, ap:0.45, t:"AP", e:"plasma_stack_reveal", rng:3000, tt:"NT" }, e: { n:"고속 충전", max:5, cd:[16, 15, 14, 13, 12], b:[0,0,0,0,0], t:"UT", e:"invis_ms_atkSpd", rng:0, tt:"S" }, r: { n:"사냥본능", max:3, req:[6, 11, 16], cd:[130, 110, 90], b:[0,0,0], t:"UT", e:"shield_dash_far", rng:3000, tt:"T" } } },
+    "파이크": { role: "서포터", type: "AD", range: 150, spd: 330, hp: 600, hpRegen: 7.0, mp: 415, mpRegen: 8.0, baseAd: 62, def: 45, mdef: 32, as: 0.66, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"가라앉은 자들의 축복", e:"grey_health_regen" }, skills: { q: { n:"뼈 작살", max:5, cd:[10, 9.5, 9, 8.5, 8], b:[80, 130, 180, 230, 280], ad:1.2, t:"AD", e:"pull_slow_90", rng:400, tt:"NT" }, w: { n:"유령 잠수", max:5, cd:[14, 13, 12, 11, 10], b:[0,0,0,0,0], t:"UT", e:"invis_ms_regen", rng:0, tt:"S" }, e: { n:"망자의 물살", max:5, cd:[15, 14, 13, 12, 11], b:[90, 120, 150, 180, 210], ad:1.0, t:"AD", e:"phantom_stun", rng:400, tt:"NT" }, r: { n:"깊은 바다의 처형", max:3, req:[6, 11, 16], cd:[120, 100, 80], b:[250, 400, 550], ad:0.8, t:"TRUE", e:"blink_execute_reset", rng:750, tt:"NT" } } },
+    "소라카": { role: "서포터", type: "AP", range: 550, spd: 325, hp: 605, hpRegen: 2.5, mp: 425, mpRegen: 11.5, baseAd: 50, def: 32, mdef: 30, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"구원", e:"ms_up_towards_low_hp" }, skills: { q: { n:"별부름", max:5, cd:[8, 7, 6, 5, 4], b:[85, 130, 175, 220, 265], ap:0.35, t:"AP", e:"rejuvenation_slow", rng:800, tt:"NT" }, w: { n:"은하의 마력", max:5, cd:[4, 3.5, 3, 2.5, 2], b:[0,0,0,0,0], ap:0.6, t:"UT", e:"heal_ally_cost_hp", rng:550, tt:"T" }, e: { n:"별의 균형", max:5, cd:[20, 19, 18, 17, 16], b:[70, 110, 150, 190, 230], ap:0.4, t:"AP", e:"silence_root", rng:925, tt:"NT" }, r: { n:"기원", max:3, req:[6, 11, 16], cd:[130, 115, 100], b:[0,0,0], ap:0.5, t:"UT", e:"global_heal_low_hp_bonus", rng:9999, tt:"S" } } },
+    "바드": { role: "서포터", type: "하이브리드", range: 500, spd: 330, hp: 630, hpRegen: 5.5, mp: 350, mpRegen: 6.0, baseAd: 52, def: 34, mdef: 30, as: 0.62, bonusAd: 0, ap: 0, arPenPer: 0, lethality: 0, mPenPer: 0, mPenFlat: 0, crit: 0, lifeSteal: 0, omniVamp: 0, ah: 0, p: { n:"방랑자의 부름", e:"meep_bonus_dmg" }, skills: { q: { n:"우주의 결속", max:5, cd:[11, 10, 9, 8, 7], b:[80, 125, 170, 215, 260], ap:0.65, t:"AP", e:"stun_if_wall", rng:950, tt:"NT" }, w: { n:"수호자의 성소", max:5, cd:[14, 14, 14, 14, 14], b:[0,0,0,0,0], ap:0.3, t:"UT", e:"heal_ms_shrine", rng:800, tt:"NT" }, e: { n:"신비한 차원문", max:5, cd:[18, 17, 16, 15, 14], b:[0,0,0,0,0], t:"UT", e:"magical_journey", rng:900, tt:"NT" }, r: { n:"운명의 소용돌이", max:3, req:[6, 11, 16], cd:[110, 90, 70], b:[0,0,0], t:"UT", e:"stasis_aoe", rng:3300, tt:"NT" } } }
 };
 var ChampionList = Object.keys(ChampionData);
 
@@ -557,6 +556,7 @@ var SkillMechanics = {
     }
 };
 
+// 🌟 100% 명중 및 평타 명중률 수정 밸런스 패치 적용
 var BattleEngine = {
     generateAI: function() {
         var rChamp = ChampionList[Math.floor(Math.random() * ChampionList.length)];
@@ -567,12 +567,19 @@ var BattleEngine = {
         var origin = hw.skills[key]; var idx = skLv - 1; 
         return { key: key, n: origin.n, cd: origin.cd[idx], b: origin.b[idx], ad: origin.ad, ap: origin.ap, mhp: origin.mhp, def: origin.def, eMhp: origin.eMhp, eCurHp: origin.eCurHp, eMisHp: origin.eMisHp, t: origin.t, e: origin.e, rng: origin.rng, tt: origin.tt, mv: origin.mv };
     },
-    calcHit: function(atkSw, defSw, atkHw, defHw, defStatus, bonus) { 
+    calcHit: function(sk, atkSw, defSw, atkHw, defHw, defStatus, bonus) { 
+        if (defStatus.dodgeDur > 0 && (sk == null || sk.t === "AD")) return false; 
+        if (defStatus.rootDur > 0 || defStatus.stunDur > 0) return true; 
+        if (sk != null && (sk.tt === "T" || sk.tt === "S")) return true; 
+
         var finalDefSpd = (defStatus.slowDur > 0) ? defHw.spd * 0.7 : defHw.spd;
-        var swDiff = (atkSw.acc - defSw.ref) * 0.5; var spdDiff = (atkHw.spd - finalDefSpd) * 0.1; 
-        var chance = 50 + swDiff + spdDiff + bonus;
-        if (defStatus.rootDur > 0) chance += 20; if (defStatus.stunDur > 0) chance = 100; 
-        return (Math.random() * 100 <= Math.max(10, Math.min(100, chance))); 
+        var swDiff = (atkSw.acc - defSw.ref) * 0.4; 
+        var spdDiff = (atkHw.spd - finalDefSpd) * 0.1; 
+        
+        var baseChance = (sk == null) ? 95 : 75; 
+        var chance = baseChance + swDiff + spdDiff + bonus;
+        
+        return (Math.random() * 100 <= Math.max(20, Math.min(100, chance))); 
     },
     calcProb: function(base, mySwStat, enSwStat, myHw, enHw, bonus) { return Math.max(10, Math.min(90, base + (mySwStat - enSwStat) * 0.5 + (bonus || 0))); },
     calcDmg: function(sk, atkHw, defHw, defHp, defStatus) {
@@ -592,6 +599,7 @@ var BattleEngine = {
         if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.4) : true; 
         return true; 
     },
+    // 🌟 AI 봇 미니언 파밍 로직 추가 
     playPhase: function(me, ai, stratMe, phaseIdx) {
         var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; var combatLogs = []; var bLogs = ContentManager.battle.logs; 
         me.status = me.status || {}; ai.status = ai.status || {}; me.status.isAttacking = false; ai.status.isAttacking = false;
@@ -622,7 +630,7 @@ var BattleEngine = {
                             var skObj = this.getSk(me.hw, k, skLv);
                             if (this.evaluateAI(skObj, me, ai, isAggress)) {
                                 me.cd[k] = skObj.cd; me.status.isAttacking = true; usedSkill = true;
-                                var hit = this.calcHit(me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0);
+                                var hit = this.calcHit(skObj, me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0);
                                 if (hit) {
                                     mHitCount++; var dmg = this.calcDmg(skObj, me.hw, ai.hw, ai.hp, ai.status);
                                     if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
@@ -635,7 +643,7 @@ var BattleEngine = {
                     }
                     if (!usedSkill && me.aaTimer >= 1.0) {
                         me.aaTimer -= 1.0; me.status.isAttacking = true;
-                        if (ai.status.dodgeDur <= 0 && this.calcHit(me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0)) {
+                        if (this.calcHit(null, me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0)) {
                             mHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, me.hw, ai.hw, ai.hp, ai.status);
                             if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
                         }
@@ -650,7 +658,7 @@ var BattleEngine = {
                             var skObj = this.getSk(ai.hw, k, skLv);
                             if (this.evaluateAI(skObj, ai, me, true)) {
                                 ai.cd[k] = skObj.cd; ai.status.isAttacking = true; usedSkill = true;
-                                var hit = this.calcHit(ai.sw, me.sw, ai.hw, me.hw, me.status, 0);
+                                var hit = this.calcHit(skObj, ai.sw, me.sw, ai.hw, me.hw, me.status, 0);
                                 if (hit) {
                                     aHitCount++; var dmg = this.calcDmg(skObj, ai.hw, me.hw, me.hp, me.status);
                                     if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
@@ -663,7 +671,7 @@ var BattleEngine = {
                     }
                     if (!usedSkill && ai.aaTimer >= 1.0) {
                         ai.aaTimer -= 1.0; ai.status.isAttacking = true;
-                        if (me.status.dodgeDur <= 0 && this.calcHit(ai.sw, me.sw, ai.hw, me.hw, me.status, 0)) {
+                        if (this.calcHit(null, ai.sw, me.sw, ai.hw, me.hw, me.status, 0)) {
                             aHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, ai.hw, me.hw, me.hp, me.status);
                             if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
                         }
@@ -681,27 +689,43 @@ var BattleEngine = {
         
         var finalMDmg = Math.max(0, mRawDmg - mRegen); var finalADmg = Math.max(0, aRawDmg - aRegen);
         var isCannonPhase = (phaseIdx === 2); var wave = { melee: 3, caster: 3, siege: isCannonPhase ? 1 : 0 };
-        var mGold = 0, kMelee = 0, kCaster = 0, kSiege = 0;
+        
+        var mGold = 0, mCs = 0;
         var csChance = this.calcProb(50, me.sw.com, ai.sw.int, me.hw, ai.hw, (stratMe === 2 ? 30 : -20) + (aHitCount>0 ? -15 : 10));
+        var aGold = 0, aCs = 0;
+        var aiCsChance = this.calcProb(60, ai.sw.com, me.sw.int, ai.hw, me.hw, (mHitCount > 0 ? -10 : 10));
 
         var farmLogs = [];
         if (stratMe !== 3) {
-            for(var m=0; m<wave.melee; m++) if(Math.random()*100 <= csChance) { kMelee++; mGold += 21; }
-            for(var c=0; c<wave.caster; c++) if(Math.random()*100 <= csChance) { kCaster++; mGold += 14; }
-            if(wave.siege > 0 && Math.random()*100 <= (csChance - 10)) { kSiege++; mGold += 60; }
-            var cnnStr = isCannonPhase ? (kSiege > 0 ? bLogs.cannonOk : bLogs.cannonFail) : "";
-            farmLogs.push(bLogs.farm.replace("{m}", kMelee).replace("{c}", kCaster).replace("{s}", cnnStr).replace("{g}", mGold));
-        } else farmLogs.push(bLogs.farmMissed);
+            for(var m=0; m<wave.melee; m++) {
+                if(Math.random()*100 <= csChance) { mCs++; mGold += 21; }
+                if(Math.random()*100 <= aiCsChance) { aCs++; aGold += 21; }
+            }
+            for(var c=0; c<wave.caster; c++) {
+                if(Math.random()*100 <= csChance) { mCs++; mGold += 14; }
+                if(Math.random()*100 <= aiCsChance) { aCs++; aGold += 14; }
+            }
+            if(wave.siege > 0) {
+                if(Math.random()*100 <= (csChance - 10)) { mCs++; mGold += 60; }
+                if(Math.random()*100 <= (aiCsChance - 10)) { aCs++; aGold += 60; }
+            }
+            farmLogs.push(bLogs.farm.replace("{mCs}", mCs).replace("{mGold}", mGold).replace("{aCs}", aCs).replace("{aGold}", aGold));
+        } else {
+            farmLogs.push(bLogs.farmMissed);
+            for(var m=0; m<wave.melee; m++) { aCs++; aGold += 21; }
+            for(var c=0; c<wave.caster; c++) { aCs++; aGold += 14; }
+            if(wave.siege > 0) { aCs++; aGold += 60; }
+        }
 
-        var csPercent = ((kMelee+kCaster+kSiege)/(wave.melee+wave.caster+wave.siege)) * 100;
-        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: (kSiege > 0), mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
+        var csPercent = ((mCs)/(wave.melee+wave.caster+wave.siege)) * 100;
+        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: (mCs > 6), mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
 
         if(combatLogs.length === 0) combatLogs.push(bLogs.noAction);
         if(combatLogs.length > 8) {
             var summary = combatLogs.slice(0, 3); summary.push(bLogs.skipMiddle); summary.push(combatLogs[combatLogs.length-1]); combatLogs = summary;
         }
 
-        return { lckLog: BattleDirector.generateLog(ctx), combatLogs: combatLogs.join("\n"), farmLogs: farmLogs.join("\n"), mDmg: Math.floor(finalMDmg), aDmg: Math.floor(finalADmg), gold: mGold };
+        return { lckLog: BattleDirector.generateLog(ctx), combatLogs: combatLogs.join("\n"), farmLogs: farmLogs.join("\n"), mDmg: Math.floor(finalMDmg), aDmg: Math.floor(finalADmg), mGold: mGold, mCs: mCs, aGold: aGold, aCs: aCs };
     }
 };
 
@@ -768,7 +792,7 @@ var AuthController = {
                 return SystemAction.go(replier, t.success, session.tempId + "님 환영합니다!", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             } else return SystemAction.go(replier, t.fail, m.loginFail, function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
         }
-        if (session.screen === "GUEST_INQUquiry") {
+        if (session.screen === "GUEST_INQUIRY") {
             Database.inquiries.push({ sender: "비회원(" + sender + ")", room: room, content: msg, time: Utils.get24HTime(), read: false }); Database.save(); SessionManager.reset(room, sender);
             return SystemAction.go(replier, t.complete, m.inqSubmitSuccess, function(){ AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
         }
@@ -1153,8 +1177,8 @@ var BattleController = {
                                 var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
                                 cS.battle.instance = {
                                     viewTab: "ME", turn: 1, strat: 0,
-                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, mental: 100, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1 },
-                                    ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, mental: 100, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0 }
+                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, mental: 100, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1 },
+                                    ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, mental: 100, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0 }
                                 };
                                 SessionManager.save(); 
                                 
@@ -1242,12 +1266,14 @@ var BattleController = {
                     run: function() {
                         try {
                             var cS = SessionManager.sessions[sessionKey]; var st = cS.battle.instance;
-                            var turnTotalGold = 0; var isGameOver = false;
+                            var isGameOver = false;
 
                             for (var i = 1; i <= 3; i++) {
                                 var p = bM.playPhase(st.me, st.ai, stratMe, i);
                                 st.me.hp -= p.aDmg; st.ai.hp -= p.mDmg; 
-                                st.me.gold += p.gold; turnTotalGold += p.gold;
+                                
+                                st.me.cs += p.mCs; st.me.gold += p.mGold;
+                                st.ai.cs += p.aCs; st.ai.gold += p.aGold;
                                 
                                 if (st.me.hp > st.me.hw.hp) st.me.hp = st.me.hw.hp;
                                 if (st.ai.hp > st.ai.hw.hp) st.ai.hp = st.ai.hw.hp;
@@ -1257,7 +1283,7 @@ var BattleController = {
                                 if (st.ai.hp <= 0) { st.ai.mental -= 20; st.ai.hp = st.ai.hw.hp; mentalLog = cB.logs.killAi; isGameOver = true; }
 
                                 var phaseTitle = cB.screen.phasePrefix + i + cB.screen.phaseSuffix;
-                                var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 🌾 파밍 기록 ]\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP\n💰 획득 골드: +" + p.gold + " G";
+                                var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP";
                                 
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseTitle, phaseContent, false, cB.ui.watchNext));
 
@@ -1279,7 +1305,7 @@ var BattleController = {
                                 return UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
                             }
 
-                            var expGain = (stratMe === 3) ? 0 : (stratMe === 2 && turnTotalGold <= 100) ? 70 : 100; 
+                            var expGain = (stratMe === 3) ? 0 : (stratMe === 2 && st.me.cs < 2) ? 70 : 100; 
                             st.me.exp += expGain;
                             if (st.me.exp >= 100) { st.me.level++; st.me.exp -= 100; st.me.sp++; st.me.hw.baseAd += 3; st.me.hw.hp += 80; st.me.hp += 80; }
                             
