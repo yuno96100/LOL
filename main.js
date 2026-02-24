@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v12.2 (Auto-Battler Bug Fix & Crash Tracker)
- * - [M] Model: playPhase 파라미터 충돌(st undefined) 버그 완벽 해결
- * - [V] View: UI 카테고리화 및 미니맵 렌더링 최적화 유지
+ * 🏰 소환사의 협곡 Bot - v12.3 (Syntax Error Fix & Auto-Battler)
+ * - [M] Model: 메신저봇R Rhino 엔진 호환성 100% 패치 (ES6 Spread 문법 제거)
+ * - [V] View: UI 카테고리화 및 미니맵 렌더링
  * - [C] Controller: 스레드 내부 에러 강제 출력(Catch) 시스템 적용
- */  
+ */   
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v12.2 BugFix Edition",
+    Version: "v12.3 Stable Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -171,7 +171,7 @@ var ContentManager = {
     battle: {
         director: {
             Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 사거리를 이용한 완벽한 카이팅! 상대는 닿지도 못합니다!", Assassinate: "🎙️ 캐스터: 거리를 좁히며 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 사거리 안에서 서로 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 무리한 진입! 오히려 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 닿지 않는 거리! 서로 무빙만 치며 견제합니다." },
-            Defensive: { NormalFarm: "🎙️ 해설: 안전한 거리를 유지하며 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 거리가 안닿아요!! 대포 미니언을 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 먹으려 앞으로 나갔다가 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하며 파밍도 못하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도닙니다!! 파밍도 놓치고 일방적으로 맞았어요!" },
+            Defensive: { NormalFarm: "🎙️ 해설: 안전한 거리를 유지하며 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 거리가 안닿아요!! 대포 미니언을 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 먹으려 앞으로 나갔다가 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하며 파밍도 못하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 일방적으로 맞았어요!" },
             baseRecall: "🏠 거리를 완전히 벌리고 우물로 귀환하여 전열을 가다듬습니다."
         },
         effectMap: {
@@ -634,7 +634,8 @@ function applySpells(actor, target, isAi, logs, sec, bLogs, distance) {
 var BattleEngine = {
     generateAI: function() {
         var rChamp = ChampionList[Math.floor(Math.random() * ChampionList.length)];
-        var shuffledSpells = [...SpellList].sort(function() { return 0.5 - Math.random() }); 
+        // 🌟 문법 에러 픽스: ES6 Spread 대신 slice() 사용
+        var shuffledSpells = SpellList.slice().sort(function() { return 0.5 - Math.random(); }); 
         return { 
             champion: rChamp, 
             stats: { acc: 40+Math.random()*40, ref: 40+Math.random()*40, com: 40+Math.random()*40, int: 40+Math.random()*40 },
@@ -681,9 +682,8 @@ var BattleEngine = {
         if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.35) : true; 
         return true; 
     },
-    // 🌟 치명적 버그 수정: 매개변수로 상태(st) 객체를 통째로 넘겨받도록 서명 수정 완료!
     playPhase: function(st, stratMe, stratAi, phaseIdx) {
-        var me = st.me, ai = st.ai, lanePos = st.lanePos;
+        var me = st.me, ai = st.ai;
         var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; 
         var combatLogs = []; var bLogs = ContentManager.battle.logs; 
         
@@ -839,7 +839,7 @@ var BattleEngine = {
             combatLogs.push(bLogs.towerHitMe.replace("{sec}", 15).replace("{dmg}", dmgToTower));
             if (ai.towerHp <= 2000 && me.plates === 0) { me.plates = 1; me.gold += 150; combatLogs.push(bLogs.towerPlate); }
             if (ai.towerHp <= 1000 && me.plates === 1) { me.plates = 2; me.gold += 150; combatLogs.push(bLogs.towerPlate); }
-        } else if (lanePos >= 2 && mHitCount > 0) {
+        } else if (st.lanePos >= 2 && mHitCount > 0) {
             var towerDmg = 200 + (phaseIdx * 50); mRawDmg += towerDmg;
             combatLogs.push(bLogs.towerAggro.replace("{dmg}", towerDmg));
         }
@@ -850,7 +850,7 @@ var BattleEngine = {
             combatLogs.push(bLogs.towerHitAi.replace("{sec}", 15).replace("{dmg}", aiDmgToTower));
             if (me.towerHp <= 2000 && ai.plates === 0) { ai.plates = 1; ai.gold += 150; }
             if (me.towerHp <= 1000 && ai.plates === 1) { ai.plates = 2; ai.gold += 150; }
-        } else if (lanePos <= -2 && aHitCount > 0) {
+        } else if (st.lanePos <= -2 && aHitCount > 0) {
             var towerDmg = 200 + (phaseIdx * 50); aRawDmg += towerDmg;
             combatLogs.push(bLogs.towerAggro.replace("{dmg}", towerDmg));
         }
@@ -868,8 +868,8 @@ var BattleEngine = {
         
         var myBaseCs = (stratMe === 2) ? 65 : (stratMe === 3 ? 35 : 50); 
         var aiBaseCs = (stratAi === 2) ? 65 : (stratAi === 3 ? 35 : 50);
-        if (lanePos <= -2) myBaseCs -= 30; 
-        if (lanePos >= 2) aiBaseCs -= 30; 
+        if (st.lanePos <= -2) myBaseCs -= 30; 
+        if (st.lanePos >= 2) aiBaseCs -= 30; 
 
         var mGold = 0, mCs = 0;
         var csChance = this.calcProb(myBaseCs, me.sw.com, ai.sw.int, me.hw, ai.hw, (aHitCount>0 ? -15 : 10));
@@ -1373,7 +1373,7 @@ var BattleController = {
                                 var mHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.myChamp]));
                                 var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
                                 cS.battle.instance = {
-                                    viewTab: "ME", turn: 1, strat: 0, lanePos: 0, distance: 600,
+                                    turn: 1, strat: 0, lanePos: 0, distance: 600,
                                     me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1, spells: {d: cS.battle.spells.d, f: cS.battle.spells.f, dCd: 0, fCd: 0} },
                                     ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: cS.battle.enemy.spells.d, f: cS.battle.enemy.spells.f, dCd: 0, fCd: 0} }
                                 };
