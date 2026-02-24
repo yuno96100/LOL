@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v4.2 (Real Laning Phase & Balance Patch)
- * - [M] Model: 평타/타겟팅 명중 밸런스 픽스, AI 파밍 지능 도입
- * - [V] View: 현황판 CS 표기, 스탯창 골드 이관, 파밍 비교 로그 출력
- * - [C] Controller: 백그라운드 세션 알림 스레드 완전 삭제, 준비완료 지원
- */   
+ * 🏰 소환사의 협곡 Bot - v6.0 (Real Laning & Spells Edition)
+ * - [M] Model: 스펠 엔진(점멸/점화/회복/방어막), 마나 코스트, 웨이브(푸시/프리징) 추가
+ * - [V] View: 스펠 선택 UI, 다이나믹 스펠 발동 로그, 마나 고갈 알림
+ * - [C] Controller: 픽창에서 스펠 변경 라우팅 완벽 추가
+ */  
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v4.2 Balance Edition",
+    Version: "v6.0 Spell Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -18,20 +18,22 @@ var Config = {
     TIMEOUT_MS: 300000, 
     
     Timers: {
-        matchSearch: 3000,  
-        matchFound: 2500,   
-        loading: 3000,      
-        vsScreen: 4500,     
-        battleStart: 3500,  
+        matchSearch: 2000,  
+        matchFound: 1500,   
+        loading: 2000,      
+        vsScreen: 3500,     
+        battleStart: 2500,  
         phaseDelay: 8000,   
         gameOver: 3000,     
-        systemAction: 2200  
+        systemAction: 1200  
     }
 };
 
 var MAX_LEVEL = 30;
 var POINT_PER_LEVEL = 5;
 var RoleList = ["탱커", "전사", "암살자", "마법사", "원딜", "서포터"];
+// 🌟 소환사 주문 목록
+var SpellList = ["점멸", "점화", "회복", "방어막"];
 
 var Utils = {
     getFixedDivider: function() { return Array(Config.FIXED_LINE + 1).join(Config.LINE_CHAR); },
@@ -108,6 +110,7 @@ var ContentManager = {
         yesNo: ["1. 예", "2. 아니오"],
         adminInqDetail: ["1. 답변 전송", "2. 문의 삭제"],
         roles: ["1. 🛡️ 탱커", "2. 🪓 전사", "3. 🗡️ 암살자", "4. 🪄 마법사", "5. 🏹 원딜", "6. 🚑 서포터"], 
+        spells: ["1. 🏃 점멸 (돌진/회피)", "2. 🔥 점화 (처형/치감)", "3. 💚 회복 (치유/이속)", "4. 🛡️ 방어막 (피해흡수)"],
         getAdminMain: function(unreadCount) { return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")]; }
     },
     adminMap: { editType: { "1": "gold", "2": "lp", "3": "level" }, editName: { "gold": "골드", "lp": "LP", "level": "레벨" }, actionName: { "2": "데이터 초기화", "3": "계정 삭제", "4": "차단/해제" } },
@@ -116,7 +119,7 @@ var ContentManager = {
         inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 확인",
         resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
         shopItem: "아이템 상점", shopChamp: "챔피언 상점", 
-        modeSel: "대전 모드 선택", roleSelect: "역할군 선택", 
+        modeSel: "대전 모드 선택", roleSelect: "역할군 선택", spellSlot: "스펠 슬롯 선택", spellPick: "스펠 장착",
         aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 확인",
         aInqList: "문의 목록", aInqDet: "문의 상세", aInqRep: "답변 작성", aUserDetail: " 관리",
         aEditSel: "정보 수정", aEditIn: "값 수정", aEditCon: "수정 확인"
@@ -165,9 +168,9 @@ var ContentManager = {
     
     battle: {
         director: {
-            Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 아~ {myChamp}! 완벽한 카이팅! 적은 닿지도 않습니다!", Assassinate: "🎙️ 캐스터: 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 라인 한가운데서 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 딜교환 실패! 스킬이 빗나가며 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 양 선수 모두 화려한 무빙! 주요 스킬이 허공을 가릅니다!" },
-            Defensive: { NormalFarm: "🎙️ 해설: {myChamp} 선수, 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 대포 미니언!! 대포를 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 챙기는 틈을 타 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 콤보는 다 맞았어요!" },
-            baseRecall: "🏠 우물로 귀환하여 전열을 가다듬습니다."
+            Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 사거리를 이용한 완벽한 카이팅! 상대는 닿지도 못합니다!", Assassinate: "🎙️ 캐스터: 거리를 좁히며 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 사거리 안에서 서로 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 무리한 진입! 오히려 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 닿지 않는 거리! 서로 무빙만 치며 견제합니다." },
+            Defensive: { NormalFarm: "🎙️ 해설: 안전한 거리를 유지하며 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 거리가 안닿아요!! 대포 미니언을 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 먹으려 앞으로 나갔다가 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하며 파밍도 못하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 일방적으로 맞았어요!" },
+            baseRecall: "🏠 거리를 완전히 벌리고 우물로 귀환하여 전열을 가다듬습니다."
         },
         effectMap: {
             "shield_on_hit": "적중 시 보호막 획득", "slow_field": "광역 둔화 지대 생성", "block_dash_ms": "돌진 차단 및 이동속도 증가", "wall_stun": "지형(벽) 충돌 시 대상 기절", "knockup_away": "적을 멀리 날려버림 (에어본)",
@@ -206,24 +209,34 @@ var ContentManager = {
             win: "🎉 승리했습니다!", lose: "☠️ 패배했습니다..."
         },
         logs: {
-            baseHeal: "🏠 우물에 도착하여 아이템을 정비하고 체력과 마나를 회복합니다.",
-            hitMe: "⏱️[{sec}초] 🔹 [{champ}]의 [{skill}] 적중! {fxLog}",
-            missMe: "⏱️[{sec}초] 💨 [{champ}]의 [{skill}] 빗나감!",
-            hitAi: "⏱️[{sec}초] 🔸 적 [{champ}]의 [{skill}] 적중! {fxLog}",
-            noAction: "💤 30초간 팽팽한 눈치싸움만 벌어지며 서로 유효타가 없었습니다.",
-            skipMiddle: "... (중략) 치열한 난타전이 이어집니다!",
+            baseHeal: "🏠 우물에 도착하여 체력을 회복합니다.",
+            hitMe: "⏱️[{sec}초] [거리:{dist}] 🔹 내 [{skill}] 적중! {fxLog}",
+            missMe: "⏱️[{sec}초] [거리:{dist}] 💨 내 [{skill}] 빗나감!",
+            hitAi: "⏱️[{sec}초] [거리:{dist}] 🔸 적 [{skill}] 적중! {fxLog}",
+            missAi: "⏱️[{sec}초] [거리:{dist}] 💨 적 [{skill}] 허공을 가릅니다!",
+            outOfRangeMe: "⏱️[{sec}초] 👣 거리가 닿지 않아 공격하지 못했습니다. (거리: {dist})",
+            outOfRangeAi: "⏱️[{sec}초] 👣 적이 공격하려다 사거리 부족으로 멈칫합니다. (거리: {dist})",
+            noMana: "💧 [마나 부족] 마나가 부족하여 스킬을 사용할 수 없습니다!",
+            spellFlash: "✨ [스펠] 치명상을 감지하고 빛의 속도로 [점멸]을 사용해 회피합니다!!",
+            spellIgnite: "🔥 [스펠] 킬각을 확인하고 [점화]를 걸어 불태웁니다!!",
+            spellHeal: "💚 [스펠] 위험한 순간 [회복]을 사용하여 체력을 채웁니다!!",
+            spellBarrier: "🛡️ [스펠] [방어막]을 펼쳐 치명적인 피해를 흡수합니다!!",
+            punish: "⚡ [빈틈 노리기] 상대의 스킬이 빠진 틈을 타 맹렬하게 반격합니다!",
+            minionAggro: "🛡️ [미니언 어그로] 무리한 딜교환으로 적 미니언들에게 두들겨 맞습니다. (-{dmg} HP)",
+            noAction: "💤 서로 사거리를 내주지 않으며 눈치싸움만 벌입니다.",
+            skipMiddle: "... (중략) 치열한 라인전 포지셔닝이 이어집니다!",
             farm: "🌾 [ 파밍 결과 ]\n👤 나: {mCs}개 획득 (+{mGold}G)\n🤖 적: {aCs}개 획득 (+{aGold}G)",
-            farmMissed: "❌ 라인을 비운 사이 적이 미니언을 타워에 밀어넣습니다.",
-            killMe: "\n\n☠️ 솔로 킬을 당했습니다! (멘탈 -20)",
-            killAi: "\n\n🔥 적을 솔로 킬 냈습니다! (적 멘탈 -20)"
+            farmMissed: "❌ 라인을 비운 사이 적이 내 포탑에 미니언을 밀어넣습니다.",
+            killMe: "\n\n☠️ 무리한 딜교환으로 솔로 킬을 당했습니다! (멘탈 -20)",
+            killAi: "\n\n🔥 완벽한 라인전! 적을 솔로 킬 냈습니다! (적 멘탈 -20)"
         },
         alerts: {
             noSp: { title: "스킬 강화 불가", msg: "⚠️ 스킬 포인트(SP)가 부족합니다." },
             reqLvl6: { title: "스킬 강화 불가", msg: "⚠️ 궁극기(R)는 6레벨 이상부터 배울 수 있습니다." },
             maxLvl: { title: "스킬 강화 불가", msg: "⚠️ 이미 최대 레벨입니다." },
             skillUpOk: { title: "스킬 강화 완료", msg: "✨ [{skill}] 스킬이 Lv.{lvl}(으)로 강화되었습니다!" },
-            noStrat: { title: "전투 시작 불가", msg: "⚠️ 전략을 먼저 선택하세요! (3, 4, 5번 중 하나)" },
-            noSkill: { title: "전투 시작 불가", msg: "⚠️ 전투 시작 전 [6. 스킬 레벨업]에서 스킬을 먼저 배워주세요!" },
+            noStrat: { title: "전투 시작 불가", msg: "⚠️ 전략을 먼저 선택하세요! (4, 5, 6번 중 하나)" },
+            noSkill: { title: "전투 시작 불가", msg: "⚠️ 전투 시작 전 [7. 스킬 레벨업]에서 스킬을 먼저 배워주세요!" },
             noPrev: { title: "이전 불가", msg: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)" }
         }
     }
@@ -258,28 +271,7 @@ var LayoutManager = {
     }
 };
 
-var BattleDirector = {
-    generateLog: function(ctx) {
-        var bDir = ContentManager.battle.director;
-        var totalDmg = ctx.mDmg + ctx.aDmg; var txt = "";
-        if (ctx.strat === 1) { 
-            if (ctx.mHits > ctx.aHits * 2) txt = bDir.Aggressive.Kiting;
-            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (totalDmg < 150) ? bDir.Aggressive.MildTrade : bDir.Aggressive.Bloodbath;
-            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = bDir.Aggressive.Countered;
-            else txt = bDir.Aggressive.MissAll;
-        } else if (ctx.strat === 2) {
-            if (ctx.isCannonPhase && !ctx.gotCannon) txt = bDir.Defensive.CannonMissed;
-            else {
-                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (totalDmg < 50) ? bDir.Defensive.NormalFarm : bDir.Defensive.PerfectCS;
-                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = bDir.Defensive.GreedyCS;
-                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = bDir.Defensive.ZonedOut;
-                else txt = bDir.Defensive.Disaster;
-            }
-        } else return bDir.baseRecall;
-        return txt.replace(/{myChamp}/g, ctx.myChamp).replace(/{aiChamp}/g, ctx.aiChamp);
-    }
-};
-
+// 🌟 스펠 표기 추가 및 웨이브 전략 반영된 현황판
 var BattleView = { 
     Board: {
         render: function(state) {
@@ -293,11 +285,11 @@ var BattleView = {
             content += "💧 마나: " + t.mp + " / " + t.hw.mp + "\n";
             content += "🌾 CS: " + t.cs + " 개\n\n";
             
-            content += "[ ✨ 스킬 현황 ]\n";
-            content += "🔹 Q (Lv."+t.skLv.q+") \n";
-            content += "🔹 W (Lv."+t.skLv.w+") \n";
-            content += "🔹 E (Lv."+t.skLv.e+") \n";
-            content += "🔸 R (Lv."+t.skLv.r+") \n\n\n";
+            content += "[ ✨ 스킬 & 스펠 ]\n";
+            content += "🔹 Q (Lv."+t.skLv.q+")   🔹 W (Lv."+t.skLv.w+")\n";
+            content += "🔹 E (Lv."+t.skLv.e+")   🔸 R (Lv."+t.skLv.r+")\n";
+            content += "🌟 D ["+t.spells.d+"] : " + (t.spells.dCd<=0?"준비완료":t.spells.dCd+"턴") + "\n";
+            content += "🌟 F ["+t.spells.f+"] : " + (t.spells.fCd<=0?"준비완료":t.spells.fCd+"턴") + "\n\n";
             
             content += "💡 [ 대기실 메뉴 ]\n\n";
             
@@ -306,16 +298,17 @@ var BattleView = {
             content += "2. 🔍 상세 스탯\n";
             content += "3. 📝 스킬 정보\n\n";
             
-            var stratName = ["(선택 안됨)", "⚔️ 공격적인 라인전", "🛡️ 안정적인 파밍", "🏠 귀환 및 정비"][state.strat || 0];
+            var stratName = ["(선택 안됨)", "⚔️ 공격적인 라인전", "🌊 라인 푸시 (빠른 파밍)", "🛡️ 라인 프리징 (안전 파밍)", "🏠 귀환 및 정비"][state.strat || 0];
             content += "[ 이번 턴 전략 ]\n";
             content += "▶ 현재 선택\n";
             content += "- " + stratName + "\n";
-            content += "4. ⚔️ 공격적인 라인전\n";
-            content += "5. 🛡️ 안정적인 파밍\n";
-            content += "6. 🏠 귀환 및 정비\n\n";
+            content += "4. ⚔️ 공격 (딜교환 위주)\n";
+            content += "5. 🌊 푸시 (파밍 위주/갱 위험)\n";
+            content += "6. 🛡️ 프리징 (안전/파밍 감소)\n";
+            content += "7. 🏠 귀환 및 정비\n\n";
             
             content += "[ 챔피언 성장 ]\n";
-            content += "7. 스킬 레벨업" + (isMe && t.sp > 0 ? " (SP: " + t.sp + ")" : "") + "\n\n";
+            content += "8. 스킬 레벨업" + (isMe && t.sp > 0 ? " (SP: " + t.sp + ")" : "") + "\n\n";
             
             content += "[ 턴 시작 ]\n";
             content += "0. ✅ 준비완료"; 
@@ -538,25 +531,41 @@ var SessionManager = {
 
 SessionManager.init();
 
-var SkillMechanics = {
-    apply: function(effect, caster, target, dmg) {
-        caster.status = caster.status || {}; target.status = target.status || {};
-        var log = "";
-        if (effect.indexOf("slow") !== -1) { target.status.slowDur = 3; log = "🧊 적의 이동속도를 3초간 늦춥니다!"; }
-        if (effect.indexOf("stun") !== -1) { target.status.stunDur = 2; log = "⚡ 적을 2초간 기절시켜 행동을 봉쇄합니다!"; }
-        if (effect.indexOf("root") !== -1) { target.status.rootDur = 2; log = "🪤 적의 발을 2초간 묶습니다!"; }
-        if (effect.indexOf("silence") !== -1) { target.status.silenceDur = 2; log = "🔇 적을 침묵시켜 2초간 스킬을 막습니다!"; }
-        if (effect.indexOf("shield") !== -1) { caster.status.shield = (caster.status.shield || 0) + 150 + (caster.level*20); log = "🛡️ " + caster.status.shield + "의 보호막을 얻습니다!"; }
-        if (effect.indexOf("invincible") !== -1) { caster.status.invincibleDur = 3; log = "✨ 3초간 모든 피해를 무시하는 무적 상태가 됩니다!"; }
-        if (effect.indexOf("dodge") !== -1) { caster.status.dodgeDur = 2; log = "🌪️ 2초간 적의 기본 공격을 모두 회피합니다!"; }
-        if (effect === "heal_missing_hp") { var heal = Math.floor((caster.hw.hp - caster.hp) * 0.15); caster.hp = Math.min(caster.hw.hp, caster.hp + heal); log = "💚 잃은 체력에 비례해 " + heal + "의 체력을 흡수합니다!"; }
-        if (effect === "shred_res") { target.status.defShredDur = 4; log = "💔 4초간 적의 방어력과 마법 저항력을 파괴합니다!"; }
-        if (effect === "execute" || effect === "true_execute") { log = "💀 치명적인 고정 피해로 적을 찢어버립니다!"; }
-        return log;
-    }
-};
+// 🌟 AI 행동 판단: 자신과 적의 피, CS 리드를 기반으로 (1:공격, 2:푸시, 3:프리징, 4:귀환) 선택
+function decideAIStrategy(ai, me) {
+    var isSmart = (Math.random() * 100 <= ai.sw.int); 
+    if (!isSmart) return Math.random() > 0.5 ? 1 : 2; 
 
-// 🌟 100% 명중 및 평타 명중률 수정 밸런스 패치 적용
+    var myHp = ai.hp / ai.hw.hp;
+    var enHp = me.hp / me.hw.hp;
+    
+    if (myHp < 0.25) return 4; // 귀환
+    if (myHp > enHp + 0.3 || enHp < 0.3) return 1; // 유리하면 공격
+    if (ai.cs < me.cs - 2) return 1; // CS 지면 공격
+    if (myHp < 0.6 && enHp > 0.6) return 3; // 불리하면 프리징
+    return 2; // 평소엔 푸시
+}
+
+// 🌟 스펠 효과 적용 함수
+function applySpells(actor, target, isAi, logs, sec, bLogs) {
+    if (actor.hp / actor.hw.hp <= 0.25) {
+        if (actor.spells.f === "회복" && actor.spells.fCd === 0) {
+            actor.hp = Math.min(actor.hw.hp, actor.hp + 100 + (actor.level*20));
+            actor.spells.fCd = 4;
+            logs.push(bLogs.spellHeal);
+        } else if (actor.spells.f === "방어막" && actor.spells.fCd === 0) {
+            actor.status.shield = (actor.status.shield || 0) + 150 + (actor.level*30);
+            actor.spells.fCd = 4;
+            logs.push(bLogs.spellBarrier);
+        }
+    }
+    if (target.hp / target.hw.hp <= 0.3 && actor.spells.f === "점화" && actor.spells.fCd === 0) {
+        target.hp -= 100 + (actor.level*10); // 즉발 고정 피해
+        actor.spells.fCd = 5;
+        logs.push(bLogs.spellIgnite);
+    }
+}
+
 var BattleEngine = {
     generateAI: function() {
         var rChamp = ChampionList[Math.floor(Math.random() * ChampionList.length)];
@@ -565,7 +574,7 @@ var BattleEngine = {
     getSk: function(hw, key, skLv) {
         if (key === '평타' || skLv === 0) return null;
         var origin = hw.skills[key]; var idx = skLv - 1; 
-        return { key: key, n: origin.n, cd: origin.cd[idx], b: origin.b[idx], ad: origin.ad, ap: origin.ap, mhp: origin.mhp, def: origin.def, eMhp: origin.eMhp, eCurHp: origin.eCurHp, eMisHp: origin.eMisHp, t: origin.t, e: origin.e, rng: origin.rng, tt: origin.tt, mv: origin.mv };
+        return { key: key, n: origin.n, cd: origin.cd[idx], b: origin.b[idx], ad: origin.ad, ap: origin.ap, mhp: origin.mhp, def: origin.def, eMhp: origin.eMhp, eCurHp: origin.eCurHp, eMisHp: origin.eMisHp, t: origin.t, e: origin.e, rng: origin.rng, tt: origin.tt, mv: origin.mv, cost: (key==='r'?100:30+(skLv*10)) }; // 🌟 마나 코스트 부여
     },
     calcHit: function(sk, atkSw, defSw, atkHw, defHw, defStatus, bonus) { 
         if (defStatus.dodgeDur > 0 && (sk == null || sk.t === "AD")) return false; 
@@ -575,7 +584,6 @@ var BattleEngine = {
         var finalDefSpd = (defStatus.slowDur > 0) ? defHw.spd * 0.7 : defHw.spd;
         var swDiff = (atkSw.acc - defSw.ref) * 0.4; 
         var spdDiff = (atkHw.spd - finalDefSpd) * 0.1; 
-        
         var baseChance = (sk == null) ? 95 : 75; 
         var chance = baseChance + swDiff + spdDiff + bonus;
         
@@ -595,119 +603,192 @@ var BattleEngine = {
     evaluateAI: function(sk, me, enemy, isAggress) {
         if (me.status.silenceDur > 0 || me.status.stunDur > 0) return false;
         var goodJudgment = (Math.random() * 100 <= me.sw.int); 
-        if (sk.e.indexOf("shield") !== -1 || sk.e.indexOf("dodge") !== -1) return goodJudgment ? enemy.status.isAttacking : true; 
-        if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.4) : true; 
+        if (sk.e.indexOf("shield") !== -1 || sk.e.indexOf("dodge") !== -1) return goodJudgment ? enemy.status.isAggressive : true; 
+        if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.35) : true; 
         return true; 
     },
-    // 🌟 AI 봇 미니언 파밍 로직 추가 
+    // 🌟 메인 턴 연산 (스펠, 마나, 웨이브 관리 추가)
     playPhase: function(me, ai, stratMe, phaseIdx) {
-        var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; var combatLogs = []; var bLogs = ContentManager.battle.logs; 
-        me.status = me.status || {}; ai.status = ai.status || {}; me.status.isAttacking = false; ai.status.isAttacking = false;
+        var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; 
+        var combatLogs = []; var bLogs = ContentManager.battle.logs; 
+        
+        me.status = me.status || {}; ai.status = ai.status || {}; 
+        me.status.isAggressive = (stratMe === 1); 
+        
+        var stratAi = decideAIStrategy(ai, me);
+        ai.status.isAggressive = (stratAi === 1);
 
-        if (stratMe === 3) {
-            me.cd = {q:0, w:0, e:0, r:0}; combatLogs.push(bLogs.baseHeal);
-        } else {
-            var isAggress = (stratMe === 1);
-            for (var sec = 1; sec <= 30; sec++) {
-                if(me.status.stunDur > 0) me.status.stunDur--; if(ai.status.stunDur > 0) ai.status.stunDur--;
-                if(me.status.slowDur > 0) me.status.slowDur--; if(ai.status.slowDur > 0) ai.status.slowDur--;
-                if(me.status.rootDur > 0) me.status.rootDur--; if(ai.status.rootDur > 0) ai.status.rootDur--;
-                if(me.status.silenceDur > 0) me.status.silenceDur--; if(ai.status.silenceDur > 0) ai.status.silenceDur--;
-                if(me.status.invincibleDur > 0) me.status.invincibleDur--; if(ai.status.invincibleDur > 0) ai.status.invincibleDur--;
-                if(me.status.dodgeDur > 0) me.status.dodgeDur--; if(ai.status.dodgeDur > 0) ai.status.dodgeDur--;
-                if(me.status.defShredDur > 0) me.status.defShredDur--; if(ai.status.defShredDur > 0) ai.status.defShredDur--;
+        // 스펠 쿨타임 감소
+        if (me.spells.dCd > 0) me.spells.dCd--; if (me.spells.fCd > 0) me.spells.fCd--;
+        if (ai.spells.dCd > 0) ai.spells.dCd--; if (ai.spells.fCd > 0) ai.spells.fCd--;
 
-                for(var k in me.cd) if(me.cd[k]>0) me.cd[k]--;
-                for(var k in ai.cd) if(ai.cd[k]>0) ai.cd[k]--;
+        if (stratMe === 4) combatLogs.push(bLogs.baseHeal);
 
-                me.aaTimer = (me.aaTimer || 0) + me.hw.as; ai.aaTimer = (ai.aaTimer || 0) + ai.hw.as;
+        var distance = (me.hw.range > 400 && ai.hw.range > 400) ? 600 : 400;
+        var meVulnerable = 0; var aiVulnerable = 0;
 
-                if (me.status.stunDur === 0) {
-                    var usedSkill = false; var keys = ["q", "w", "e", "r"];
-                    for (var i=0; i<keys.length; i++) {
-                        var k = keys[i]; var skLv = me.skLv[k];
-                        if (skLv > 0 && me.cd[k] <= 0) {
-                            var skObj = this.getSk(me.hw, k, skLv);
-                            if (this.evaluateAI(skObj, me, ai, isAggress)) {
-                                me.cd[k] = skObj.cd; me.status.isAttacking = true; usedSkill = true;
-                                var hit = this.calcHit(skObj, me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0);
-                                if (hit) {
-                                    mHitCount++; var dmg = this.calcDmg(skObj, me.hw, ai.hw, ai.hp, ai.status);
-                                    if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
-                                    var fxLog = SkillMechanics.apply(skObj.e, me, ai, dmg);
-                                    combatLogs.push(bLogs.hitMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
-                                } else { combatLogs.push(bLogs.missMe.replace("{sec}", sec).replace("{champ}", me.champ).replace("{skill}", skObj.n)); }
-                                break; 
+        // 턴 시작 시 스펠 체크
+        if(stratMe !== 4) applySpells(me, ai, false, combatLogs, 0, bLogs);
+        if(stratAi !== 4) applySpells(ai, me, true, combatLogs, 0, bLogs);
+
+        for (var sec = 1; sec <= 30; sec++) {
+            if(me.status.stunDur > 0) me.status.stunDur--; if(ai.status.stunDur > 0) ai.status.stunDur--;
+            if(me.status.rootDur > 0) me.status.rootDur--; if(ai.status.rootDur > 0) ai.status.rootDur--;
+            if(meVulnerable > 0) meVulnerable--; if(aiVulnerable > 0) aiVulnerable--;
+            for(var k in me.cd) if(me.cd[k]>0) me.cd[k]--;
+            for(var k in ai.cd) if(ai.cd[k]>0) ai.cd[k]--;
+
+            me.aaTimer = (me.aaTimer || 0) + me.hw.as; ai.aaTimer = (ai.aaTimer || 0) + ai.hw.as;
+            me.mp = Math.min(me.hw.mp, me.mp + me.hw.mpRegen); ai.mp = Math.min(ai.hw.mp, ai.mp + ai.hw.mpRegen);
+
+            var meRealAggro = me.status.isAggressive || (ai.hp/ai.hw.hp < 0.2);
+            var aiRealAggro = ai.status.isAggressive || (me.hp/me.hw.hp < 0.2);
+
+            // 거리 무빙 연산 (푸시는 적진으로, 프리징은 내 포탑으로)
+            var meMove = (meRealAggro && me.status.rootDur <= 0 && me.status.stunDur <= 0) ? -(me.hw.spd * 0.15) : (stratMe === 2 ? -20 : (stratMe === 3 ? 50 : 100));
+            var aiMove = (aiRealAggro && ai.status.rootDur <= 0 && ai.status.stunDur <= 0) ? -(ai.hw.spd * 0.15) : (stratAi === 2 ? -20 : (stratAi === 3 ? 50 : 100));
+            distance = Math.max(100, Math.min(1000, distance + meMove + aiMove));
+
+            if (me.status.stunDur <= 0 && stratMe !== 4) {
+                var usedSkill = false; var keys = ["q", "w", "e", "r"];
+                for (var i=0; i<keys.length; i++) {
+                    var k = keys[i]; var skLv = me.skLv[k];
+                    if (skLv > 0 && me.cd[k] <= 0) {
+                        var skObj = this.getSk(me.hw, k, skLv);
+                        var effRng = (skObj.rng === 0) ? me.hw.range : skObj.rng;
+                        if (this.evaluateAI(skObj, me, ai, meRealAggro)) {
+                            if (me.mp >= skObj.cost) {
+                                if (effRng >= distance) { 
+                                    me.mp -= skObj.cost; me.cd[k] = skObj.cd; usedSkill = true;
+                                    var hit = this.calcHit(skObj, me.sw, ai.sw, me.hw, ai.hw, ai.status, (aiVulnerable > 0 ? 30 : 0));
+                                    if (hit) {
+                                        mHitCount++; var dmg = this.calcDmg(skObj, me.hw, ai.hw, ai.hp, ai.status);
+                                        // 점멸 체크
+                                        if (dmg >= ai.hp && ai.spells.d === "점멸" && ai.spells.dCd === 0) {
+                                            dmg = 0; ai.spells.dCd = 5; combatLogs.push(bLogs.spellFlash);
+                                        } else {
+                                            if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
+                                            var fxLog = SkillMechanics.apply(skObj.e, me, ai, dmg);
+                                            if (skObj.mv > 0) distance = Math.max(100, distance - skObj.mv); 
+                                            combatLogs.push(bLogs.hitMe.replace("{sec}", sec).replace("{dist}", Math.floor(distance)).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
+                                            if (aiVulnerable > 0) { combatLogs.push(bLogs.punish); aiVulnerable = 0; }
+                                        }
+                                    } else { 
+                                        combatLogs.push(bLogs.missMe.replace("{sec}", sec).replace("{dist}", Math.floor(distance)).replace("{skill}", skObj.n)); 
+                                        meVulnerable = 2; 
+                                    }
+                                    break; 
+                                } else if (meRealAggro && Math.random() < 0.1) {
+                                    combatLogs.push(bLogs.outOfRangeMe.replace("{sec}", sec).replace("{skill}", skObj.n).replace("{dist}", Math.floor(distance)));
+                                    break;
+                                }
+                            } else if (Math.random() < 0.05) {
+                                combatLogs.push(bLogs.noMana);
                             }
-                        }
-                    }
-                    if (!usedSkill && me.aaTimer >= 1.0) {
-                        me.aaTimer -= 1.0; me.status.isAttacking = true;
-                        if (this.calcHit(null, me.sw, ai.sw, me.hw, ai.hw, ai.status, isAggress?10:0)) {
-                            mHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, me.hw, ai.hw, ai.hp, ai.status);
-                            if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
                         }
                     }
                 }
-
-                if (ai.status.stunDur === 0) {
-                    var usedSkill = false; var keys = ["q", "w", "e", "r"];
-                    for (var i=0; i<keys.length; i++) {
-                        var k = keys[i]; var skLv = ai.skLv[k];
-                        if (skLv > 0 && ai.cd[k] <= 0) {
-                            var skObj = this.getSk(ai.hw, k, skLv);
-                            if (this.evaluateAI(skObj, ai, me, true)) {
-                                ai.cd[k] = skObj.cd; ai.status.isAttacking = true; usedSkill = true;
-                                var hit = this.calcHit(skObj, ai.sw, me.sw, ai.hw, me.hw, me.status, 0);
-                                if (hit) {
-                                    aHitCount++; var dmg = this.calcDmg(skObj, ai.hw, me.hw, me.hp, me.status);
-                                    if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
-                                    var fxLog = SkillMechanics.apply(skObj.e, ai, me, dmg);
-                                    combatLogs.push(bLogs.hitAi.replace("{sec}", sec).replace("{champ}", ai.champ).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
-                                }
-                                break;
+                if (!usedSkill && me.aaTimer >= 1.0 && me.hw.range >= distance) {
+                    me.aaTimer -= 1.0; 
+                    if (this.calcHit(null, me.sw, ai.sw, me.hw, ai.hw, ai.status, (aiVulnerable > 0 ? 30 : 0))) {
+                        mHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, me.hw, ai.hw, ai.hp, ai.status);
+                        if (dmg >= ai.hp && ai.spells.d === "점멸" && ai.spells.dCd === 0) {
+                            dmg = 0; ai.spells.dCd = 5; combatLogs.push(bLogs.spellFlash);
+                        } else {
+                            if(ai.status.invincibleDur > 0) dmg = 0; aRawDmg += dmg;
+                            if (stratAi === 3 && distance > 300) {
+                                var minionDmg = 15 + (phaseIdx * 5); mRawDmg += minionDmg;
+                                if(Math.random() < 0.2) combatLogs.push(bLogs.minionAggro.replace("{dmg}", minionDmg));
                             }
                         }
                     }
-                    if (!usedSkill && ai.aaTimer >= 1.0) {
-                        ai.aaTimer -= 1.0; ai.status.isAttacking = true;
-                        if (this.calcHit(null, ai.sw, me.sw, ai.hw, me.hw, me.status, 0)) {
-                            aHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, ai.hw, me.hw, me.hp, me.status);
+                }
+            }
+
+            // [AI 행동]
+            if (ai.status.stunDur <= 0 && stratAi !== 4) {
+                var usedSkill = false; var keys = ["q", "w", "e", "r"];
+                for (var i=0; i<keys.length; i++) {
+                    var k = keys[i]; var skLv = ai.skLv[k];
+                    if (skLv > 0 && ai.cd[k] <= 0) {
+                        var skObj = this.getSk(ai.hw, k, skLv);
+                        var effRng = (skObj.rng === 0) ? ai.hw.range : skObj.rng;
+                        if (this.evaluateAI(skObj, ai, me, aiRealAggro)) {
+                            if (ai.mp >= skObj.cost) {
+                                if (effRng >= distance) {
+                                    ai.mp -= skObj.cost; ai.cd[k] = skObj.cd; usedSkill = true;
+                                    var hit = this.calcHit(skObj, ai.sw, me.sw, ai.hw, me.hw, me.status, (meVulnerable > 0 ? 30 : 0));
+                                    if (hit) {
+                                        aHitCount++; var dmg = this.calcDmg(skObj, ai.hw, me.hw, me.hp, me.status);
+                                        if (dmg >= me.hp && me.spells.d === "점멸" && me.spells.dCd === 0) {
+                                            dmg = 0; me.spells.dCd = 5; combatLogs.push(bLogs.spellFlash);
+                                        } else {
+                                            if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
+                                            var fxLog = SkillMechanics.apply(skObj.e, ai, me, dmg);
+                                            if (skObj.mv > 0) distance = Math.max(100, distance - skObj.mv);
+                                            combatLogs.push(bLogs.hitAi.replace("{sec}", sec).replace("{dist}", Math.floor(distance)).replace("{skill}", skObj.n).replace("{fxLog}", fxLog));
+                                            if (meVulnerable > 0) meVulnerable = 0;
+                                        }
+                                    } else { 
+                                        combatLogs.push(bLogs.missAi.replace("{sec}", sec).replace("{dist}", Math.floor(distance)).replace("{skill}", skObj.n)); 
+                                        aiVulnerable = 2;
+                                    }
+                                    break;
+                                } else if (aiRealAggro && Math.random() < 0.1) {
+                                    combatLogs.push(bLogs.outOfRangeAi.replace("{sec}", sec).replace("{skill}", skObj.n).replace("{dist}", Math.floor(distance)));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!usedSkill && ai.aaTimer >= 1.0 && ai.hw.range >= distance) {
+                    ai.aaTimer -= 1.0; 
+                    if (this.calcHit(null, ai.sw, me.sw, ai.hw, me.hw, me.status, (meVulnerable > 0 ? 30 : 0))) {
+                        aHitCount++; var dmg = this.calcDmg({b:0, ad:1.0, t:"AD"}, ai.hw, me.hw, me.hp, me.status);
+                        if (dmg >= me.hp && me.spells.d === "점멸" && me.spells.dCd === 0) {
+                            dmg = 0; me.spells.dCd = 5; combatLogs.push(bLogs.spellFlash);
+                        } else {
                             if(me.status.invincibleDur > 0) dmg = 0; mRawDmg += dmg;
                         }
                     }
                 }
-            } 
-        }
+            }
+        } 
 
         if(me.status.shield > 0) { mRawDmg -= me.status.shield; me.status.shield = Math.max(0, -mRawDmg); mRawDmg = Math.max(0, mRawDmg); }
         if(ai.status.shield > 0) { aRawDmg -= ai.status.shield; ai.status.shield = Math.max(0, -aRawDmg); aRawDmg = Math.max(0, aRawDmg); }
         
         var mRegen = me.hw.hpRegen * 6 + Math.floor(aRawDmg * (me.hw.omniVamp / 100));
         var aRegen = ai.hw.hpRegen * 6 + Math.floor(mRawDmg * (ai.hw.omniVamp / 100));
-        if (stratMe === 3) mRegen = 9999; 
+        if (stratMe === 4) mRegen = 9999; 
+        if (stratAi === 4) aRegen = 9999;
         
         var finalMDmg = Math.max(0, mRawDmg - mRegen); var finalADmg = Math.max(0, aRawDmg - aRegen);
         var isCannonPhase = (phaseIdx === 2); var wave = { melee: 3, caster: 3, siege: isCannonPhase ? 1 : 0 };
         
+        // 🌟 푸시/프리징 CS 확률 조정
+        var myBaseCs = (stratMe === 2) ? 65 : (stratMe === 3 ? 35 : 50); // 2:푸시(높음), 3:프리징(낮음)
+        var aiBaseCs = (stratAi === 2) ? 65 : (stratAi === 3 ? 35 : 50);
+
         var mGold = 0, mCs = 0;
-        var csChance = this.calcProb(50, me.sw.com, ai.sw.int, me.hw, ai.hw, (stratMe === 2 ? 30 : -20) + (aHitCount>0 ? -15 : 10));
+        var csChance = this.calcProb(myBaseCs, me.sw.com, ai.sw.int, me.hw, ai.hw, (aHitCount>0 ? -15 : 10));
         var aGold = 0, aCs = 0;
-        var aiCsChance = this.calcProb(60, ai.sw.com, me.sw.int, ai.hw, me.hw, (mHitCount > 0 ? -10 : 10));
+        var aiCsChance = this.calcProb(aiBaseCs, ai.sw.com, me.sw.int, ai.hw, me.hw, (mHitCount > 0 ? -10 : 10));
 
         var farmLogs = [];
-        if (stratMe !== 3) {
+        if (stratMe !== 4) {
             for(var m=0; m<wave.melee; m++) {
                 if(Math.random()*100 <= csChance) { mCs++; mGold += 21; }
-                if(Math.random()*100 <= aiCsChance) { aCs++; aGold += 21; }
+                if(stratAi !== 4 && Math.random()*100 <= aiCsChance) { aCs++; aGold += 21; }
             }
             for(var c=0; c<wave.caster; c++) {
                 if(Math.random()*100 <= csChance) { mCs++; mGold += 14; }
-                if(Math.random()*100 <= aiCsChance) { aCs++; aGold += 14; }
+                if(stratAi !== 4 && Math.random()*100 <= aiCsChance) { aCs++; aGold += 14; }
             }
             if(wave.siege > 0) {
                 if(Math.random()*100 <= (csChance - 10)) { mCs++; mGold += 60; }
-                if(Math.random()*100 <= (aiCsChance - 10)) { aCs++; aGold += 60; }
+                if(stratAi !== 4 && Math.random()*100 <= (aiCsChance - 10)) { aCs++; aGold += 60; }
             }
             farmLogs.push(bLogs.farm.replace("{mCs}", mCs).replace("{mGold}", mGold).replace("{aCs}", aCs).replace("{aGold}", aGold));
         } else {
@@ -718,9 +799,9 @@ var BattleEngine = {
         }
 
         var csPercent = ((mCs)/(wave.melee+wave.caster+wave.siege)) * 100;
-        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: (mCs > 6), mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
+        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: (kSiege > 0), mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
 
-        if(combatLogs.length === 0) combatLogs.push(bLogs.noAction);
+        if(combatLogs.length === 1) combatLogs.push(bLogs.noAction);
         if(combatLogs.length > 8) {
             var summary = combatLogs.slice(0, 3); summary.push(bLogs.skipMiddle); summary.push(combatLogs[combatLogs.length-1]); combatLogs = summary;
         }
@@ -739,7 +820,7 @@ var PrevScreenMap = {
     "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN", "CHAMP_LIST_ROLE": "COLLECTION_MAIN", "CHAMP_LIST": "CHAMP_LIST_ROLE",
     "SHOP_MAIN": "MAIN", "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS_ROLE": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_CHAMPS_ROLE",
     "USER_INQUIRY": "MAIN", "MODE_SELECT": "MAIN", "BATTLE_PICK_ROLE": "MODE_SELECT", "BATTLE_PICK": "BATTLE_PICK_ROLE",
-    "BATTLE_CONFIRM": "BATTLE_PICK", 
+    "BATTLE_CONFIRM": "BATTLE_PICK", "BATTLE_SPELL_PICK": "BATTLE_CONFIRM", 
     "ADMIN_SYS_INFO": "ADMIN_MAIN", "ADMIN_INQUIRY_LIST": "ADMIN_MAIN", "ADMIN_USER_SELECT": "ADMIN_MAIN",
     "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT", "ADMIN_ACTION_CONFIRM": "ADMIN_USER_DETAIL", 
     "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT", 
@@ -1108,6 +1189,7 @@ var BattleController = {
     handle: function(msg, session, sender, replier, room, userData) {
         var cB = ContentManager.battle; var vB = BattleView.Board; var bM = BattleEngine;
         if (!session.battle) session.battle = {};
+        if (!session.battle.spells) session.battle.spells = { d: "점멸", f: "점화" }; // 🌟 스펠 초기화
 
         if (msg === "refresh_screen") {
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
@@ -1122,11 +1204,19 @@ var BattleController = {
                 return replier.reply(LayoutManager.renderFrame(cB.screen.pick, text, true, "번호 선택"));
             }
             
+            // 🌟 픽 완료 후 준비완료 & 스펠 확인창
             if (session.screen === "BATTLE_CONFIRM") {
-                var content = "🎯 선택한 챔피언: " + session.battle.myChamp + "\n\n";
+                var content = "🎯 선택한 챔피언: " + session.battle.myChamp + "\n";
+                content += "✨ 장착 스펠: [" + session.battle.spells.d + "] [" + session.battle.spells.f + "]\n\n";
                 content += "[ 1. ✅ 준비 완료 ]\n";
-                content += "[ 2. 🔙 챔피언 다시 선택 ]";
+                content += "[ 2. 🔙 챔피언 다시 선택 ]\n";
+                content += "[ 3. 🔄 스펠 변경 ]";
                 return replier.reply(LayoutManager.renderFrame("⚔️ 전투 준비 완료", content, false, "번호 또는 '준비완료'를 입력하세요."));
+            }
+            
+            // 🌟 스펠 슬롯 선택창
+            if (session.screen === "BATTLE_SPELL_PICK") {
+                return replier.reply(LayoutManager.renderFrame(ContentManager.screen.spellPick, LayoutManager.templates.menuList(null, ContentManager.menus.spells), true, "장착할 스펠 번호를 선택하세요."));
             }
 
             if (session.screen === "BATTLE_MAIN") return replier.reply(vB.render(session.battle.instance));
@@ -1156,6 +1246,16 @@ var BattleController = {
             } 
         }
 
+        // 🌟 스펠 선택 로직
+        if (session.screen === "BATTLE_SPELL_PICK") {
+            var sIdx = parseInt(msg) - 1;
+            if (SpellList[sIdx]) {
+                session.battle.spells.f = SpellList[sIdx]; // 기본적으로 두 번째 슬롯(F)만 변경하게 설정
+                session.screen = "BATTLE_CONFIRM"; SessionManager.save();
+                return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
+            }
+        }
+
         if (session.screen === "BATTLE_CONFIRM") {
             var cleanMsg = msg.replace(/\s+/g, "");
             if (msg === "1" || cleanMsg === "준비완료") {
@@ -1177,8 +1277,8 @@ var BattleController = {
                                 var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
                                 cS.battle.instance = {
                                     viewTab: "ME", turn: 1, strat: 0,
-                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, mental: 100, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1 },
-                                    ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, mental: 100, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0 }
+                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, mental: 100, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1, spells: {d: cS.battle.spells.d, f: cS.battle.spells.f, dCd: 0, fCd: 0} },
+                                    ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, mental: 100, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: "점멸", f: "점화", dCd: 0, fCd: 0} }
                                 };
                                 SessionManager.save(); 
                                 
@@ -1195,6 +1295,9 @@ var BattleController = {
                 return;
             } else if (msg === "2") {
                 session.screen = "BATTLE_PICK_ROLE"; SessionManager.save();
+                return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
+            } else if (msg === "3") {
+                session.screen = "BATTLE_SPELL_PICK"; SessionManager.save();
                 return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
             }
             return;
@@ -1245,11 +1348,13 @@ var BattleController = {
             if (msg === "2") { session.screen = "BATTLE_DETAIL"; SessionManager.save(); return replier.reply(vB.renderDetail(state.me)); }
             if (msg === "3") { session.screen = "BATTLE_SKILLINFO"; SessionManager.save(); return replier.reply(vB.renderSkillInfo(state.me)); }
             
+            // 🌟 웨이브 전략 업데이트 (1: 공격, 2: 라인푸시, 3: 프리징, 4: 귀환)
             if (msg === "4") { state.strat = 1; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "5") { state.strat = 2; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "6") { state.strat = 3; SessionManager.save(); return replier.reply(vB.render(state)); }
+            if (msg === "7") { state.strat = 4; SessionManager.save(); return replier.reply(vB.render(state)); }
             
-            if (msg === "7" && state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
+            if (msg === "8" && state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
             
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
@@ -1305,7 +1410,8 @@ var BattleController = {
                                 return UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
                             }
 
-                            var expGain = (stratMe === 3) ? 0 : (stratMe === 2 && st.me.cs < 2) ? 70 : 100; 
+                            // 🌟 마나 소모량 및 푸시/프리징 전략별 경험치 보상
+                            var expGain = (stratMe === 4) ? 0 : (stratMe === 3 ? 60 : 100); 
                             st.me.exp += expGain;
                             if (st.me.exp >= 100) { st.me.level++; st.me.exp -= 100; st.me.sp++; st.me.hw.baseAd += 3; st.me.hw.hp += 80; st.me.hp += 80; }
                             
