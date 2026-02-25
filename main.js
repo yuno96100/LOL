@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v12.3 (Syntax Error Fix & Auto-Battler)
- * - [M] Model: 메신저봇R Rhino 엔진 호환성 100% 패치 (ES6 Spread 문법 제거)
- * - [V] View: UI 카테고리화 및 미니맵 렌더링
- * - [C] Controller: 스레드 내부 에러 강제 출력(Catch) 시스템 적용
- */    
+ * 🏰 소환사의 협곡 Bot - v12.6 (Ultimate UX & Auto-Battler Fix)
+ * - [M] Model: 1v1 공식 룰, 오토배틀러 스펠 엔진, 에러 100% 픽스
+ * - [V] View: 적 정보 UI 개편, 현황판 콤팩트 디자인, 알림창 자동 복귀 기능
+ * - [C] Controller: Rhino 엔진 호환성 및 라우팅 최적화
+ */   
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v12.3 Stable Edition",
+    Version: "v12.6 Ultimate Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -116,7 +116,7 @@ var ContentManager = {
         getAdminMain: function(unreadCount) { return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")]; }
     },
     adminMap: { editType: { "1": "gold", "2": "lp", "3": "level" }, editName: { "gold": "골드", "lp": "LP", "level": "레벨" }, actionName: { "2": "데이터 초기화", "3": "계정 삭제", "4": "차단/해제" } },
-screen: {
+    screen: {
         gMain: "비회원 메뉴", joinId: "회원가입", joinPw: "비밀번호 설정", loginId: "로그인", loginPw: "로그인",
         inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 확인",
         resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
@@ -260,10 +260,10 @@ screen: {
 var LayoutManager = {
     renderFrame: function(title, content, showNav, footer) {
         var div = Utils.getFixedDivider();
-        var res = "『 " + title + " 』\n" + div + "\n" + Utils.wrapText(content);
+        var res = "『 " + title + " 』\n" + div + "\n" + content;
         if (showNav === true) res += "\n" + div + "\n[ ◀이전 | ✖취소 | 🏠메뉴 ]";
         else if (Array.isArray(showNav)) res += "\n" + div + "\n[ " + showNav.join(" | ") + " ]";
-        if (footer) res += "\n" + div + "\n💡 " + Utils.wrapText(footer).replace(/\n/g, "\n   ");
+        if (footer) res += "\n" + div + "\n💡 " + footer.replace(/\n/g, "\n💡 ");
         return res;
     },
     renderAlert: function(title, content, footer) { 
@@ -286,7 +286,31 @@ var LayoutManager = {
     }
 };
 
-// 🌟 [V12.5] 가독성 극대화 수직 배열 대시보드 (BattleView)
+// 🌟 [누락 복구] 전투 연산 로그 생성기
+var BattleDirector = {
+    generateLog: function(ctx) {
+        var bDir = ContentManager.battle.director;
+        var totalDmg = ctx.mDmg + ctx.aDmg; var txt = "";
+        if (ctx.strat === 1) { 
+            if (ctx.mHits > ctx.aHits * 2) txt = bDir.Aggressive.Kiting;
+            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (totalDmg < 150) ? bDir.Aggressive.MildTrade : bDir.Aggressive.Bloodbath;
+            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = bDir.Aggressive.Countered;
+            else txt = bDir.Aggressive.MissAll;
+        } else if (ctx.strat === 2 || ctx.strat === 3) {
+            if (ctx.isCannonPhase && !ctx.gotCannon) txt = bDir.Defensive.CannonMissed;
+            else {
+                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (totalDmg < 50) ? bDir.Defensive.NormalFarm : bDir.Defensive.PerfectCS;
+                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = bDir.Defensive.GreedyCS;
+                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = bDir.Defensive.ZonedOut;
+                else txt = bDir.Defensive.Disaster;
+            }
+        } else if (ctx.strat === 8) {
+            return "💥 방해를 무릅쓰고 적 포탑을 향해 공성을 시도합니다!";
+        } else return bDir.baseRecall;
+        return txt.replace(/{myChamp}/g, ctx.myChamp).replace(/{aiChamp}/g, ctx.aiChamp);
+    }
+};
+
 var BattleView = { 
     Board: {
         render: function(state) {
@@ -295,15 +319,15 @@ var BattleView = {
             var div = Utils.getFixedDivider();
             
             var laneVisual = "";
-            if (state.lanePos <= -2) laneVisual = "🏰 ⚔️ 🟥 🟥 🟥 🟥 🗼 (위험!)";
-            else if (state.lanePos === -1) laneVisual = "🏰 🟩 ⚔️ 🟥 🟥 🟥 🗼 (당겨짐)";
+            if (state.lanePos <= -2) laneVisual = "🏰 ⚔️ 🟥 🟥 🟥 🟥 🗼 (위험)";
+            else if (state.lanePos === -1) laneVisual = "🏰 🟩 ⚔️ 🟥 🟥 🟥 🗼 (당김)";
             else if (state.lanePos === 0) laneVisual  = "🏰 🟩 🟩 ⚔️ 🟥 🟥 🗼 (중앙)";
-            else if (state.lanePos === 1) laneVisual  = "🏰 🟩 🟩 🟩 ⚔️ 🟥 🗼 (미는중)";
-            else if (state.lanePos >= 2) laneVisual   = "🏰 🟩 🟩 🟩 🟩 ⚔️ 🗼 (공성가능)";
+            else if (state.lanePos === 1) laneVisual  = "🏰 🟩 🟩 🟩 ⚔️ 🟥 🗼 (푸시)";
+            else if (state.lanePos >= 2) laneVisual   = "🏰 🟩 🟩 🟩 🟩 ⚔️ 🗼 (공성)";
             
             var content = "[ 🏆 1v1 스코어보드 ]\n";
             content += "⚔️ 킬: " + state.me.kills + " vs " + state.ai.kills + "\n";
-            content += "🌾 CS: " + state.me.cs + " vs " + state.ai.cs + "\n\n";
+            content += "🌾 CS: " + state.me.cs + " vs " + state.ai.cs + "\n";
             
             content += "[ 🗺️ 라인 상황 ]\n";
             content += laneVisual + "\n";
@@ -316,12 +340,12 @@ var BattleView = {
             content += "- 체력: " + state.me.hp + " / " + state.me.hw.hp + "\n";
             content += "- 마나: " + state.me.mp + " / " + state.me.hw.mp + "\n\n";
             
-            var dStatus = (state.me.spells.dCd<=0?"완료":state.me.spells.dCd+"턴 대기");
-            var fStatus = (state.me.spells.fCd<=0?"완료":state.me.spells.fCd+"턴 대기");
+            var dStatus = (state.me.spells.dCd<=0?"[준비완료]":"["+state.me.spells.dCd+"턴]");
+            var fStatus = (state.me.spells.fCd<=0?"[준비완료]":"["+state.me.spells.fCd+"턴]");
             
             content += "[ ✨ 스펠 ]\n";
-            content += "🌟 D ["+state.me.spells.d+"]: " + dStatus + "\n";
-            content += "   F ["+state.me.spells.f+"]: " + fStatus + "\n";
+            content += "🌟 D["+state.me.spells.d+"]: " + dStatus + "\n";
+            content += "   F["+state.me.spells.f+"]: " + fStatus + "\n";
             content += div + "\n";
             
             content += "[ 🔍 1. 정보 카테고리 ]\n";
@@ -338,20 +362,29 @@ var BattleView = {
             content += "0. 턴 시작 (준비 완료)"; 
             
             var title = cU.boardTitle.replace("{turn}", state.turn);
-            return LayoutManager.renderFrame(title, content, false, "번호를 입력하여 행동을 선택하세요.\n게임을 포기하려면 '항복'을 입력하세요.");
+            return LayoutManager.renderFrame(title, content, false, "번호를 입력하세요.\n게임을 포기하려면 '항복'을 입력하세요.");
         },
         renderEnemyInfo: function(state) {
             var t = state.ai;
-            var content = "[ 🤖 적 챔피언: "+t.champ+" (Lv."+t.level+") ]\n\n";
-            content += "🩸 체력: " + t.hp + " / " + t.hw.hp + "\n";
-            content += "💧 마나: " + t.mp + " / " + t.hw.mp + "\n";
-            content += "🌾 CS: " + t.cs + " 개\n\n";
-            content += "⚔️ 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n";
-            content += "🛡️ 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n\n";
-            var dStatus = (t.spells.dCd<=0?"ON":t.spells.dCd+"턴");
-            var fStatus = (t.spells.fCd<=0?"ON":t.spells.fCd+"턴");
+            var content = "[ 🤖 적 챔피언 정보 ]\n";
+            content += "- " + t.champ + " (Lv."+t.level+")\n";
+            content += "- 체력: " + t.hp + " / " + t.hw.hp + "\n";
+            content += "- 마나: " + t.mp + " / " + t.hw.mp + "\n";
+            content += "- CS: " + t.cs + " 개\n\n";
+            
+            content += "[ ⚔️ 전투 스탯 ]\n";
+            content += "- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n";
+            content += "- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n\n";
+            
+            content += "[ 🧠 두뇌 스탯 ]\n";
+            content += "- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n";
+            content += "- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
+            
+            var dStatus = (t.spells.dCd<=0?"[ON]":"["+t.spells.dCd+"턴]");
+            var fStatus = (t.spells.fCd<=0?"[ON]":"["+t.spells.fCd+"턴]");
             content += "[ ✨ 스펠 상태 ]\n";
-            content += "🌟 D["+t.spells.d+"]: " + dStatus + " | F["+t.spells.f+"]: " + fStatus + "\n";
+            content += "🌟 D["+t.spells.d+"]: " + dStatus + "\n";
+            content += "   F["+t.spells.f+"]: " + fStatus + "\n";
             return LayoutManager.renderFrame("🔍 적 정보 확인", content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
         },
         renderDetail: function(t) {
@@ -612,7 +645,6 @@ function applySpells(actor, target, isAi, logs, sec, bLogs, distance) {
 var BattleEngine = {
     generateAI: function() {
         var rChamp = ChampionList[Math.floor(Math.random() * ChampionList.length)];
-        // 🌟 문법 에러 픽스: ES6 Spread 대신 slice() 사용
         var shuffledSpells = SpellList.slice().sort(function() { return 0.5 - Math.random(); }); 
         return { 
             champion: rChamp, 
@@ -660,7 +692,7 @@ var BattleEngine = {
         if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.35) : true; 
         return true; 
     },
-playPhase: function(st, stratMe, stratAi, phaseIdx) {
+    playPhase: function(st, stratMe, stratAi, phaseIdx) {
         var me = st.me, ai = st.ai, lanePos = st.lanePos;
         var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; 
         var combatLogs = []; var bLogs = ContentManager.battle.logs; 
@@ -855,7 +887,7 @@ playPhase: function(st, stratMe, stratAi, phaseIdx) {
         var aiCsChance = this.calcProb(aiBaseCs, ai.sw.com, me.sw.int, ai.hw, me.hw, (mHitCount > 0 ? -10 : 10));
 
         var farmLogs = [];
-        var myGotCannon = false; // 🌟 887줄 에러(kSiege) 픽스 완료!
+        var myGotCannon = false;
         if (stratMe !== 4 && stratMe !== 8) {
             for(var m=0; m<wave.melee; m++) {
                 if(Math.random()*100 <= csChance) { mCs++; mGold += 21; }
@@ -1054,11 +1086,11 @@ var UserController = {
             if (msg === "2") return SystemAction.go(replier, t.notice, m.pvpPrep, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
         }
 
+        // --- 기타 메뉴 처리 (생략) ---
         if (session.screen === "PROFILE_MAIN") {
             if (msg === "1") { session.screen = "STAT_SELECT"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "2") { session.screen = "STAT_RESET_CONFIRM"; return UserController.handle("refresh_screen", session, sender, replier, room); }
         }
-
         if (session.screen === "STAT_RESET_CONFIRM") {
             if (msg === "1") {
                 if ((data.items.statReset || 0) <= 0) return SystemAction.go(replier, t.error, m.noItem, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
@@ -1086,7 +1118,6 @@ var UserController = {
                 return SystemAction.go(replier, t.success, m.statEnhanceSuccess(session.temp.statName, amt), function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
             } else if (msg === "2") { return SystemAction.go(replier, t.notice, m.adminCancel, function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
         }
-
         if (session.screen === "COLLECTION_MAIN") {
              if (msg === "1") { session.screen = "TITLE_EQUIP"; return UserController.handle("refresh_screen", session, sender, replier, room); }
              if (msg === "2") { session.screen = "CHAMP_LIST_ROLE"; return UserController.handle("refresh_screen", session, sender, replier, room); }
@@ -1096,14 +1127,12 @@ var UserController = {
             data.title = msg; Database.save();
             return SystemAction.go(replier, t.complete, m.titleEquipSuccess(msg), function() { session.screen = "COLLECTION_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
         }
-        
         if (session.screen === "CHAMP_LIST_ROLE") {
             var rIdx = parseInt(msg) - 1;
             if (RoleList[rIdx]) {
                 session.temp.role = RoleList[rIdx]; session.screen = "CHAMP_LIST"; return UserController.handle("refresh_screen", session, sender, replier, room);
             }
         }
-
         if (session.screen === "SHOP_MAIN") {
             if (msg === "1") { session.screen = "SHOP_ITEMS"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "2") { session.screen = "SHOP_CHAMPS_ROLE"; return UserController.handle("refresh_screen", session, sender, replier, room); }
@@ -1117,7 +1146,6 @@ var UserController = {
                 return SystemAction.go(replier, t.success, m.buySuccess(n), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
-        
         if (session.screen === "SHOP_CHAMPS_ROLE") {
             var rIdx = parseInt(msg) - 1;
             if (RoleList[rIdx]) {
@@ -1133,7 +1161,6 @@ var UserController = {
                 return SystemAction.go(replier, t.success, m.champSuccess(target), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
-
         if (session.screen === "USER_INQUIRY") {
             Database.inquiries.push({ sender: session.tempId, room: room, content: msg, time: Utils.get24HTime(), read: false }); Database.save(); session.screen = "MAIN";
             return SystemAction.go(replier, t.complete, m.inqSubmitSuccess, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
@@ -1264,7 +1291,7 @@ var AdminController = {
     }
 };
 
-// 🌟 [V12.4] 전투 조작 컨트롤러 (BattleController)
+// 🌟 [V12.6] 전투 조작 컨트롤러 (BattleController)
 var BattleController = {
     handle: function(msg, session, sender, replier, room, userData) {
         var cB = ContentManager.battle; var vB = BattleView.Board; var bM = BattleEngine;
@@ -1282,6 +1309,7 @@ var BattleController = {
                 st.me.cs = st.me.cs || 0; st.ai.cs = st.ai.cs || 0;
                 st.me.kills = st.me.kills || 0; st.ai.kills = st.ai.kills || 0;
                 st.me.towerHp = st.me.towerHp || 3000; st.ai.towerHp = st.ai.towerHp || 3000;
+                st.me.plates = st.me.plates || 0; st.ai.plates = st.ai.plates || 0;
             }
         }
 
@@ -1292,7 +1320,15 @@ var BattleController = {
             if (session.screen === "BATTLE_LOBBY") {
                 var mC = session.battle.myChamp || "미선택";
                 var mRole = session.battle.myChamp ? ChampionData[mC].role : "";
-                var content = "⚔️ 라인전 출전 준비\n\n👤 챔피언: " + mC + " [" + mRole + "]\nRUN: D[" + session.battle.spells.d + "] F[" + session.battle.spells.f + "]\n\n[ 준비 메뉴 ]\n1. 👤 챔피언 선택/변경\n2. 🏃 스펠 D 변경\n3. 🔥 스펠 F 변경\n\n0. ✅ 준비완료 (전투 진입)";
+                var content = "[ ⚔️ 출전 준비 ]\n";
+                content += "👤 챔피언: " + (mC !== "미선택" ? mC + " [" + mRole + "]" : "미선택") + "\n";
+                content += "✨ 스펠 D: [" + session.battle.spells.d + "]\n";
+                content += "✨ 스펠 F: [" + session.battle.spells.f + "]\n\n";
+                content += "[ 준비 메뉴 ]\n";
+                content += "1. 👤 챔피언 선택/변경\n";
+                content += "2. 🏃 스펠 D 변경\n";
+                content += "3. 🔥 스펠 F 변경\n\n";
+                content += "0. ✅ 준비완료 (전투 진입)";
                 return replier.reply(LayoutManager.renderFrame(ContentManager.screen.lobby, content, false, "번호를 입력하세요. (취소: 로비로)"));
             }
             if (session.screen === "BATTLE_PICK_ROLE") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.roleSelect, getRoleMenuText(userData), true, "번호 선택"));
@@ -1368,7 +1404,7 @@ var BattleController = {
             var sIdx = parseInt(msg) - 1; var pickedSpell = SpellList[sIdx];
             if (pickedSpell) {
                 var otherSlot = session.temp.spellSlot === 'd' ? 'f' : 'd';
-                if (session.battle.spells[otherSlot] === pickedSpell) return replier.reply(LayoutManager.renderAlert("스펠 중복", "⚠️ 이미 선택된 스펠입니다."));
+                if (session.battle.spells[otherSlot] === pickedSpell) return replier.reply(LayoutManager.renderAlert("스펠 선택 불가", "⚠️ 두 스펠은 중복될 수 없습니다."));
                 session.battle.spells[session.temp.spellSlot] = pickedSpell; session.screen = "BATTLE_LOBBY"; SessionManager.save();
                 return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
             }
@@ -1383,13 +1419,16 @@ var BattleController = {
             if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); }
             var keyMap = {"1":"q", "2":"w", "3":"e", "4":"r"}; var key = msg.toLowerCase(); if (keyMap[key]) key = keyMap[key];
             if (["q", "w", "e", "r"].indexOf(key) !== -1) {
-                if (me.sp <= 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSp.title, cB.alerts.noSp.msg));
-                if (key === 'r' && me.level < 6) return replier.reply(LayoutManager.renderAlert(cB.alerts.reqLvl6.title, cB.alerts.reqLvl6.msg));
-                if (me.skLv[key] >= me.hw.skills[key].max) return replier.reply(LayoutManager.renderAlert(cB.alerts.maxLvl.title, cB.alerts.maxLvl.msg));
+                if (me.sp <= 0) { replier.reply(LayoutManager.renderAlert(cB.alerts.noSp.title, cB.alerts.noSp.msg)); return replier.reply(vB.renderSkillUp(me)); }
+                if (key === 'r' && me.level < 6) { replier.reply(LayoutManager.renderAlert(cB.alerts.reqLvl6.title, cB.alerts.reqLvl6.msg)); return replier.reply(vB.renderSkillUp(me)); }
+                if (me.skLv[key] >= me.hw.skills[key].max) { replier.reply(LayoutManager.renderAlert(cB.alerts.maxLvl.title, cB.alerts.maxLvl.msg)); return replier.reply(vB.renderSkillUp(me)); }
+                
                 me.skLv[key]++; me.sp--; SessionManager.save();
                 var notiText = LayoutManager.renderAlert(cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key]));
-                if (me.sp <= 0) { session.screen = "BATTLE_MAIN"; SessionManager.save(); replier.reply(notiText); return replier.reply(vB.render(session.battle.instance)); }
-                else { replier.reply(notiText); return replier.reply(vB.renderSkillUp(me)); }
+                replier.reply(notiText);
+                
+                if (me.sp <= 0) { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); }
+                else { return replier.reply(vB.renderSkillUp(me)); }
             }
             return;
         }
@@ -1408,16 +1447,19 @@ var BattleController = {
             if (msg === "6") { state.strat = 3; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "7") { state.strat = 4; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "8") { 
-                if (state.lanePos < 2) return replier.reply(LayoutManager.renderAlert(cB.alerts.noTowerRange.title, cB.alerts.noTowerRange.msg));
+                if (state.lanePos < 2) { replier.reply(LayoutManager.renderAlert(cB.alerts.noTowerRange.title, cB.alerts.noTowerRange.msg)); return replier.reply(vB.render(state)); }
                 state.strat = 8; SessionManager.save(); return replier.reply(vB.render(state)); 
             }
-            if (msg === "9" && state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
+            if (msg === "9") { 
+                if (state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
+                else { replier.reply(LayoutManager.renderAlert(cB.alerts.noSp.title, cB.alerts.noSp.msg)); return replier.reply(vB.render(state)); }
+            }
             
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
 
             if (msg === "0" || cleanMsg === "준비완료") {
-                if (state.strat === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg));
-                if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg));
+                if (state.strat === 0) { replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg)); return replier.reply(vB.render(state)); }
+                if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) { replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg)); return replier.reply(vB.render(state)); }
 
                 var stratMe = state.strat; state.strat = 0; 
                 var roomStr = room + ""; var senderStr = sender + ""; var sessionKey = SessionManager.getKey(roomStr, senderStr);
@@ -1430,8 +1472,7 @@ var BattleController = {
                             
                             // 🌟 3단계 페이즈 실행
                             for (var i = 1; i <= 3; i++) {
-                                var p = bM.playPhase(st, stratMe, stratAi, i, st.lanePos);
-                                // ... (전투 로그 및 데미지 처리는 BattleEngine에서 계산된 값을 View에서 렌더링) ...
+                                var p = bM.playPhase(st, stratMe, stratAi, i);
                                 var mentalLog = "";
                                 var isPhaseDeath = false;
                                 if (st.me.hp <= 0) { 
