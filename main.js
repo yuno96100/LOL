@@ -116,12 +116,12 @@ var ContentManager = {
         getAdminMain: function(unreadCount) { return ["1. 시스템 정보", "2. 전체 유저", "3. 문의 관리" + (unreadCount > 0 ? " [" + unreadCount + "]" : "")]; }
     },
     adminMap: { editType: { "1": "gold", "2": "lp", "3": "level" }, editName: { "gold": "골드", "lp": "LP", "level": "레벨" }, actionName: { "2": "데이터 초기화", "3": "계정 삭제", "4": "차단/해제" } },
-    screen: {
+screen: {
         gMain: "비회원 메뉴", joinId: "회원가입", joinPw: "비밀번호 설정", loginId: "로그인", loginPw: "로그인",
         inq: "문의 접수", main: "메인 로비", profile: "내 정보", statSel: "능력치 강화", statCon: "강화 확인",
         resetCon: "초기화 확인", col: "컬렉션", title: "보유 칭호", champ: "보유 챔피언", shop: "상점",
         shopItem: "아이템 상점", shopChamp: "챔피언 상점", 
-        modeSel: "대전 모드 선택", roleSelect: "역할군 선택", spellPick: "스펠 장착",
+        modeSel: "대전 모드 선택", lobby: "전투 준비 로비", roleSelect: "역할군 선택", spellPick: "스펠 장착",
         aMain: "관리자 메뉴", aSys: "시스템 정보", aUser: "유저 목록", aActionCon: "작업 확인",
         aInqList: "문의 목록", aInqDet: "문의 상세", aInqRep: "답변 작성", aUserDetail: " 관리",
         aEditSel: "정보 수정", aEditIn: "값 수정", aEditCon: "수정 확인"
@@ -286,6 +286,7 @@ var LayoutManager = {
     }
 };
 
+// 🌟 [V12.5] 가독성 극대화 수직 배열 대시보드 (BattleView)
 var BattleView = { 
     Board: {
         render: function(state) {
@@ -293,17 +294,16 @@ var BattleView = {
             var t = state.me;
             var div = Utils.getFixedDivider();
             
-            // 🗺️ 미니맵 시각화 (이모지 블록)
             var laneVisual = "";
             if (state.lanePos <= -2) laneVisual = "🏰 ⚔️ 🟥 🟥 🟥 🟥 🗼 (위험!)";
             else if (state.lanePos === -1) laneVisual = "🏰 🟩 ⚔️ 🟥 🟥 🟥 🗼 (당겨짐)";
             else if (state.lanePos === 0) laneVisual  = "🏰 🟩 🟩 ⚔️ 🟥 🟥 🗼 (중앙)";
-            else if (state.lanePos === 1) laneVisual  = "🏰 🟩 🟩 🟩 ⚔️ 🟥 🗼 (밈)";
+            else if (state.lanePos === 1) laneVisual  = "🏰 🟩 🟩 🟩 ⚔️ 🟥 🗼 (미는중)";
             else if (state.lanePos >= 2) laneVisual   = "🏰 🟩 🟩 🟩 🟩 ⚔️ 🗼 (공성가능)";
             
             var content = "[ 🏆 1v1 스코어보드 ]\n";
             content += "⚔️ 킬: " + state.me.kills + " vs " + state.ai.kills + "\n";
-            content += "🌾 CS: " + state.me.cs + " vs " + state.ai.cs + "\n";
+            content += "🌾 CS: " + state.me.cs + " vs " + state.ai.cs + "\n\n";
             
             content += "[ 🗺️ 라인 상황 ]\n";
             content += laneVisual + "\n";
@@ -316,8 +316,8 @@ var BattleView = {
             content += "- 체력: " + state.me.hp + " / " + state.me.hw.hp + "\n";
             content += "- 마나: " + state.me.mp + " / " + state.me.hw.mp + "\n\n";
             
-            var dStatus = (state.me.spells.dCd<=0?"[준비완료]":state.me.spells.dCd+"턴 대기");
-            var fStatus = (state.me.spells.fCd<=0?"[준비완료]":state.me.spells.fCd+"턴 대기");
+            var dStatus = (state.me.spells.dCd<=0?"완료":state.me.spells.dCd+"턴 대기");
+            var fStatus = (state.me.spells.fCd<=0?"완료":state.me.spells.fCd+"턴 대기");
             
             content += "[ ✨ 스펠 ]\n";
             content += "🌟 D ["+state.me.spells.d+"]: " + dStatus + "\n";
@@ -325,12 +325,12 @@ var BattleView = {
             content += div + "\n";
             
             content += "[ 🔍 1. 정보 카테고리 ]\n";
-            content += "1. 적 정보    2. 상세 스탯    3. 스킬 정보\n\n";
+            content += "1. 적 정보\n2. 상세 스탯\n3. 스킬 정보\n\n";
             
             var stratName = ["미선택", "공격", "푸시", "프리징", "귀환", "", "", "", "포탑 철거"][state.strat || 0];
             content += "[ ⚔️ 2. 전략 카테고리 ]\n▶ 현재작전: " + stratName + "\n";
-            content += "4. 공격  5. 푸시  6. 프리징  7. 귀환\n";
-            if (state.lanePos >= 2) content += "8. 포탑 철거 (적 포탑 앞)\n";
+            content += "4. 공격\n5. 푸시\n6. 프리징\n7. 귀환\n";
+            if (state.lanePos >= 2) content += "8. 포탑 철거\n";
             content += "\n";
 
             content += "[ 🆙 3. 성장 및 진행 ]\n";
@@ -338,7 +338,7 @@ var BattleView = {
             content += "0. 턴 시작 (준비 완료)"; 
             
             var title = cU.boardTitle.replace("{turn}", state.turn);
-            return LayoutManager.renderFrame(title, content, false, "💡 번호를 입력하여 행동을 선택하세요.\n   (게임을 포기하려면 '항복')");
+            return LayoutManager.renderFrame(title, content, false, "번호를 입력하여 행동을 선택하세요.\n게임을 포기하려면 '항복'을 입력하세요.");
         },
         renderEnemyInfo: function(state) {
             var t = state.ai;
@@ -348,8 +348,8 @@ var BattleView = {
             content += "🌾 CS: " + t.cs + " 개\n\n";
             content += "⚔️ 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n";
             content += "🛡️ 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n\n";
-            var dStatus = (t.spells.dCd<=0?"ON":t.spells.dCd);
-            var fStatus = (t.spells.fCd<=0?"ON":t.spells.fCd);
+            var dStatus = (t.spells.dCd<=0?"ON":t.spells.dCd+"턴");
+            var fStatus = (t.spells.fCd<=0?"ON":t.spells.fCd+"턴");
             content += "[ ✨ 스펠 상태 ]\n";
             content += "🌟 D["+t.spells.d+"]: " + dStatus + " | F["+t.spells.f+"]: " + fStatus + "\n";
             return LayoutManager.renderFrame("🔍 적 정보 확인", content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
@@ -370,26 +370,21 @@ var BattleView = {
             var content = "[ 👤 챔피언: "+t.champ+" ]\n\n";
             content += "✨ [패시브] " + hw.p.n + "\n";
             content += "└ " + hw.p.d + "\n\n";
-            
             var getTargetType = function(ttKey) {
                 if(ttKey === "NT") return "논타겟팅";
                 if(ttKey === "T") return "타겟팅";
                 if(ttKey === "S") return "즉발/버프";
                 return "패시브";
             };
-
             var getDesc = function(key, sk) {
                 var res = "🔹 [" + key.toUpperCase() + "] " + sk.n + " (Lv."+t.skLv[key]+")\n";
                 var tStr = (sk.t==="AD"?"물리":(sk.t==="AP"?"마법":(sk.t==="TRUE"?"고정":"유틸")));
-                
                 var coefs = [];
                 if(sk.ad) coefs.push("AD " + Math.floor(sk.ad*100) + "%");
                 if(sk.ap) coefs.push("AP " + Math.floor(sk.ap*100) + "%");
                 if(sk.mhp) coefs.push("최대체력 " + Math.floor(sk.mhp*100) + "%");
-                
                 res += " ├ " + tStr + " / 사거리 " + sk.rng + " / 마나 " + (key==='r'?100:30+(t.skLv[key]*10)) + "\n";
                 res += " ├ " + getTargetType(sk.tt) + (coefs.length>0 ? " (" + coefs.join("+") + ")" : "") + "\n";
-                
                 var effectDesc = (sk.e !== "none" && eMap[sk.e]) ? eMap[sk.e] : "특수 효과 없음";
                 res += " └ " + effectDesc + "\n";
                 return res + "\n";
@@ -430,9 +425,7 @@ var BattleView = {
                 content += "   ├ 레벨: " + rCurLv + " ➔ " + (rCurLv + 1) + "\n";
                 content += "   ├ 피해: " + rCurB + " ➔ " + s.r.b[rCurLv] + "\n";
                 content += "   └ 쿨탐: " + rCurCd + "s ➔ " + s.r.cd[rCurLv] + "s\n";
-            } else {
-                content += "   ├ 레벨: " + rCurLv + " (MAX)\n";
-            }
+            } else { content += "   ├ 레벨: " + rCurLv + " (MAX)\n"; }
             return LayoutManager.renderFrame(cU.skillUpTitle, content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
         }
     }
@@ -667,8 +660,8 @@ var BattleEngine = {
         if (sk.e.indexOf("execute") !== -1) return goodJudgment ? (enemy.hp / enemy.hw.hp < 0.35) : true; 
         return true; 
     },
-    playPhase: function(st, stratMe, stratAi, phaseIdx) {
-        var me = st.me, ai = st.ai;
+playPhase: function(st, stratMe, stratAi, phaseIdx) {
+        var me = st.me, ai = st.ai, lanePos = st.lanePos;
         var mRawDmg = 0, aRawDmg = 0, mHitCount = 0, aHitCount = 0; 
         var combatLogs = []; var bLogs = ContentManager.battle.logs; 
         
@@ -862,6 +855,7 @@ var BattleEngine = {
         var aiCsChance = this.calcProb(aiBaseCs, ai.sw.com, me.sw.int, ai.hw, me.hw, (mHitCount > 0 ? -10 : 10));
 
         var farmLogs = [];
+        var myGotCannon = false; // 🌟 887줄 에러(kSiege) 픽스 완료!
         if (stratMe !== 4 && stratMe !== 8) {
             for(var m=0; m<wave.melee; m++) {
                 if(Math.random()*100 <= csChance) { mCs++; mGold += 21; }
@@ -872,7 +866,7 @@ var BattleEngine = {
                 if(stratAi !== 4 && stratAi !== 8 && Math.random()*100 <= aiCsChance) { aCs++; aGold += 14; }
             }
             if(wave.siege > 0) {
-                if(Math.random()*100 <= (csChance - 10)) { mCs++; mGold += 60; }
+                if(Math.random()*100 <= (csChance - 10)) { mCs++; mGold += 60; myGotCannon = true; }
                 if(stratAi !== 4 && stratAi !== 8 && Math.random()*100 <= (aiCsChance - 10)) { aCs++; aGold += 60; }
             }
             farmLogs.push(bLogs.farm.replace("{mCs}", mCs).replace("{mGold}", mGold).replace("{aCs}", aCs).replace("{aGold}", aGold));
@@ -884,7 +878,7 @@ var BattleEngine = {
         }
 
         var csPercent = ((mCs)/(wave.melee+wave.caster+wave.siege)) * 100;
-        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: (kSiege > 0), mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
+        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: myGotCannon, mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
 
         if(combatLogs.length === 0) combatLogs.push(bLogs.noAction);
         if(combatLogs.length > 8) {
