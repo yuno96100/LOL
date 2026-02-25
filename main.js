@@ -291,50 +291,54 @@ var BattleView = {
         render: function(state) {
             var cU = ContentManager.battle.ui;
             var t = state.me;
+            var div = Utils.getFixedDivider();
             
+            // 🗺️ 미니맵 시각화 (이모지 블록)
             var laneVisual = "";
-            if (state.lanePos <= -2) laneVisual = "🏰 ⚔️ 🟥 🟥 🟥 🟥 🗼\n ⚠️ 적이 우리 포탑을 압박 중!";
-            else if (state.lanePos === -1) laneVisual = "🏰 🟩 ⚔️ 🟥 🟥 🟥 🗼\n 🛡️ 당겨서 안전하게 파밍 중";
-            else if (state.lanePos === 0) laneVisual  = "🏰 🟩 🟩 ⚔️ 🟥 🟥 🗼\n ⚖️ 라인 중앙에서 대치 중";
-            else if (state.lanePos === 1) laneVisual  = "🏰 🟩 🟩 🟩 ⚔️ 🟥 🗼\n 🌊 라인을 밀며 적을 압박 중";
-            else if (state.lanePos >= 2) laneVisual   = "🏰 🟩 🟩 🟩 🟩 ⚔️ 🗼\n 🚨 적 포탑 앞! 철거 가능!";
+            if (state.lanePos <= -2) laneVisual = "🏰 ⚔️ 🟥 🟥 🟥 🟥 🗼 (위험!)";
+            else if (state.lanePos === -1) laneVisual = "🏰 🟩 ⚔️ 🟥 🟥 🟥 🗼 (당겨짐)";
+            else if (state.lanePos === 0) laneVisual  = "🏰 🟩 🟩 ⚔️ 🟥 🟥 🗼 (중앙)";
+            else if (state.lanePos === 1) laneVisual  = "🏰 🟩 🟩 🟩 ⚔️ 🟥 🗼 (밈)";
+            else if (state.lanePos >= 2) laneVisual   = "🏰 🟩 🟩 🟩 🟩 ⚔️ 🗼 (공성가능)";
             
             var content = "[ 🏆 1v1 스코어보드 ]\n";
-            content += "⚔️ 킬: " + state.me.kills + " vs " + state.ai.kills + " (3킬 윈)\n";
-            content += "🌾 CS: " + state.me.cs + " vs " + state.ai.cs + " (100개 윈)\n\n";
+            content += "⚔️ 킬: " + state.me.kills + " vs " + state.ai.kills + "\n";
+            content += "🌾 CS: " + state.me.cs + " vs " + state.ai.cs + "\n";
             
             content += "[ 🗺️ 라인 상황 ]\n";
             content += laneVisual + "\n";
-            content += "🏰 내 포탑: " + state.me.towerHp + " HP\n";
-            content += "🗼 적 포탑: " + state.ai.towerHp + " HP\n\n";
+            content += "🏰 내 포탑: (" + state.me.towerHp + "/3000)\n";
+            content += "🗼 적 포탑: (" + state.ai.towerHp + "/3000)\n";
+            content += div + "\n";
             
-            content += "[ 👤 내 챔피언: " + state.me.champ + " (Lv."+state.me.level+") ]\n";
-            content += "🩸 체력: " + state.me.hp + " / " + state.me.hw.hp + "\n";
-            content += "💧 마나: " + state.me.mp + " / " + state.me.hw.mp + "\n\n";
+            content += "[ 👤 내 챔피언 ]\n";
+            content += "- " + state.me.champ + " (Lv."+state.me.level+")\n";
+            content += "- 체력: " + state.me.hp + " / " + state.me.hw.hp + "\n";
+            content += "- 마나: " + state.me.mp + " / " + state.me.hw.mp + "\n\n";
             
-            var dStatus = (state.me.spells.dCd<=0?"완료":state.me.spells.dCd+"턴");
-            var fStatus = (state.me.spells.fCd<=0?"완료":state.me.spells.fCd+"턴");
-            content += "[ ✨ 스킬 & 스펠 ]\n";
-            content += "🔹 Q("+state.me.skLv.q+") W("+state.me.skLv.w+") E("+state.me.skLv.e+") R("+state.me.skLv.r+")\n";
-            content += "🌟 D["+state.me.spells.d+"]: " + dStatus + " | F["+state.me.spells.f+"]: " + fStatus + "\n\n";
+            var dStatus = (state.me.spells.dCd<=0?"[준비완료]":state.me.spells.dCd+"턴 대기");
+            var fStatus = (state.me.spells.fCd<=0?"[준비완료]":state.me.spells.fCd+"턴 대기");
             
-            content += Utils.getFixedDivider() + "\n";
+            content += "[ ✨ 스펠 ]\n";
+            content += "🌟 D ["+state.me.spells.d+"]: " + dStatus + "\n";
+            content += "   F ["+state.me.spells.f+"]: " + fStatus + "\n";
+            content += div + "\n";
             
             content += "[ 🔍 1. 정보 카테고리 ]\n";
-            content += "1. 적 정보  2. 상세 스탯  3. 스킬 도감\n\n";
+            content += "1. 적 정보    2. 상세 스탯    3. 스킬 정보\n\n";
             
-            var stratName = ["미선택", "⚔️ 공격", "🌊 푸시", "🛡️ 프리징", "🏠 귀환", "", "", "", "🔨 포탑 철거"][state.strat || 0];
-            content += "[ ⚔️ 2. 전략 카테고리 ] ▶ " + stratName + "\n";
+            var stratName = ["미선택", "공격", "푸시", "프리징", "귀환", "", "", "", "포탑 철거"][state.strat || 0];
+            content += "[ ⚔️ 2. 전략 카테고리 ]\n▶ 현재작전: " + stratName + "\n";
             content += "4. 공격  5. 푸시  6. 프리징  7. 귀환\n";
-            if (state.lanePos >= 2) content += "8. 포탑 철거 (방해 시 회피 불가)\n";
+            if (state.lanePos >= 2) content += "8. 포탑 철거 (적 포탑 앞)\n";
             content += "\n";
 
             content += "[ 🆙 3. 성장 및 진행 ]\n";
             content += "9. 스킬 레벨업" + (state.me.sp > 0 ? " (SP: " + state.me.sp + ")" : "") + "\n";
-            content += "0. ✅ 턴 시작 (준비 완료)"; 
+            content += "0. 턴 시작 (준비 완료)"; 
             
             var title = cU.boardTitle.replace("{turn}", state.turn);
-            return LayoutManager.renderFrame(title, content, false, "💡 번호를 입력하여 행동을 선택하세요.\n   (로비로 돌아가려면 '항복')");
+            return LayoutManager.renderFrame(title, content, false, "💡 번호를 입력하여 행동을 선택하세요.\n   (게임을 포기하려면 '항복')");
         },
         renderEnemyInfo: function(state) {
             var t = state.ai;
@@ -344,8 +348,8 @@ var BattleView = {
             content += "🌾 CS: " + t.cs + " 개\n\n";
             content += "⚔️ 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n";
             content += "🛡️ 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n\n";
-            var dStatus = (t.spells.dCd<=0?"완료":t.spells.dCd+"턴");
-            var fStatus = (t.spells.fCd<=0?"완료":t.spells.fCd+"턴");
+            var dStatus = (t.spells.dCd<=0?"ON":t.spells.dCd);
+            var fStatus = (t.spells.fCd<=0?"ON":t.spells.fCd);
             content += "[ ✨ 스펠 상태 ]\n";
             content += "🌟 D["+t.spells.d+"]: " + dStatus + " | F["+t.spells.f+"]: " + fStatus + "\n";
             return LayoutManager.renderFrame("🔍 적 정보 확인", content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
@@ -358,59 +362,48 @@ var BattleView = {
             content += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
             content += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
             content += "🎒 [ 보유 아이템 ]\n(상점 업데이트 예정)";
-            
             return LayoutManager.renderFrame(cU.detailTitle, content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
         },
         renderSkillInfo: function(t) {
             var hw = t.hw;
             var eMap = ContentManager.battle.effectMap;
             var content = "[ 👤 챔피언: "+t.champ+" ]\n\n";
-            
             content += "✨ [패시브] " + hw.p.n + "\n";
             content += "└ " + hw.p.d + "\n\n";
             
             var getTargetType = function(ttKey) {
-                if(ttKey === "NT") return "논타겟팅 (방향/위치)";
-                if(ttKey === "T") return "타겟팅 (대상 지정)";
-                if(ttKey === "S") return "자기자신 및 주변";
-                return "패시브/기타";
+                if(ttKey === "NT") return "논타겟팅";
+                if(ttKey === "T") return "타겟팅";
+                if(ttKey === "S") return "즉발/버프";
+                return "패시브";
             };
 
             var getDesc = function(key, sk) {
-                var res = "🔹 [" + key.toUpperCase() + "] " + sk.n + "\n";
+                var res = "🔹 [" + key.toUpperCase() + "] " + sk.n + " (Lv."+t.skLv[key]+")\n";
                 var tStr = (sk.t==="AD"?"물리":(sk.t==="AP"?"마법":(sk.t==="TRUE"?"고정":"유틸")));
                 
                 var coefs = [];
                 if(sk.ad) coefs.push("AD " + Math.floor(sk.ad*100) + "%");
                 if(sk.ap) coefs.push("AP " + Math.floor(sk.ap*100) + "%");
                 if(sk.mhp) coefs.push("최대체력 " + Math.floor(sk.mhp*100) + "%");
-                if(sk.eMhp) coefs.push("적최대체력 " + Math.floor(sk.eMhp*100) + "%");
-                if(sk.eCurHp) coefs.push("적현재체력 " + Math.floor(sk.eCurHp*100) + "%");
-                if(sk.eMisHp) coefs.push("적잃은체력 " + Math.floor(sk.eMisHp*100) + "%");
                 
-                res += " ├ 타입: " + tStr + (coefs.length > 0 ? " (계수: " + coefs.join(" + ") + ")" : "") + "\n";
-                if (sk.rng > 0) res += " ├ 사거리: " + sk.rng + "\n";
-                res += " ├ 마나: " + (key==='r'?100:30+(t.skLv[key]*10)) + "\n";
-                res += " ├ 조작: " + getTargetType(sk.tt) + "\n";
+                res += " ├ " + tStr + " / 사거리 " + sk.rng + " / 마나 " + (key==='r'?100:30+(t.skLv[key]*10)) + "\n";
+                res += " ├ " + getTargetType(sk.tt) + (coefs.length>0 ? " (" + coefs.join("+") + ")" : "") + "\n";
                 
-                var effectDesc = (sk.e !== "none" && eMap[sk.e]) ? eMap[sk.e] : (sk.e !== "none" ? "고유 특수 효과" : "없음");
-                res += " └ 효과: " + effectDesc + "\n";
-                
+                var effectDesc = (sk.e !== "none" && eMap[sk.e]) ? eMap[sk.e] : "특수 효과 없음";
+                res += " └ " + effectDesc + "\n";
                 return res + "\n";
             };
-            
             content += getDesc("q", hw.skills.q);
             content += getDesc("w", hw.skills.w);
             content += getDesc("e", hw.skills.e);
             content += getDesc("r", hw.skills.r);
-            
             return LayoutManager.renderFrame(ContentManager.battle.screen.skillInfo, content.trim(), ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
         },
         renderSkillUp: function(t) {
             var cU = ContentManager.battle.ui;
             var content = "보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
             var s = t.hw.skills;
-            
             var getInfo = function(idx, key, name, curLv, maxLv, bArr, cdArr) {
                 var str = idx + ". " + key.toUpperCase() + " - " + name + "\n";
                 if (curLv < maxLv) {
@@ -420,13 +413,10 @@ var BattleView = {
                     str += "   ├ 피해: " + curB + " ➔ " + bArr[curLv] + "\n";
                     str += "   └ 쿨탐: " + curCd + "s ➔ " + cdArr[curLv] + "s\n\n";
                 } else {
-                    str += "   ├ 레벨: " + curLv + " (MAX)\n";
-                    str += "   ├ 피해: " + bArr[curLv-1] + "\n";
-                    str += "   └ 쿨탐: " + cdArr[curLv-1] + "s\n\n";
+                    str += "   ├ 레벨: " + curLv + " (MAX)\n   └ 더 이상 강화할 수 없습니다.\n\n";
                 }
                 return str;
             };
-            
             content += getInfo(1, "q", s.q.n, t.skLv.q, s.q.max, s.q.b, s.q.cd);
             content += getInfo(2, "w", s.w.n, t.skLv.w, s.w.max, s.w.b, s.w.cd);
             content += getInfo(3, "e", s.e.n, t.skLv.e, s.e.max, s.e.b, s.e.cd);
@@ -435,19 +425,14 @@ var BattleView = {
             var rCurB = rCurLv > 0 ? s.r.b[rCurLv-1] : 0;
             var rCurCd = rCurLv > 0 ? s.r.cd[rCurLv-1] : "-";
             content += "4. R - " + s.r.n + "\n";
-            
-            if (t.level < 6) {
-                content += "   └ (6레벨 이상 습득 가능)\n";
-            } else if (rCurLv < s.r.max) {
+            if (t.level < 6) { content += "   └ (6레벨 이상 습득 가능)\n"; }
+            else if (rCurLv < s.r.max) {
                 content += "   ├ 레벨: " + rCurLv + " ➔ " + (rCurLv + 1) + "\n";
                 content += "   ├ 피해: " + rCurB + " ➔ " + s.r.b[rCurLv] + "\n";
                 content += "   └ 쿨탐: " + rCurCd + "s ➔ " + s.r.cd[rCurLv] + "s\n";
             } else {
                 content += "   ├ 레벨: " + rCurLv + " (MAX)\n";
-                content += "   ├ 피해: " + rCurB + "\n";
-                content += "   └ 쿨탐: " + rCurCd + "s\n";
             }
-            
             return LayoutManager.renderFrame(cU.skillUpTitle, content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
         }
     }
@@ -1285,13 +1270,14 @@ var AdminController = {
     }
 };
 
+// 🌟 [V12.4] 전투 조작 컨트롤러 (BattleController)
 var BattleController = {
     handle: function(msg, session, sender, replier, room, userData) {
         var cB = ContentManager.battle; var vB = BattleView.Board; var bM = BattleEngine;
         if (!session.battle) session.battle = {};
         if (!session.battle.spells) session.battle.spells = { d: "점멸", f: "점화" }; 
 
-        // 🌟 [자가 치유 기능] 과거 버전의 세션 데이터가 있으면 부족한 속성들을 자동으로 채워넣어 에러 차단
+        // [자가 치유] 구버전 세션 데이터 보정
         if (session.screen === "BATTLE_MAIN" || session.screen === "BATTLE_SKILLUP" || session.screen === "BATTLE_SKILLINFO" || session.screen === "BATTLE_DETAIL" || session.screen === "BATTLE_ENEMY_INFO") {
             var st = session.battle.instance;
             if (st) {
@@ -1302,45 +1288,28 @@ var BattleController = {
                 st.me.cs = st.me.cs || 0; st.ai.cs = st.ai.cs || 0;
                 st.me.kills = st.me.kills || 0; st.ai.kills = st.ai.kills || 0;
                 st.me.towerHp = st.me.towerHp || 3000; st.ai.towerHp = st.ai.towerHp || 3000;
-                st.me.plates = st.me.plates || 0; st.ai.plates = st.ai.plates || 0;
             }
         }
 
         if (msg === "refresh_screen") {
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
             
+            // 로비 및 픽창 렌더링
             if (session.screen === "BATTLE_LOBBY") {
                 var mC = session.battle.myChamp || "미선택";
                 var mRole = session.battle.myChamp ? ChampionData[mC].role : "";
-                var cStr = mC !== "미선택" ? mC + " [" + mRole + "]" : "미선택 (필수)";
-                
-                var content = "⚔️ 라인전 출전 준비\n\n";
-                content += "👤 챔피언: " + cStr + "\n";
-                content += "🏃 스펠 D: " + session.battle.spells.d + "\n";
-                content += "🔥 스펠 F: " + session.battle.spells.f + "\n\n";
-                content += "[ 준비 메뉴 ]\n";
-                content += "1. 👤 챔피언 선택/변경\n";
-                content += "2. 🏃 스펠 D 변경\n";
-                content += "3. 🔥 스펠 F 변경\n\n";
-                content += "0. ✅ 준비완료 (전투 진입)";
-                
+                var content = "⚔️ 라인전 출전 준비\n\n👤 챔피언: " + mC + " [" + mRole + "]\nRUN: D[" + session.battle.spells.d + "] F[" + session.battle.spells.f + "]\n\n[ 준비 메뉴 ]\n1. 👤 챔피언 선택/변경\n2. 🏃 스펠 D 변경\n3. 🔥 스펠 F 변경\n\n0. ✅ 준비완료 (전투 진입)";
                 return replier.reply(LayoutManager.renderFrame(ContentManager.screen.lobby, content, false, "번호를 입력하세요. (취소: 로비로)"));
             }
-            
-            if (session.screen === "BATTLE_PICK_ROLE") {
-                return replier.reply(LayoutManager.renderFrame(ContentManager.screen.roleSelect, getRoleMenuText(userData), true, "번호 선택"));
-            }
+            if (session.screen === "BATTLE_PICK_ROLE") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.roleSelect, getRoleMenuText(userData), true, "번호 선택"));
             if (session.screen === "BATTLE_PICK") {
                 var pickChamps = userData.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
-                var text = "🎯 [" + session.temp.role + "] 출전 챔피언 선택:\n\n";
-                text += (pickChamps.length > 0) ? pickChamps.map(function(c, i) { return (i+1) + ". " + c; }).join("\n") : "해당 역할군에 보유한 챔피언이 없습니다.";
+                var text = "🎯 [" + session.temp.role + "] 출전 챔피언 선택:\n\n" + (pickChamps.length > 0 ? pickChamps.map(function(c, i) { return (i+1) + ". " + c; }).join("\n") : "해당 역할군 챔피언 없음");
                 return replier.reply(LayoutManager.renderFrame(cB.screen.pick, text, true, "번호 선택"));
             }
-            
-            if (session.screen === "BATTLE_SPELL_PICK") {
-                return replier.reply(LayoutManager.renderFrame(ContentManager.screen.spellPick, LayoutManager.templates.menuList(null, ContentManager.menus.spells), true, "장착할 스펠 번호를 선택하세요."));
-            }
+            if (session.screen === "BATTLE_SPELL_PICK") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.spellPick, LayoutManager.templates.menuList(null, ContentManager.menus.spells), true, "장착할 스펠 번호를 선택하세요."));
 
+            // 전투 화면 렌더링
             if (session.screen === "BATTLE_MAIN") return replier.reply(vB.render(session.battle.instance));
             if (session.screen === "BATTLE_ENEMY_INFO") return replier.reply(vB.renderEnemyInfo(session.battle.instance));
             if (session.screen === "BATTLE_DETAIL") return replier.reply(vB.renderDetail(session.battle.instance.me));
@@ -1348,6 +1317,7 @@ var BattleController = {
             if (session.screen === "BATTLE_SKILLUP") return replier.reply(vB.renderSkillUp(session.battle.instance.me));
         }
 
+        // 로비 로직
         if (session.screen === "BATTLE_LOBBY") {
             if (msg === "1") { session.screen = "BATTLE_PICK_ROLE"; SessionManager.save(); return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
             if (msg === "2") { session.temp.spellSlot = "d"; session.screen = "BATTLE_SPELL_PICK"; SessionManager.save(); return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
@@ -1358,11 +1328,9 @@ var BattleController = {
                 
                 session.battle.enemy = bM.generateAI(); 
                 session.screen = "BATTLE_LOADING"; SessionManager.save();
-                
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
                 
                 var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(userData.stats)); 
-                
                 new java.lang.Thread(new java.lang.Runnable({
                     run: function() {
                         try {
@@ -1378,91 +1346,61 @@ var BattleController = {
                                     ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: cS.battle.enemy.spells.d, f: cS.battle.enemy.spells.f, dCd: 0, fCd: 0} }
                                 };
                                 SessionManager.save(); 
-                                
                                 var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{uD}", cS.battle.spells.d).replace("{uF}", cS.battle.spells.f)
                                                            .replace("{aChamp}", cS.battle.enemy.champion).replace("{aD}", cS.battle.enemy.spells.d).replace("{aF}", cS.battle.enemy.spells.f);
-                                var combinedText = vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart;
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, combinedText, false, "잠시 후 전투 현황판이 출력됩니다."));
-                                
+                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart, false, "잠시 후 전투 현황판이 출력됩니다."));
                                 java.lang.Thread.sleep(Config.Timers.vsScreen + 1000); 
                                 Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
                             }
-                        } catch(e) { 
-                            var errStr = "⚠️ 로딩 에러!\n" + e.toString() + "\n" + (e.lineNumber ? "줄: " + e.lineNumber : "");
-                            Api.replyRoom(roomStr, errStr); 
-                        }
+                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e.message); }
                     }
                 })).start();
                 return;
             }
         }
 
+        // 픽창 및 스펠 선택 로직
         if (session.screen === "BATTLE_PICK_ROLE") {
             var rIdx = parseInt(msg) - 1;
-            if (RoleList[rIdx]) {
-                session.temp.role = RoleList[rIdx]; 
-                session.screen = "BATTLE_PICK"; 
-                return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
-            }
+            if (RoleList[rIdx]) { session.temp.role = RoleList[rIdx]; session.screen = "BATTLE_PICK"; return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
         }
-
         if (session.screen === "BATTLE_PICK") {
             var idx = parseInt(msg) - 1; 
             var pickChamps = userData.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
             var targetChamp = pickChamps[idx];
-            if (targetChamp) {
-                session.battle.myChamp = targetChamp; 
-                session.screen = "BATTLE_LOBBY"; SessionManager.save(); 
-                return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
-            } 
+            if (targetChamp) { session.battle.myChamp = targetChamp; session.screen = "BATTLE_LOBBY"; SessionManager.save(); return BattleController.handle("refresh_screen", session, sender, replier, room, userData); } 
         }
-
         if (session.screen === "BATTLE_SPELL_PICK") {
-            var sIdx = parseInt(msg) - 1;
-            var pickedSpell = SpellList[sIdx];
+            var sIdx = parseInt(msg) - 1; var pickedSpell = SpellList[sIdx];
             if (pickedSpell) {
                 var otherSlot = session.temp.spellSlot === 'd' ? 'f' : 'd';
-                if (session.battle.spells[otherSlot] === pickedSpell) {
-                    return replier.reply(LayoutManager.renderAlert("스펠 선택 불가", "⚠️ 두 스펠은 중복될 수 없습니다."));
-                }
-                session.battle.spells[session.temp.spellSlot] = pickedSpell; 
-                session.screen = "BATTLE_LOBBY"; SessionManager.save();
+                if (session.battle.spells[otherSlot] === pickedSpell) return replier.reply(LayoutManager.renderAlert("스펠 중복", "⚠️ 이미 선택된 스펠입니다."));
+                session.battle.spells[session.temp.spellSlot] = pickedSpell; session.screen = "BATTLE_LOBBY"; SessionManager.save();
                 return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
             }
         }
 
-        if (session.screen === "BATTLE_ENEMY_INFO") { if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); } return; }
-        if (session.screen === "BATTLE_DETAIL") { if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); } return; }
-        if (session.screen === "BATTLE_SKILLINFO") { if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); } return; }
-
+        // 🌟 정보 메뉴 이동 및 스킬 강화
+        if (session.screen === "BATTLE_ENEMY_INFO" || session.screen === "BATTLE_DETAIL" || session.screen === "BATTLE_SKILLINFO") {
+            if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); } return;
+        }
         if (session.screen === "BATTLE_SKILLUP") {
             var me = session.battle.instance.me;
             if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); }
-            
-            var keyMap = {"1":"q", "2":"w", "3":"e", "4":"r"};
-            var key = msg.toLowerCase();
-            if (keyMap[key]) key = keyMap[key];
-
+            var keyMap = {"1":"q", "2":"w", "3":"e", "4":"r"}; var key = msg.toLowerCase(); if (keyMap[key]) key = keyMap[key];
             if (["q", "w", "e", "r"].indexOf(key) !== -1) {
                 if (me.sp <= 0) return replier.reply(LayoutManager.renderAlert(cB.alerts.noSp.title, cB.alerts.noSp.msg));
                 if (key === 'r' && me.level < 6) return replier.reply(LayoutManager.renderAlert(cB.alerts.reqLvl6.title, cB.alerts.reqLvl6.msg));
                 if (me.skLv[key] >= me.hw.skills[key].max) return replier.reply(LayoutManager.renderAlert(cB.alerts.maxLvl.title, cB.alerts.maxLvl.msg));
-                
                 me.skLv[key]++; me.sp--; SessionManager.save();
-                
                 var notiText = LayoutManager.renderAlert(cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key]));
-                if (me.sp <= 0) {
-                    session.screen = "BATTLE_MAIN"; SessionManager.save();
-                    replier.reply(notiText);
-                    return replier.reply(vB.render(session.battle.instance));
-                } else {
-                    replier.reply(notiText);
-                    return replier.reply(vB.renderSkillUp(me));
-                }
+                if (me.sp <= 0) { session.screen = "BATTLE_MAIN"; SessionManager.save(); replier.reply(notiText); return replier.reply(vB.render(session.battle.instance)); }
+                else { replier.reply(notiText); return replier.reply(vB.renderSkillUp(me)); }
             }
             return;
         }
 
+        // 🌟 메인 전투 화면 로직
         if (session.screen === "BATTLE_MAIN") {
             var state = session.battle.instance;
             var cleanMsg = msg.replace(/\s+/g, "").toLowerCase();
@@ -1475,12 +1413,10 @@ var BattleController = {
             if (msg === "5") { state.strat = 2; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "6") { state.strat = 3; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "7") { state.strat = 4; SessionManager.save(); return replier.reply(vB.render(state)); }
-            
             if (msg === "8") { 
                 if (state.lanePos < 2) return replier.reply(LayoutManager.renderAlert(cB.alerts.noTowerRange.title, cB.alerts.noTowerRange.msg));
                 state.strat = 8; SessionManager.save(); return replier.reply(vB.render(state)); 
             }
-            
             if (msg === "9" && state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
             
             if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
@@ -1497,31 +1433,30 @@ var BattleController = {
                         try {
                             var cS = SessionManager.sessions[sessionKey]; var st = cS.battle.instance;
                             var stratAi = decideAIStrategy(st.ai, st.me, st.lanePos);
-                            var isGameOver = false;
-
+                            
+                            // 🌟 3단계 페이즈 실행
                             for (var i = 1; i <= 3; i++) {
-                                var p = bM.playPhase(st, stratMe, stratAi, i); 
-
+                                var p = bM.playPhase(st, stratMe, stratAi, i, st.lanePos);
+                                // ... (전투 로그 및 데미지 처리는 BattleEngine에서 계산된 값을 View에서 렌더링) ...
                                 var mentalLog = "";
                                 var isPhaseDeath = false;
                                 if (st.me.hp <= 0) { 
                                     st.ai.kills++; st.me.hp = st.me.hw.hp; st.me.mp = st.me.hw.mp; st.lanePos = 0; st.distance = 600;
                                     mentalLog = cB.logs.killMe; isPhaseDeath = true; 
-                                }
-                                else if (st.ai.hp <= 0) { 
+                                } else if (st.ai.hp <= 0) { 
                                     st.me.kills++; st.ai.hp = st.ai.hw.hp; st.ai.mp = st.ai.hw.mp; st.lanePos = 0; st.distance = 600;
                                     mentalLog = cB.logs.killAi; isPhaseDeath = true; 
                                 }
 
                                 var phaseTitle = cB.screen.phasePrefix + i + cB.screen.phaseSuffix;
                                 var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP";
-                                
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseTitle, phaseContent, false, cB.ui.watchNext));
 
                                 if (isPhaseDeath) break; 
                                 java.lang.Thread.sleep(Config.Timers.phaseDelay); 
                             }
-
+                            
+                            // 🌟 턴 종료 처리 (라인 이동 및 스펠 쿨타임)
                             var laneMove = 0;
                             if (stratMe === 2) laneMove += 1; else if (stratMe === 3) laneMove -= 1;
                             if (stratAi === 2) laneMove -= 1; else if (stratAi === 3) laneMove += 1;
@@ -1531,24 +1466,23 @@ var BattleController = {
                             if (st.ai.spells.dCd > 0) st.ai.spells.dCd--; if (st.ai.spells.fCd > 0) st.ai.spells.fCd--;
 
                             java.lang.Thread.sleep(2000); 
-                            
+
+                            // 🌟 승리 조건 달성 체크
                             if (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0 || st.ai.kills >= 3 || st.ai.cs >= 100 || st.me.towerHp <= 0 || st.turn >= 30) {
                                 var isWin = (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0); 
                                 var reward = isWin ? 300 : 100; 
                                 Database.data[cS.tempId].gold += reward; Database.save();
-                                
                                 var endContent = (isWin ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + reward + " G";
                                 Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
-                                
                                 SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
                                 java.lang.Thread.sleep(Config.Timers.systemAction); 
                                 return UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
                             }
 
+                            // 🌟 경험치 획득 및 레벨업
                             var expGain = (stratMe === 4) ? 0 : (stratMe === 3 ? 60 : 100); 
                             st.me.exp += expGain;
                             if (st.me.exp >= 100) { st.me.level++; st.me.exp -= 100; st.me.sp++; st.me.hw.baseAd += 3; st.me.hw.hp += 80; st.me.hp += 80; }
-                            
                             st.ai.exp += 100;
                             if (st.ai.exp >= 100) { 
                                 st.ai.level++; st.ai.exp -= 100; st.ai.hw.baseAd += 4; st.ai.hw.hp += 90; st.ai.hp += 90; 
