@@ -14,7 +14,7 @@ var Config = {
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
     SESSION_PATH: "sdcard/msgbot/Bots/main/sessions.json",
-    LINE_CHAR: "━", FIXED_LINE: 17, WRAP_LIMIT: 23, 
+    LINE_CHAR: "━", FIXED_LINE: 19, WRAP_LIMIT: 25, 
     TIMEOUT_MS: 300000, 
     
     Timers: {
