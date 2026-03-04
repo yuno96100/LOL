@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v12.6 (Ultimate UX & Auto-Battler Fix)
- * - [M] Model: 1v1 공식 룰, 오토배틀러 스펠 엔진, 에러 100% 픽스
- * - [V] View: 적 정보 UI 개편, 현황판 콤팩트 디자인, 알림창 자동 복귀 기능
- * - [C] Controller: Rhino 엔진 호환성 및 라우팅 최적화
+ * 🏰 소환사의 협곡 Bot - v13.0 (Asynchronous Scheduler Architecture)
+ * - [M] Model: 메신저봇R 호환성 유지, 방(Room) 단위 비동기 Task Queue 스케줄러 탑재
+ * - [V] View: V12의 콤팩트 대시보드 UI, 방어막 흡수 연출, 지능형 해설자 100% 유지
+ * - [C] Controller: 모든 Thread.sleep()을 제거하고 Non-blocking 큐(Queue) 시스템으로 전면 교체
  */   
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v12.6 Ultimate Edition",
+    Version: "v13.0 Server Optimize",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -23,7 +23,7 @@ var Config = {
         loading: 2000,      
         vsScreen: 3500,     
         battleStart: 2500,  
-        phaseDelay: 8000,   
+        phaseDelay: 6000,   // 🌟 큐 스케줄러 도입으로 씹힘이 없어졌으므로 딜레이 단축
         gameOver: 3000,     
         systemAction: 1200  
     },
@@ -79,7 +79,7 @@ var Utils = {
         return { name: "아이언", icon: "⚫" };
     },
     sendNotify: function(target, msg) {
-        try { Api.replyRoom(target, LayoutManager.renderFrame(ContentManager.title.notice, msg, false, ContentManager.footer.sysNotify)); } catch(e) {}
+        try { Api.replyRoom(target, LayoutManager.renderFrame("알림", msg, false, "시스템 알림")); } catch(e) {}
     }
 };
 
@@ -94,6 +94,36 @@ function getRoleMenuText(data) {
     }
     return roleTextArr.join("\n");
 }
+
+// 🌟 [V13.0 추가] 방(Room) 단위 비동기 스케줄러 큐 시스템
+var RoomScheduler = {
+    queues: {},
+    isRunning: {},
+    add: function(room, actionFunc, delayAfter) {
+        if (!this.queues[room]) this.queues[room] = [];
+        this.queues[room].push({ action: actionFunc, delay: delayAfter || 0 });
+        if (!this.isRunning[room]) this.start(room);
+    },
+    start: function(room) {
+        this.isRunning[room] = true;
+        new java.lang.Thread(new java.lang.Runnable({
+            run: function() {
+                while(RoomScheduler.queues[room] && RoomScheduler.queues[room].length > 0) {
+                    var task = RoomScheduler.queues[room].shift();
+                    try {
+                        if (task.action) task.action();
+                    } catch(e) {
+                        try { Api.replyRoom(room, "⚠️ 연출 스케줄러 에러: " + e.message); } catch(err){}
+                    }
+                    if (task.delay > 0) {
+                        java.lang.Thread.sleep(task.delay); // 큐 처리 지연 (도배 방지 및 연출용)
+                    }
+                }
+                RoomScheduler.isRunning[room] = false;
+            }
+        })).start();
+    }
+};
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎨 [1. VIEW] 텍스트 콘텐츠 관리 (ContentManager & Layout)
@@ -169,11 +199,6 @@ var ContentManager = {
     },
     
     battle: {
-        director: {
-            Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 사거리를 이용한 완벽한 카이팅! 상대는 닿지도 못합니다!", Assassinate: "🎙️ 캐스터: 거리를 좁히며 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 사거리 안에서 서로 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 무리한 진입! 오히려 뼈아픈 역공을 맞습니다!", MissAll: "🎙️ 해설: 닿지 않는 거리! 서로 무빙만 치며 견제합니다." },
-            Defensive: { NormalFarm: "🎙️ 해설: 안전한 거리를 유지하며 안정적으로 라인을 당겨 먹습니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 다 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 거리가 안닿아요!! 대포 미니언을 놓쳤어요!!", GreedyCS: "🎙️ 캐스터: CS를 먹으려 앞으로 나갔다가 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하며 파밍도 못하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 일방적으로 맞았어요!" },
-            baseRecall: "🏠 거리를 완전히 벌리고 우물로 귀환하여 전열을 가다듬습니다."
-        },
         effectMap: {
             "shield_on_hit": "적중 시 보호막 획득", "slow_field": "광역 둔화 지대 생성", "block_dash_ms": "돌진 차단 및 이동속도 증가", "wall_stun": "지형(벽) 충돌 시 대상 기절", "knockup_away": "적을 멀리 날려버림 (에어본)",
             "shield_regen": "비전투 시 바위 보호막 재생", "steal_ms": "대상 이동속도 강탈", "armor_up_aoe": "방어력 증가 및 주위 마법 피해", "atkSpdDown": "적중 대상 공격속도 둔화", "aoe_stun": "광역 에어본 및 기절",
@@ -257,6 +282,21 @@ var ContentManager = {
     }
 };
 
+// 🌟 [V13.0] SystemAction 비동기 스케줄러화 
+var SystemAction = {
+    go: function(room, replier, title, msg, nextFunc) {
+        RoomScheduler.add(room, function() {
+            replier.reply(LayoutManager.renderAlert(title, msg));
+        }, Config.Timers.systemAction); 
+        
+        if (nextFunc) {
+            RoomScheduler.add(room, function() {
+                nextFunc();
+            }, 0);
+        }
+    }
+};
+
 var LayoutManager = {
     renderFrame: function(title, content, showNav, footer) {
         var div = Utils.getFixedDivider();
@@ -286,28 +326,38 @@ var LayoutManager = {
     }
 };
 
-// 🌟 [누락 복구] 전투 연산 로그 생성기
 var BattleDirector = {
     generateLog: function(ctx) {
-        var bDir = ContentManager.battle.director;
-        var totalDmg = ctx.mDmg + ctx.aDmg; var txt = "";
+        var realTotalDmg = ctx.mDmg + ctx.aDmg + (ctx.mBlocked || 0) + (ctx.aBlocked || 0);
+
+        if ((ctx.mBlocked > 0 || ctx.aBlocked > 0) && (ctx.mDmg === 0 && ctx.aDmg === 0)) {
+            return "🎙️ 해설: 엄청난 방어막 활용!! 맹렬한 공격을 생채기 하나 없이 완벽하게 씹어버립니다!";
+        }
+
+        if (realTotalDmg === 0 && ctx.mHits === 0 && ctx.aHits === 0) {
+            if (ctx.strat === 4) return "🏠 거리를 완전히 벌리고 우물로 귀환하여 전열을 가다듬습니다.";
+            if (ctx.strat === 2 || ctx.strat === 3) return "🎙️ 해설: 양측 모두 딜교환을 피하고 미니언 파밍에만 집중합니다.";
+            return "🎙️ 캐스터: 서로 거리를 주지 않네요! 날카로운 무빙과 눈치싸움만 이어집니다.";
+        }
+
+        var txt = "";
         if (ctx.strat === 1) { 
-            if (ctx.mHits > ctx.aHits * 2) txt = bDir.Aggressive.Kiting;
-            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (totalDmg < 150) ? bDir.Aggressive.MildTrade : bDir.Aggressive.Bloodbath;
-            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = bDir.Aggressive.Countered;
-            else txt = bDir.Aggressive.MissAll;
+            if (ctx.mHits > ctx.aHits * 2) txt = "🎙️ 해설: 사거리를 이용한 일방적인 딜교환! 상대는 닿지도 못합니다!";
+            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (realTotalDmg < 150) ? "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요." : "🎙️ 해설: 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!";
+            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = "🎙️ 캐스터: 무리한 진입! 오히려 뼈아픈 역공을 고스란히 맞습니다!";
+            else txt = "🎙️ 해설: 서로의 스킬이 아슬아슬하게 빗나갑니다!";
         } else if (ctx.strat === 2 || ctx.strat === 3) {
-            if (ctx.isCannonPhase && !ctx.gotCannon) txt = bDir.Defensive.CannonMissed;
+            if (ctx.isCannonPhase && !ctx.gotCannon) txt = "🎙️ 해설: 아아아!! 거리가 닿지 않아 대포 미니언을 놓칩니다!!";
             else {
-                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (totalDmg < 50) ? bDir.Defensive.NormalFarm : bDir.Defensive.PerfectCS;
-                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = bDir.Defensive.GreedyCS;
-                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = bDir.Defensive.ZonedOut;
-                else txt = bDir.Defensive.Disaster;
+                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (realTotalDmg < 50) ? "🎙️ 해설: 안전한 거리를 유지하며 훌륭하게 CS를 챙깁니다." : "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 챙깁니다!";
+                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = "🎙️ 캐스터: 파밍을 위해 앞으로 나갔다가 딜교환을 강제당합니다!";
+                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하며 파밍도 못하고 있어요!";
+                else txt = "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 일방적으로 맞았어요!";
             }
         } else if (ctx.strat === 8) {
             return "💥 방해를 무릅쓰고 적 포탑을 향해 공성을 시도합니다!";
-        } else return bDir.baseRecall;
-        return txt.replace(/{myChamp}/g, ctx.myChamp).replace(/{aiChamp}/g, ctx.aiChamp);
+        } else return "🏠 우물로 귀환합니다.";
+        return txt;
     }
 };
 
@@ -395,7 +445,7 @@ var BattleView = {
             content += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
             content += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
             content += "🎒 [ 보유 아이템 ]\n(상점 업데이트 예정)";
-            return LayoutManager.renderFrame(cU.detailTitle, content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
+            return LayoutManager.renderFrame("🔍 상세 스탯 및 장비 창", content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
         },
         renderSkillInfo: function(t) {
             var hw = t.hw;
@@ -426,10 +476,9 @@ var BattleView = {
             content += getDesc("w", hw.skills.w);
             content += getDesc("e", hw.skills.e);
             content += getDesc("r", hw.skills.r);
-            return LayoutManager.renderFrame(ContentManager.battle.screen.skillInfo, content.trim(), ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
+            return LayoutManager.renderFrame("📝 스킬 정보", content.trim(), ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
         },
         renderSkillUp: function(t) {
-            var cU = ContentManager.battle.ui;
             var content = "보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
             var s = t.hw.skills;
             var getInfo = function(idx, key, name, curLv, maxLv, bArr, cdArr) {
@@ -459,7 +508,7 @@ var BattleView = {
                 content += "   ├ 피해: " + rCurB + " ➔ " + s.r.b[rCurLv] + "\n";
                 content += "   └ 쿨탐: " + rCurCd + "s ➔ " + s.r.cd[rCurLv] + "s\n";
             } else { content += "   ├ 레벨: " + rCurLv + " (MAX)\n"; }
-            return LayoutManager.renderFrame(cU.skillUpTitle, content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
+            return LayoutManager.renderFrame("🆙 스킬 레벨업", content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
         }
     }
 };
@@ -562,7 +611,9 @@ var SessionManager = {
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId; this.reset(room, sender);
             if(backupId) { this.sessions[key].tempId = backupId; this.save(); } 
-            replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
+            RoomScheduler.add(room, function() {
+                replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
+            }, 0);
             return true; 
         }
         s.lastTime = Date.now(); this.save(); 
@@ -648,7 +699,12 @@ var BattleEngine = {
         var shuffledSpells = SpellList.slice().sort(function() { return 0.5 - Math.random(); }); 
         return { 
             champion: rChamp, 
-            stats: { acc: 40+Math.random()*40, ref: 40+Math.random()*40, com: 40+Math.random()*40, int: 40+Math.random()*40 },
+            stats: { 
+                acc: Math.floor(40+Math.random()*40), 
+                ref: Math.floor(40+Math.random()*40), 
+                com: Math.floor(40+Math.random()*40), 
+                int: Math.floor(40+Math.random()*40) 
+            },
             spells: { d: shuffledSpells[0], f: shuffledSpells[1] } 
         };
     },
@@ -675,9 +731,7 @@ var BattleEngine = {
     calcDmg: function(sk, atkHw, defHw, defHp, defStatus, atkStatus) {
         var raw = (sk.b || 0) + (atkHw.baseAd + atkHw.bonusAd) * (sk.ad || 0) + (atkHw.ap * (sk.ap || 0)) + (atkHw.hp * (sk.mhp || 0)) + (atkHw.def * (sk.def || 0));
         raw += (defHw.hp * (sk.eMhp || 0)) + (defHp * (sk.eCurHp || 0)) + (Math.max(0, defHw.hp - defHp) * (sk.eMisHp || 0));
-        
         if (atkStatus.exhaustDur > 0) raw *= 0.7; 
-        
         if (sk.t === "TRUE" || sk.t === "UT") return raw;
         var def = (sk.t === "AP") ? defHw.mdef : defHw.def;
         if (defStatus.defShredDur > 0) def *= 0.75; 
@@ -726,8 +780,8 @@ var BattleEngine = {
             var meSpd = me.status.exhaustDur > 0 ? me.hw.spd * 0.7 : me.hw.spd;
             var aiSpd = ai.status.exhaustDur > 0 ? ai.hw.spd * 0.7 : ai.hw.spd;
 
-            var meMove = (meRealAggro && me.status.rootDur <= 0 && me.status.stunDur <= 0) ? -(meSpd * 0.15) : (stratMe === 2 ? -20 : (stratMe === 3 ? 50 : 100));
-            var aiMove = (aiRealAggro && ai.status.rootDur <= 0 && ai.status.stunDur <= 0) ? -(aiSpd * 0.15) : (stratAi === 2 ? -20 : (stratAi === 3 ? 50 : 100));
+            var meMove = (meRealAggro && me.status.rootDur <= 0 && me.status.stunDur <= 0) ? -(meSpd * 0.3) : (stratMe === 2 ? -20 : (stratMe === 3 ? 50 : 100));
+            var aiMove = (aiRealAggro && ai.status.rootDur <= 0 && ai.status.stunDur <= 0) ? -(aiSpd * 0.3) : (stratAi === 2 ? -20 : (stratAi === 3 ? 50 : 100));
             st.distance = Math.max(100, Math.min(1000, st.distance + meMove + aiMove));
 
             if (me.status.stunDur <= 0 && stratMe !== 4 && stratMe !== 8) {
@@ -865,8 +919,19 @@ var BattleEngine = {
             combatLogs.push(bLogs.towerAggro.replace("{dmg}", towerDmg));
         }
 
-        if(me.status.shield > 0) { mRawDmg -= me.status.shield; me.status.shield = Math.max(0, -mRawDmg); mRawDmg = Math.max(0, mRawDmg); }
-        if(ai.status.shield > 0) { aRawDmg -= ai.status.shield; ai.status.shield = Math.max(0, -aRawDmg); aRawDmg = Math.max(0, aRawDmg); }
+        var mBlocked = 0, aBlocked = 0;
+        if(me.status.shield > 0 && mRawDmg > 0) { 
+            mBlocked = Math.min(me.status.shield, mRawDmg);
+            mRawDmg -= mBlocked; 
+            me.status.shield -= mBlocked; 
+            combatLogs.push("🛡️ [방어막 흡수] 적의 공격을 방어막으로 완벽히 막아냅니다! (방어: " + Math.floor(mBlocked) + ")");
+        }
+        if(ai.status.shield > 0 && aRawDmg > 0) { 
+            aBlocked = Math.min(ai.status.shield, aRawDmg);
+            aRawDmg -= aBlocked; 
+            ai.status.shield -= aBlocked; 
+            combatLogs.push("🛡️ [방어막 흡수] 적이 내 공격을 방어막으로 씹어버립니다! (방어: " + Math.floor(aBlocked) + ")");
+        }
         
         var mRegen = me.hw.hpRegen * 6 + Math.floor(aRawDmg * (me.hw.omniVamp / 100));
         var aRegen = ai.hw.hpRegen * 6 + Math.floor(mRawDmg * (ai.hw.omniVamp / 100));
@@ -910,7 +975,7 @@ var BattleEngine = {
         }
 
         var csPercent = ((mCs)/(wave.melee+wave.caster+wave.siege)) * 100;
-        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: myGotCannon, mDmg: finalMDmg, aDmg: finalADmg, myChamp: me.champ, aiChamp: ai.champ };
+        var ctx = { strat: stratMe, mHits: mHitCount, aHits: aHitCount, csPercent: csPercent, isCannonPhase: isCannonPhase, gotCannon: myGotCannon, mDmg: finalMDmg, aDmg: finalADmg, mBlocked: mBlocked, aBlocked: aBlocked, myChamp: me.champ, aiChamp: ai.champ };
 
         if(combatLogs.length === 0) combatLogs.push(bLogs.noAction);
         if(combatLogs.length > 8) {
@@ -939,14 +1004,6 @@ var PrevScreenMap = {
     "ADMIN_INQUIRY_REPLY": "ADMIN_INQUIRY_DETAIL"
 };
 
-var SystemAction = {
-    go: function(replier, title, msg, nextFunc) {
-        replier.reply(LayoutManager.renderAlert(title, msg));
-        java.lang.Thread.sleep(Config.Timers.systemAction); 
-        if (nextFunc) nextFunc();
-    }
-};
-
 var AuthController = { 
     handle: function(msg, session, sender, replier, room) {
         var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title;
@@ -966,27 +1023,27 @@ var AuthController = {
             if (msg === "3") { session.screen = "GUEST_INQUIRY"; return AuthController.handle("refresh_screen", session, sender, replier, room); }
         }
         if (session.screen === "JOIN_ID") {
-            if (msg.length > 10) return SystemAction.go(replier, t.error, "아이디는 10자 이내여야 합니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
-            if (Database.data[msg]) return SystemAction.go(replier, t.error, "이미 존재하는 아이디입니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
+            if (msg.length > 10) return SystemAction.go(room, replier, t.error, "아이디는 10자 이내여야 합니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
+            if (Database.data[msg]) return SystemAction.go(room, replier, t.error, "이미 존재하는 아이디입니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
             session.temp.id = msg; session.screen = "JOIN_PW"; return AuthController.handle("refresh_screen", session, sender, replier, room);
         }
         if (session.screen === "JOIN_PW") {
             Database.createUser(session.temp.id, msg); session.tempId = session.temp.id; session.screen = "MAIN"; SessionManager.save(); 
-            return SystemAction.go(replier, t.success, m.registerComplete, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+            return SystemAction.go(room, replier, t.success, m.registerComplete, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
         }
         if (session.screen === "LOGIN_ID") {
-            if (!Database.data[msg]) return SystemAction.go(replier, t.error, "존재하지 않는 아이디입니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
+            if (!Database.data[msg]) return SystemAction.go(room, replier, t.error, "존재하지 않는 아이디입니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
             session.temp.id = msg; session.screen = "LOGIN_PW"; return AuthController.handle("refresh_screen", session, sender, replier, room);
         }
         if (session.screen === "LOGIN_PW") {
             if (Database.data[session.temp.id] && Database.data[session.temp.id].pw === msg) {
                 session.tempId = session.temp.id; session.screen = "MAIN"; SessionManager.save(); 
-                return SystemAction.go(replier, t.success, session.tempId + "님 환영합니다!", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-            } else return SystemAction.go(replier, t.fail, m.loginFail, function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
+                return SystemAction.go(room, replier, t.success, session.tempId + "님 환영합니다!", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+            } else return SystemAction.go(room, replier, t.fail, m.loginFail, function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
         }
         if (session.screen === "GUEST_INQUIRY") {
             Database.inquiries.push({ sender: "비회원(" + sender + ")", room: room, content: msg, time: Utils.get24HTime(), read: false }); Database.save(); SessionManager.reset(room, sender);
-            return SystemAction.go(replier, t.complete, m.inqSubmitSuccess, function(){ AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
+            return SystemAction.go(room, replier, t.complete, m.inqSubmitSuccess, function(){ AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
         }
     }
 };
@@ -1051,52 +1108,50 @@ var UserController = {
             if (msg === "5") { session.screen = "USER_INQUIRY"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "6") { 
                 var backupId = session.tempId; SessionManager.reset(room, sender); 
-                return SystemAction.go(replier, t.notice, m.logout, function() { AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
+                return SystemAction.go(room, replier, t.notice, m.logout, function() { AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
             }
         }
         
         if (session.screen === "MODE_SELECT") {
             if (msg === "1") {
-                if (data.inventory.champions.length === 0) return SystemAction.go(replier, t.fail, m.noChamp, function() { session.screen = "MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
+                if (data.inventory.champions.length === 0) return SystemAction.go(room, replier, t.fail, m.noChamp, function() { session.screen = "MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
                 
                 var cU = ContentManager.battle.ui;
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
                 replier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
                 
                 var roomStr = room + ""; var senderStr = sender + ""; 
-                new java.lang.Thread(new java.lang.Runnable({
-                    run: function() {
-                        try {
-                            java.lang.Thread.sleep(Config.Timers.matchSearch);
-                            var s = SessionManager.get(roomStr, senderStr);
-                            if (s && s.screen === "BATTLE_MATCHING") {
-                                Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
-                                java.lang.Thread.sleep(Config.Timers.matchFound); 
-                                
-                                s = SessionManager.get(roomStr, senderStr); 
-                                s.screen = "BATTLE_LOBBY"; SessionManager.save(); 
-                                var currentData = Database.data[s.tempId];
-                                BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, currentData);
-                            }
-                        } catch(e) {}
+                RoomScheduler.add(roomStr, function() {
+                    var s = SessionManager.get(roomStr, senderStr);
+                    if (s && s.screen === "BATTLE_MATCHING") {
+                        Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
                     }
-                })).start();
+                }, Config.Timers.matchSearch);
+
+                RoomScheduler.add(roomStr, function() {
+                    var s = SessionManager.get(roomStr, senderStr);
+                    if (s && s.screen === "BATTLE_MATCHING") {
+                        s.screen = "BATTLE_LOBBY"; SessionManager.save(); 
+                        var currentData = Database.data[s.tempId];
+                        BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, currentData);
+                    }
+                }, Config.Timers.matchFound);
                 return;
             }
-            if (msg === "2") return SystemAction.go(replier, t.notice, m.pvpPrep, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+            if (msg === "2") return SystemAction.go(room, replier, t.notice, m.pvpPrep, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
         }
 
-        // --- 기타 메뉴 처리 (생략) ---
         if (session.screen === "PROFILE_MAIN") {
             if (msg === "1") { session.screen = "STAT_SELECT"; return UserController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "2") { session.screen = "STAT_RESET_CONFIRM"; return UserController.handle("refresh_screen", session, sender, replier, room); }
         }
+
         if (session.screen === "STAT_RESET_CONFIRM") {
             if (msg === "1") {
-                if ((data.items.statReset || 0) <= 0) return SystemAction.go(replier, t.error, m.noItem, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+                if ((data.items.statReset || 0) <= 0) return SystemAction.go(room, replier, t.error, m.noItem, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
                 data.items.statReset -= 1; data.stats = { acc: 50, ref: 50, com: 50, int: 50 }; data.point = (data.level - 1) * POINT_PER_LEVEL; Database.save();
-                return SystemAction.go(replier, t.success, m.statResetSuccess, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
-            } else if (msg === "2") { return SystemAction.go(replier, t.notice, m.adminCancel, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
+                return SystemAction.go(room, replier, t.success, m.statResetSuccess, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
+            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
         }
         if (session.screen === "STAT_SELECT") {
             if (ContentManager.statMap.keys[msg]) {
@@ -1106,26 +1161,26 @@ var UserController = {
         }
         if (session.screen === "STAT_INPUT") {
             var amt = parseInt(msg);
-            if (isNaN(amt) || amt <= 0) return SystemAction.go(replier, t.error, m.onlyNumber, function() { UserController.handle("refresh_screen", session, sender, replier, room); }); 
-            if (data.point < amt) return SystemAction.go(replier, t.fail, "포인트가 부족합니다.", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+            if (isNaN(amt) || amt <= 0) return SystemAction.go(room, replier, t.error, m.onlyNumber, function() { UserController.handle("refresh_screen", session, sender, replier, room); }); 
+            if (data.point < amt) return SystemAction.go(room, replier, t.fail, "포인트가 부족합니다.", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             session.temp.statAmt = amt; session.screen = "STAT_INPUT_CONFIRM"; return UserController.handle("refresh_screen", session, sender, replier, room);
         }
         if (session.screen === "STAT_INPUT_CONFIRM") {
             if (msg === "1") {
                 var amt = session.temp.statAmt;
-                if (data.point < amt) return SystemAction.go(replier, t.fail, "포인트 부족", function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
+                if (data.point < amt) return SystemAction.go(room, replier, t.fail, "포인트 부족", function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
                 data.point -= amt; data.stats[session.temp.statKey] += amt; Database.save(); 
-                return SystemAction.go(replier, t.success, m.statEnhanceSuccess(session.temp.statName, amt), function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
-            } else if (msg === "2") { return SystemAction.go(replier, t.notice, m.adminCancel, function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
+                return SystemAction.go(room, replier, t.success, m.statEnhanceSuccess(session.temp.statName, amt), function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
+            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
         }
         if (session.screen === "COLLECTION_MAIN") {
              if (msg === "1") { session.screen = "TITLE_EQUIP"; return UserController.handle("refresh_screen", session, sender, replier, room); }
              if (msg === "2") { session.screen = "CHAMP_LIST_ROLE"; return UserController.handle("refresh_screen", session, sender, replier, room); }
         }
         if (session.screen === "TITLE_EQUIP") {
-            if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(replier, t.error, m.noTitleError, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+            if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(room, replier, t.error, m.noTitleError, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
             data.title = msg; Database.save();
-            return SystemAction.go(replier, t.complete, m.titleEquipSuccess(msg), function() { session.screen = "COLLECTION_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
+            return SystemAction.go(room, replier, t.complete, m.titleEquipSuccess(msg), function() { session.screen = "COLLECTION_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
         }
         if (session.screen === "CHAMP_LIST_ROLE") {
             var rIdx = parseInt(msg) - 1;
@@ -1141,9 +1196,9 @@ var UserController = {
             var p = 0, n = "", act = "";
             if (msg === "1") { p = 500; n = "닉네임 변경권"; act = "name"; } else if (msg === "2") { p = 1500; n = "스탯 초기화권"; act = "reset"; }
             if (p > 0) {
-                if (data.gold < p) return SystemAction.go(replier, t.fail, m.notEnoughGold, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
+                if (data.gold < p) return SystemAction.go(room, replier, t.fail, m.notEnoughGold, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
                 data.gold -= p; if (act === "reset") data.items.statReset = (data.items.statReset || 0) + 1; if (act === "name") data.items.nameChange = (data.items.nameChange || 0) + 1; Database.save();
-                return SystemAction.go(replier, t.success, m.buySuccess(n), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
+                return SystemAction.go(room, replier, t.success, m.buySuccess(n), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
         if (session.screen === "SHOP_CHAMPS_ROLE") {
@@ -1156,14 +1211,14 @@ var UserController = {
             var shopChamps = ChampionList.filter(function(c) { return ChampionData[c].role === session.temp.role; });
             var target = shopChamps[parseInt(msg) - 1];
             if (target) {
-                if (data.inventory.champions.indexOf(target) !== -1 || data.gold < 500) return SystemAction.go(replier, t.fail, m.champFail, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
+                if (data.inventory.champions.indexOf(target) !== -1 || data.gold < 500) return SystemAction.go(room, replier, t.fail, m.champFail, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
                 data.gold -= 500; data.inventory.champions.push(target); Database.save();
-                return SystemAction.go(replier, t.success, m.champSuccess(target), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
+                return SystemAction.go(room, replier, t.success, m.champSuccess(target), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
         if (session.screen === "USER_INQUIRY") {
             Database.inquiries.push({ sender: session.tempId, room: room, content: msg, time: Utils.get24HTime(), read: false }); Database.save(); session.screen = "MAIN";
-            return SystemAction.go(replier, t.complete, m.inqSubmitSuccess, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
+            return SystemAction.go(room, replier, t.complete, m.inqSubmitSuccess, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
         }
     }
 };
@@ -1182,7 +1237,7 @@ var AdminController = {
             }
             if (session.screen === "ADMIN_USER_SELECT") {
                 var users = Object.keys(Database.data);
-                if (users.length === 0) return SystemAction.go(replier, t.notice, m.adminNoUser, function(){ session.screen = "ADMIN_MAIN"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+                if (users.length === 0) return SystemAction.go(room, replier, t.notice, m.adminNoUser, function(){ session.screen = "ADMIN_MAIN"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 session.temp.userList = users; var listText = users.map(function(u, i) { return (i+1) + ". " + u; }).join("\n");
                 return replier.reply(LayoutManager.renderFrame(s.aUser, listText, true, f.selectNum));
             }
@@ -1192,7 +1247,7 @@ var AdminController = {
             }
             if (session.screen === "ADMIN_ACTION_CONFIRM") return replier.reply(LayoutManager.renderFrame(s.aActionCon, m.adminActionConfirm(ContentManager.adminMap.actionName[session.temp.adminAction]) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo), true, f.selectNum));
             if (session.screen === "ADMIN_INQUIRY_LIST") {
-                if (Database.inquiries.length === 0) return SystemAction.go(replier, t.notice, m.adminNoInq, function(){ session.screen = "ADMIN_MAIN"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+                if (Database.inquiries.length === 0) return SystemAction.go(room, replier, t.notice, m.adminNoInq, function(){ session.screen = "ADMIN_MAIN"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 var listArr = [], curDate = "";
                 for (var i = 0; i < Database.inquiries.length; i++) {
                     var iq = Database.inquiries[i]; var datePart = (iq.time && iq.time.length >= 10) ? iq.time.substring(0, 10) : "이전 문의";
@@ -1235,18 +1290,18 @@ var AdminController = {
                     var currentPw = tData.pw; var currentBan = tData.banned;
                     Database.data[target] = { pw: currentPw, name: target, title: "뉴비", lp: 0, win: 0, lose: 0, level: 1, exp: 0, gold: 1000, point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, inventory: { titles: ["뉴비"], champions: [] }, items: { statReset: 0, nameChange: 0 }, banned: currentBan };
                     Database.save(); Utils.sendNotify(target, m.adminNotifyInit);
-                    return SystemAction.go(replier, t.complete, m.adminInitSuccess, function() { session.screen="ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+                    return SystemAction.go(room, replier, t.complete, m.adminInitSuccess, function() { session.screen="ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 }
                 if (action === "3") {
                     delete Database.data[target]; Database.save(); Utils.sendNotify(target, m.adminNotifyDelete);
-                    return SystemAction.go(replier, t.complete, m.adminDelSuccess, function() { session.screen="ADMIN_USER_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+                    return SystemAction.go(room, replier, t.complete, m.adminDelSuccess, function() { session.screen="ADMIN_USER_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 }
                 if (action === "4") {
                      tData.banned = !tData.banned; Database.save();
                      Utils.sendNotify(target, tData.banned ? m.adminNotifyBan : m.adminNotifyUnban);
-                     return SystemAction.go(replier, t.complete, m.adminBanSuccess, function() { session.screen="ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+                     return SystemAction.go(room, replier, t.complete, m.adminBanSuccess, function() { session.screen="ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
                 }
-            } else if (msg === "2") { return SystemAction.go(replier, t.notice, m.adminCancel, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
+            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
         }
         if (session.screen === "ADMIN_INQUIRY_LIST") {
             var iIdx = parseInt(msg) - 1;
@@ -1257,14 +1312,14 @@ var AdminController = {
             if (msg === "1") { session.screen = "ADMIN_INQUIRY_REPLY"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
             if (msg === "2") {
                 Database.inquiries.splice(idx, 1); Database.save();
-                return SystemAction.go(replier, t.complete, m.adminInqDelSuccess, function(){ session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+                return SystemAction.go(room, replier, t.complete, m.adminInqDelSuccess, function(){ session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
         if (session.screen === "ADMIN_INQUIRY_REPLY") {
             var idx = session.temp.inqIdx; var iq = Database.inquiries[idx];
             if (iq && iq.room) {
                 try { Api.replyRoom(iq.room, ui.replyMark + "\n" + Utils.getFixedDivider() + "\n" + msg + "\n" + Utils.getFixedDivider()); } catch(e){}
-                return SystemAction.go(replier, t.complete, m.adminReplySuccess, function(){ session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+                return SystemAction.go(room, replier, t.complete, m.adminReplySuccess, function(){ session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_screen", session, sender, replier, room); });
             }
         }
         if (session.screen === "ADMIN_EDIT_SELECT") {
@@ -1272,8 +1327,8 @@ var AdminController = {
         }
         if (session.screen === "ADMIN_EDIT_INPUT") {
              var val = parseInt(msg);
-             if(isNaN(val)) return SystemAction.go(replier, t.error, m.onlyNumber, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
-             if (session.temp.editType === "level" && (val < 1 || val > MAX_LEVEL)) return SystemAction.go(replier, t.error, m.invalidLevel, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
+             if(isNaN(val)) return SystemAction.go(room, replier, t.error, m.onlyNumber, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
+             if (session.temp.editType === "level" && (val < 1 || val > MAX_LEVEL)) return SystemAction.go(room, replier, t.error, m.invalidLevel, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
              session.temp.editVal = val; session.screen = "ADMIN_EDIT_INPUT_CONFIRM"; return AdminController.handle("refresh_screen", session, sender, replier, room);
         }
         if (session.screen === "ADMIN_EDIT_INPUT_CONFIRM") {
@@ -1285,20 +1340,18 @@ var AdminController = {
                 }
                 Database.data[target][session.temp.editType] = val; Database.save();
                 Utils.sendNotify(target, m.adminNotifyEdit(typeName, val));
-                return SystemAction.go(replier, t.complete, m.adminEditSuccess, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-            } else if (msg === "2") { return SystemAction.go(replier, t.notice, m.adminEditCancel, function() { session.screen = "ADMIN_EDIT_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
+                return SystemAction.go(room, replier, t.complete, m.adminEditSuccess, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
+            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminEditCancel, function() { session.screen = "ADMIN_EDIT_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
         }
     }
 };
 
-// 🌟 [V12.6] 전투 조작 컨트롤러 (BattleController)
 var BattleController = {
     handle: function(msg, session, sender, replier, room, userData) {
         var cB = ContentManager.battle; var vB = BattleView.Board; var bM = BattleEngine;
         if (!session.battle) session.battle = {};
         if (!session.battle.spells) session.battle.spells = { d: "점멸", f: "점화" }; 
 
-        // [자가 치유] 구버전 세션 데이터 보정
         if (session.screen === "BATTLE_MAIN" || session.screen === "BATTLE_SKILLUP" || session.screen === "BATTLE_SKILLINFO" || session.screen === "BATTLE_DETAIL" || session.screen === "BATTLE_ENEMY_INFO") {
             var st = session.battle.instance;
             if (st) {
@@ -1315,31 +1368,23 @@ var BattleController = {
 
         if (msg === "refresh_screen") {
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
-            
-            // 로비 및 픽창 렌더링
             if (session.screen === "BATTLE_LOBBY") {
                 var mC = session.battle.myChamp || "미선택";
                 var mRole = session.battle.myChamp ? ChampionData[mC].role : "";
-                var content = "[ ⚔️ 출전 준비 ]\n";
-                content += "👤 챔피언: " + (mC !== "미선택" ? mC + " [" + mRole + "]" : "미선택") + "\n";
+                var content = "👤 챔피언: " + (mC !== "미선택" ? mC + " [" + mRole + "]" : "미선택") + "\n";
                 content += "✨ 스펠 D: [" + session.battle.spells.d + "]\n";
                 content += "✨ 스펠 F: [" + session.battle.spells.f + "]\n\n";
-                content += "[ 준비 메뉴 ]\n";
-                content += "1. 👤 챔피언 선택/변경\n";
-                content += "2. 🏃 스펠 D 변경\n";
-                content += "3. 🔥 스펠 F 변경\n\n";
-                content += "0. ✅ 준비완료 (전투 진입)";
+                content += "[ 준비 메뉴 ]\n1. 👤 챔피언 선택/변경\n2. 🏃 스펠 D 변경\n3. 🔥 스펠 F 변경\n\n0. ✅ 준비완료 (전투 진입)";
                 return replier.reply(LayoutManager.renderFrame(ContentManager.screen.lobby, content, false, "번호를 입력하세요. (취소: 로비로)"));
             }
             if (session.screen === "BATTLE_PICK_ROLE") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.roleSelect, getRoleMenuText(userData), true, "번호 선택"));
             if (session.screen === "BATTLE_PICK") {
                 var pickChamps = userData.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
                 var text = "🎯 [" + session.temp.role + "] 출전 챔피언 선택:\n\n" + (pickChamps.length > 0 ? pickChamps.map(function(c, i) { return (i+1) + ". " + c; }).join("\n") : "해당 역할군 챔피언 없음");
-                return replier.reply(LayoutManager.renderFrame(cB.screen.pick, text, true, "번호 선택"));
+                return replier.reply(LayoutManager.renderFrame("챔피언 선택", text, true, "번호 선택"));
             }
             if (session.screen === "BATTLE_SPELL_PICK") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.spellPick, LayoutManager.templates.menuList(null, ContentManager.menus.spells), true, "장착할 스펠 번호를 선택하세요."));
 
-            // 전투 화면 렌더링
             if (session.screen === "BATTLE_MAIN") return replier.reply(vB.render(session.battle.instance));
             if (session.screen === "BATTLE_ENEMY_INFO") return replier.reply(vB.renderEnemyInfo(session.battle.instance));
             if (session.screen === "BATTLE_DETAIL") return replier.reply(vB.renderDetail(session.battle.instance.me));
@@ -1347,49 +1392,52 @@ var BattleController = {
             if (session.screen === "BATTLE_SKILLUP") return replier.reply(vB.renderSkillUp(session.battle.instance.me));
         }
 
-        // 로비 로직
         if (session.screen === "BATTLE_LOBBY") {
             if (msg === "1") { session.screen = "BATTLE_PICK_ROLE"; SessionManager.save(); return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
             if (msg === "2") { session.temp.spellSlot = "d"; session.screen = "BATTLE_SPELL_PICK"; SessionManager.save(); return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
             if (msg === "3") { session.temp.spellSlot = "f"; session.screen = "BATTLE_SPELL_PICK"; SessionManager.save(); return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
             if (msg === "0") {
-                if (!session.battle.myChamp) return replier.reply(LayoutManager.renderAlert("준비 불가", "⚠️ 챔피언을 먼저 선택해주세요."));
-                if (session.battle.spells.d === session.battle.spells.f) return replier.reply(LayoutManager.renderAlert("준비 불가", "⚠️ 두 스펠을 다르게 선택해주세요."));
+                if (!session.battle.myChamp) {
+                    return SystemAction.go(room, replier, "준비 불가", "⚠️ 챔피언을 먼저 선택해주세요.", function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
+                }
+                if (session.battle.spells.d === session.battle.spells.f) {
+                    return SystemAction.go(room, replier, "준비 불가", "⚠️ 두 스펠을 다르게 선택해주세요.", function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
+                }
                 
                 session.battle.enemy = bM.generateAI(); 
                 session.screen = "BATTLE_LOADING"; SessionManager.save();
                 replier.reply(LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
                 
                 var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(userData.stats)); 
-                new java.lang.Thread(new java.lang.Runnable({
-                    run: function() {
-                        try {
-                            java.lang.Thread.sleep(Config.Timers.loading); 
-                            var cS = SessionManager.get(roomStr, senderStr);
-                            if (cS && cS.screen === "BATTLE_LOADING") {
-                                cS.screen = "BATTLE_MAIN"; 
-                                var mHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.myChamp]));
-                                var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
-                                cS.battle.instance = {
-                                    turn: 1, strat: 0, lanePos: 0, distance: 600,
-                                    me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1, spells: {d: cS.battle.spells.d, f: cS.battle.spells.f, dCd: 0, fCd: 0} },
-                                    ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: cS.battle.enemy.spells.d, f: cS.battle.enemy.spells.f, dCd: 0, fCd: 0} }
-                                };
-                                SessionManager.save(); 
-                                var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{uD}", cS.battle.spells.d).replace("{uF}", cS.battle.spells.f)
-                                                           .replace("{aChamp}", cS.battle.enemy.champion).replace("{aD}", cS.battle.enemy.spells.d).replace("{aF}", cS.battle.enemy.spells.f);
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart, false, "잠시 후 전투 현황판이 출력됩니다."));
-                                java.lang.Thread.sleep(Config.Timers.vsScreen + 1000); 
-                                Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
-                            }
-                        } catch(e) { Api.replyRoom(roomStr, "⚠️ 로딩 오류: " + e.message); }
+                
+                RoomScheduler.add(roomStr, function() {
+                    var cS = SessionManager.get(roomStr, senderStr);
+                    if (cS && cS.screen === "BATTLE_LOADING") {
+                        cS.screen = "BATTLE_MAIN"; 
+                        var mHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.myChamp]));
+                        var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
+                        cS.battle.instance = {
+                            turn: 1, strat: 0, lanePos: 0, distance: 600,
+                            me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1, spells: {d: cS.battle.spells.d, f: cS.battle.spells.f, dCd: 0, fCd: 0} },
+                            ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: cS.battle.enemy.spells.d, f: cS.battle.enemy.spells.f, dCd: 0, fCd: 0} }
+                        };
+                        SessionManager.save(); 
+                        var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{uD}", cS.battle.spells.d).replace("{uF}", cS.battle.spells.f)
+                                                   .replace("{aChamp}", cS.battle.enemy.champion).replace("{aD}", cS.battle.enemy.spells.d).replace("{aF}", cS.battle.enemy.spells.f);
+                        Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart, false, "잠시 후 전투 현황판이 출력됩니다."));
                     }
-                })).start();
+                }, Config.Timers.vsScreen + 1000);
+
+                RoomScheduler.add(roomStr, function() {
+                    var cS = SessionManager.get(roomStr, senderStr);
+                    if (cS && cS.screen === "BATTLE_MAIN") {
+                        Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
+                    }
+                }, 0);
                 return;
             }
         }
 
-        // 픽창 및 스펠 선택 로직
         if (session.screen === "BATTLE_PICK_ROLE") {
             var rIdx = parseInt(msg) - 1;
             if (RoleList[rIdx]) { session.temp.role = RoleList[rIdx]; session.screen = "BATTLE_PICK"; return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
@@ -1404,13 +1452,14 @@ var BattleController = {
             var sIdx = parseInt(msg) - 1; var pickedSpell = SpellList[sIdx];
             if (pickedSpell) {
                 var otherSlot = session.temp.spellSlot === 'd' ? 'f' : 'd';
-                if (session.battle.spells[otherSlot] === pickedSpell) return replier.reply(LayoutManager.renderAlert("스펠 선택 불가", "⚠️ 두 스펠은 중복될 수 없습니다."));
+                if (session.battle.spells[otherSlot] === pickedSpell) {
+                    return SystemAction.go(room, replier, "스펠 선택 불가", "⚠️ 두 스펠은 중복될 수 없습니다.", function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
+                }
                 session.battle.spells[session.temp.spellSlot] = pickedSpell; session.screen = "BATTLE_LOBBY"; SessionManager.save();
                 return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
             }
         }
 
-        // 🌟 정보 메뉴 이동 및 스킬 강화
         if (session.screen === "BATTLE_ENEMY_INFO" || session.screen === "BATTLE_DETAIL" || session.screen === "BATTLE_SKILLINFO") {
             if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); } return;
         }
@@ -1419,21 +1468,19 @@ var BattleController = {
             if (msg === "0") { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); }
             var keyMap = {"1":"q", "2":"w", "3":"e", "4":"r"}; var key = msg.toLowerCase(); if (keyMap[key]) key = keyMap[key];
             if (["q", "w", "e", "r"].indexOf(key) !== -1) {
-                if (me.sp <= 0) { replier.reply(LayoutManager.renderAlert(cB.alerts.noSp.title, cB.alerts.noSp.msg)); return replier.reply(vB.renderSkillUp(me)); }
-                if (key === 'r' && me.level < 6) { replier.reply(LayoutManager.renderAlert(cB.alerts.reqLvl6.title, cB.alerts.reqLvl6.msg)); return replier.reply(vB.renderSkillUp(me)); }
-                if (me.skLv[key] >= me.hw.skills[key].max) { replier.reply(LayoutManager.renderAlert(cB.alerts.maxLvl.title, cB.alerts.maxLvl.msg)); return replier.reply(vB.renderSkillUp(me)); }
+                if (me.sp <= 0) return SystemAction.go(room, replier, cB.alerts.noSp.title, cB.alerts.noSp.msg, function(){ replier.reply(vB.renderSkillUp(me)); });
+                if (key === 'r' && me.level < 6) return SystemAction.go(room, replier, cB.alerts.reqLvl6.title, cB.alerts.reqLvl6.msg, function(){ replier.reply(vB.renderSkillUp(me)); });
+                if (me.skLv[key] >= me.hw.skills[key].max) return SystemAction.go(room, replier, cB.alerts.maxLvl.title, cB.alerts.maxLvl.msg, function(){ replier.reply(vB.renderSkillUp(me)); });
                 
                 me.skLv[key]++; me.sp--; SessionManager.save();
-                var notiText = LayoutManager.renderAlert(cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key]));
-                replier.reply(notiText);
-                
-                if (me.sp <= 0) { session.screen = "BATTLE_MAIN"; SessionManager.save(); return replier.reply(vB.render(session.battle.instance)); }
-                else { return replier.reply(vB.renderSkillUp(me)); }
+                return SystemAction.go(room, replier, cB.alerts.skillUpOk.title, cB.alerts.skillUpOk.msg.replace("{skill}", me.hw.skills[key].n).replace("{lvl}", me.skLv[key]), function() {
+                    if (me.sp <= 0) { session.screen = "BATTLE_MAIN"; SessionManager.save(); replier.reply(vB.render(session.battle.instance)); }
+                    else { replier.reply(vB.renderSkillUp(me)); }
+                });
             }
             return;
         }
 
-        // 🌟 메인 전투 화면 로직
         if (session.screen === "BATTLE_MAIN") {
             var state = session.battle.instance;
             var cleanMsg = msg.replace(/\s+/g, "").toLowerCase();
@@ -1447,94 +1494,101 @@ var BattleController = {
             if (msg === "6") { state.strat = 3; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "7") { state.strat = 4; SessionManager.save(); return replier.reply(vB.render(state)); }
             if (msg === "8") { 
-                if (state.lanePos < 2) { replier.reply(LayoutManager.renderAlert(cB.alerts.noTowerRange.title, cB.alerts.noTowerRange.msg)); return replier.reply(vB.render(state)); }
+                if (state.lanePos < 2) return SystemAction.go(room, replier, cB.alerts.noTowerRange.title, cB.alerts.noTowerRange.msg, function(){ replier.reply(vB.render(state)); });
                 state.strat = 8; SessionManager.save(); return replier.reply(vB.render(state)); 
             }
             if (msg === "9") { 
                 if (state.me.sp > 0) { session.screen = "BATTLE_SKILLUP"; SessionManager.save(); return replier.reply(vB.renderSkillUp(state.me)); }
-                else { replier.reply(LayoutManager.renderAlert(cB.alerts.noSp.title, cB.alerts.noSp.msg)); return replier.reply(vB.render(state)); }
+                else return SystemAction.go(room, replier, cB.alerts.noSp.title, cB.alerts.noSp.msg, function(){ replier.reply(vB.render(state)); });
             }
             
-            if (msg === "항복" || msg === "취소") { SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); return SystemAction.go(replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); }
+            if (msg === "항복" || msg === "취소") { 
+                SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); 
+                return SystemAction.go(room, replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); 
+            }
 
             if (msg === "0" || cleanMsg === "준비완료") {
-                if (state.strat === 0) { replier.reply(LayoutManager.renderAlert(cB.alerts.noStrat.title, cB.alerts.noStrat.msg)); return replier.reply(vB.render(state)); }
-                if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) { replier.reply(LayoutManager.renderAlert(cB.alerts.noSkill.title, cB.alerts.noSkill.msg)); return replier.reply(vB.render(state)); }
+                if (state.strat === 0) return SystemAction.go(room, replier, cB.alerts.noStrat.title, cB.alerts.noStrat.msg, function(){ replier.reply(vB.render(state)); });
+                if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return SystemAction.go(room, replier, cB.alerts.noSkill.title, cB.alerts.noSkill.msg, function(){ replier.reply(vB.render(state)); });
 
                 var stratMe = state.strat; state.strat = 0; 
                 var roomStr = room + ""; var senderStr = sender + ""; var sessionKey = SessionManager.getKey(roomStr, senderStr);
+                
+                var cS = SessionManager.sessions[sessionKey]; var st = cS.battle.instance;
+                var stratAi = decideAIStrategy(st.ai, st.me, st.lanePos);
+                var isPhaseDeath = false;
 
-                new java.lang.Thread(new java.lang.Runnable({
-                    run: function() {
-                        try {
-                            var cS = SessionManager.sessions[sessionKey]; var st = cS.battle.instance;
-                            var stratAi = decideAIStrategy(st.ai, st.me, st.lanePos);
-                            
-                            // 🌟 3단계 페이즈 실행
-                            for (var i = 1; i <= 3; i++) {
-                                var p = bM.playPhase(st, stratMe, stratAi, i);
-                                var mentalLog = "";
-                                var isPhaseDeath = false;
-                                if (st.me.hp <= 0) { 
-                                    st.ai.kills++; st.me.hp = st.me.hw.hp; st.me.mp = st.me.hw.mp; st.lanePos = 0; st.distance = 600;
-                                    mentalLog = cB.logs.killMe; isPhaseDeath = true; 
-                                } else if (st.ai.hp <= 0) { 
-                                    st.me.kills++; st.ai.hp = st.ai.hw.hp; st.ai.mp = st.ai.hw.mp; st.lanePos = 0; st.distance = 600;
-                                    mentalLog = cB.logs.killAi; isPhaseDeath = true; 
-                                }
+                // 🌟 스케줄러를 통한 전투 페이즈 큐잉
+                for (var i = 1; i <= 3; i++) {
+                    (function(phaseIdx) {
+                        RoomScheduler.add(roomStr, function() {
+                            if (isPhaseDeath) return; // 앞 페이즈에서 죽었으면 이 작업은 스킵됨
+                            var cS_current = SessionManager.sessions[sessionKey];
+                            if (!cS_current || cS_current.screen !== "BATTLE_MAIN") return;
 
-                                var phaseTitle = cB.screen.phasePrefix + i + cB.screen.phaseSuffix;
-                                var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP";
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseTitle, phaseContent, false, cB.ui.watchNext));
-
-                                if (isPhaseDeath) break; 
-                                java.lang.Thread.sleep(Config.Timers.phaseDelay); 
-                            }
-                            
-                            // 🌟 턴 종료 처리 (라인 이동 및 스펠 쿨타임)
-                            var laneMove = 0;
-                            if (stratMe === 2) laneMove += 1; else if (stratMe === 3) laneMove -= 1;
-                            if (stratAi === 2) laneMove -= 1; else if (stratAi === 3) laneMove += 1;
-                            st.lanePos = Math.max(-2, Math.min(2, st.lanePos + laneMove));
-
-                            if (st.me.spells.dCd > 0) st.me.spells.dCd--; if (st.me.spells.fCd > 0) st.me.spells.fCd--;
-                            if (st.ai.spells.dCd > 0) st.ai.spells.dCd--; if (st.ai.spells.fCd > 0) st.ai.spells.fCd--;
-
-                            java.lang.Thread.sleep(2000); 
-
-                            // 🌟 승리 조건 달성 체크
-                            if (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0 || st.ai.kills >= 3 || st.ai.cs >= 100 || st.me.towerHp <= 0 || st.turn >= 30) {
-                                var isWin = (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0); 
-                                var reward = isWin ? 300 : 100; 
-                                Database.data[cS.tempId].gold += reward; Database.save();
-                                var endContent = (isWin ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + reward + " G";
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
-                                SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
-                                java.lang.Thread.sleep(Config.Timers.systemAction); 
-                                return UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
+                            var p = bM.playPhase(st, stratMe, stratAi, phaseIdx);
+                            var mentalLog = "";
+                            if (st.me.hp <= 0) { 
+                                st.ai.kills++; st.me.hp = st.me.hw.hp; st.me.mp = st.me.hw.mp; st.lanePos = 0; st.distance = 600;
+                                mentalLog = cB.logs.killMe; isPhaseDeath = true; 
+                            } else if (st.ai.hp <= 0) { 
+                                st.me.kills++; st.ai.hp = st.ai.hw.hp; st.ai.mp = st.ai.hw.mp; st.lanePos = 0; st.distance = 600;
+                                mentalLog = cB.logs.killAi; isPhaseDeath = true; 
                             }
 
-                            // 🌟 경험치 획득 및 레벨업
-                            var expGain = (stratMe === 4) ? 0 : (stratMe === 3 ? 60 : 100); 
-                            st.me.exp += expGain;
-                            if (st.me.exp >= 100) { st.me.level++; st.me.exp -= 100; st.me.sp++; st.me.hw.baseAd += 3; st.me.hw.hp += 80; st.me.hp += 80; }
-                            st.ai.exp += 100;
-                            if (st.ai.exp >= 100) { 
-                                st.ai.level++; st.ai.exp -= 100; st.ai.hw.baseAd += 4; st.ai.hw.hp += 90; st.ai.hp += 90; 
-                                if(st.ai.level >= 6 && st.ai.skLv.r === 0) st.ai.skLv.r = 1;
-                                else if(st.ai.skLv.q < 5) st.ai.skLv.q++; else if(st.ai.skLv.w < 5) st.ai.skLv.w++; else if(st.ai.skLv.e < 5) st.ai.skLv.e++;
-                            }
+                            var phaseTitle = cB.screen.phasePrefix + phaseIdx + cB.screen.phaseSuffix;
+                            var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP";
+                            try { Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseTitle, phaseContent, false, cB.ui.watchNext)); } catch(sendErr) {}
+                        }, Config.Timers.phaseDelay);
+                    })(i);
+                }
+                
+                RoomScheduler.add(roomStr, function() {
+                    var cS_current = SessionManager.sessions[sessionKey];
+                    if (!cS_current || cS_current.screen !== "BATTLE_MAIN") return;
 
-                            st.turn++; SessionManager.save();
-                            Api.replyRoom(roomStr, vB.render(st));
-                        } catch(e) { 
-                            var errLog = "⚠️ 전투 연산 에러!\n" + e.toString();
-                            if (e.lineNumber) errLog += "\n(코드 " + e.lineNumber + "줄)";
-                            Api.replyRoom(roomStr, errLog); 
-                        }
+                    var laneMove = 0;
+                    if (stratMe === 2) laneMove += 1; else if (stratMe === 3) laneMove -= 1;
+                    if (stratAi === 2) laneMove -= 1; else if (stratAi === 3) laneMove += 1;
+                    st.lanePos = Math.max(-2, Math.min(2, st.lanePos + laneMove));
+
+                    if (st.me.spells.dCd > 0) st.me.spells.dCd--; if (st.me.spells.fCd > 0) st.me.spells.fCd--;
+                    if (st.ai.spells.dCd > 0) st.ai.spells.dCd--; if (st.ai.spells.fCd > 0) st.ai.spells.fCd--;
+                }, 2000);
+
+                RoomScheduler.add(roomStr, function() {
+                    var cS_current = SessionManager.sessions[sessionKey];
+                    if (!cS_current || cS_current.screen !== "BATTLE_MAIN") return;
+
+                    if (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0 || st.ai.kills >= 3 || st.ai.cs >= 100 || st.me.towerHp <= 0 || st.turn >= 30) {
+                        var isWin = (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0); 
+                        var reward = isWin ? 300 : 100; 
+                        Database.data[cS_current.tempId].gold += reward; Database.save();
+                        var endContent = (isWin ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + reward + " G";
+                        Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
+                        SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS_current.tempId; SessionManager.save();
+                        
+                        RoomScheduler.add(roomStr, function() {
+                            UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
+                        }, Config.Timers.systemAction);
+                        return;
                     }
-                })).start();
-                return;
+
+                    var expGain = (stratMe === 4) ? 0 : (stratMe === 3 ? 60 : 100); 
+                    st.me.exp += expGain;
+                    if (st.me.exp >= 100) { st.me.level++; st.me.exp -= 100; st.me.sp++; st.me.hw.baseAd += 3; st.me.hw.hp += 80; st.me.hp += 80; }
+                    st.ai.exp += 100;
+                    if (st.ai.exp >= 100) { 
+                        st.ai.level++; st.ai.exp -= 100; st.ai.hw.baseAd += 4; st.ai.hw.hp += 90; st.ai.hp += 90; 
+                        if(st.ai.level >= 6 && st.ai.skLv.r === 0) st.ai.skLv.r = 1;
+                        else if(st.ai.skLv.q < 5) st.ai.skLv.q++; else if(st.ai.skLv.w < 5) st.ai.skLv.w++; else if(st.ai.skLv.e < 5) st.ai.skLv.e++;
+                    }
+
+                    st.turn++; SessionManager.save();
+                    try { Api.replyRoom(roomStr, vB.render(st)); } catch(e){}
+                }, 0);
+
+                return; // 메인 쓰레드는 기다리지 않고 즉시 종료!
             }
         }
     }
@@ -1569,7 +1623,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "이전") {
             if (session.screen && session.screen.indexOf("BATTLE_MAIN") !== -1) {
-                return replier.reply(LayoutManager.renderAlert(ContentManager.battle.alerts.noPrev.title, ContentManager.battle.alerts.noPrev.msg));
+                return SystemAction.go(room, replier, ContentManager.title.notice, ContentManager.battle.alerts.noPrev.msg, null);
             }
             if (PrevScreenMap[session.screen]) {
                 session.screen = PrevScreenMap[session.screen];
@@ -1578,7 +1632,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
                 return AuthController.handle("refresh_screen", session, sender, replier, room);
             }
-            return SystemAction.go(replier, ContentManager.title.notice, ContentManager.msg.noPrevious, function() {
+            return SystemAction.go(room, replier, ContentManager.title.notice, ContentManager.msg.noPrevious, function() {
                 if (room === Config.AdminRoom) return AdminController.handle("refresh_screen", session, sender, replier, room);
                 if (isLogged && session.screen.indexOf("BATTLE_") === 0) return BattleController.handle("refresh_screen", session, sender, replier, room, Database.data[session.tempId]);
                 if (isLogged) return UserController.handle("refresh_screen", session, sender, replier, room);
