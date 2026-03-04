@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v13.1 (Non-Stop TimerTask Scheduler)
- * - [M] Model: Thread.sleep 제거, java.util.Timer 기반의 논블로킹 스케줄러(알람) 엔진 도입
- * - [V] View: V12.8 UI 100% 유지 (방어막 연출 및 지능형 해설자)
- * - [C] Controller: 채팅을 안 쳐도 절대 멈추지 않는(Doze 방지) 전투 중계 최적화
+ * 🏰 소환사의 협곡 Bot - v13.3 (Full Unabridged Masterpiece)
+ * - [M] Model: 메신저봇R 호환성 100% 패치, 사전 연산(Simulation) 적용
+ * - [V] View: UI 카테고리화, 미니맵 렌더링, 0데미지 전용 연출
+ * - [C] Controller: 안드로이드 Doze 모드를 무시하는 TimerTask 스케줄러 적용
  */    
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v13.1 Non-Stop Edition",
+    Version: "v13.3 Masterpiece",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -23,7 +23,7 @@ var Config = {
         loading: 2000,      
         vsScreen: 3500,     
         battleStart: 2500,  
-        phaseDelay: 6000,   // 🌟 TimerTask 적용으로 속도가 일정해져서 최적의 6초로 세팅
+        phaseDelay: 6000,   
         gameOver: 3000,     
         systemAction: 1200  
     },
@@ -79,7 +79,7 @@ var Utils = {
         return { name: "아이언", icon: "⚫" };
     },
     sendNotify: function(target, msg) {
-        try { Api.replyRoom(target, LayoutManager.renderFrame("알림", msg, false, "시스템 알림")); } catch(e) {}
+        try { Api.replyRoom(target, LayoutManager.renderFrame(ContentManager.title.notice, msg, false, ContentManager.footer.sysNotify)); } catch(e) {}
     }
 };
 
@@ -95,11 +95,11 @@ function getRoleMenuText(data) {
     return roleTextArr.join("\n");
 }
 
-// 🌟 [V13.1 전면 수정] 절대 멈추지 않는 TimerTask 기반 큐 시스템
+// 🌟 [V13.3] 안드로이드 수면(Doze) 방지용 TimerTask 스케줄러 
 var RoomScheduler = {
     queues: {},
     isRunning: {},
-    timer: new java.util.Timer(), // Android OS 네이티브 타이머 사용 (수면 방지)
+    timer: new java.util.Timer(),
     
     add: function(room, actionFunc, delayAfter) {
         if (!this.queues[room]) this.queues[room] = [];
@@ -122,14 +122,10 @@ var RoomScheduler = {
         }
 
         if (task.delay > 0) {
-            // Thread.sleep 대신 타이머 알람을 맞춰서 스스로 깨어나게 함
             this.timer.schedule(new java.util.TimerTask({
-                run: function() {
-                    RoomScheduler.processNext(room);
-                }
+                run: function() { RoomScheduler.processNext(room); }
             }), task.delay);
         } else {
-            // 딜레이가 0이면 즉시 다음 작업 진행
             this.processNext(room);
         }
     }
@@ -400,8 +396,8 @@ var BattleView = {
             content += "- 체력: " + state.me.hp + " / " + state.me.hw.hp + "\n";
             content += "- 마나: " + state.me.mp + " / " + state.me.hw.mp + "\n\n";
             
-            var dStatus = (state.me.spells.dCd<=0?"[준비완료]":"["+state.me.spells.dCd+"턴]");
-            var fStatus = (state.me.spells.fCd<=0?"[준비완료]":"["+state.me.spells.fCd+"턴]");
+            var dStatus = (state.me.spells.dCd<=0?"[준비완료]":"["+state.me.spells.dCd+"턴 대기]");
+            var fStatus = (state.me.spells.fCd<=0?"[준비완료]":"["+state.me.spells.fCd+"턴 대기]");
             
             content += "[ ✨ 스펠 ]\n";
             content += "🌟 D["+state.me.spells.d+"]: " + dStatus + "\n";
@@ -489,6 +485,7 @@ var BattleView = {
             return LayoutManager.renderFrame("📝 스킬 정보", content.trim(), ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
         },
         renderSkillUp: function(t) {
+            var cU = ContentManager.battle.ui;
             var content = "보유 포인트: " + t.sp + " SP\n\n[ 강화할 스킬 선택 ]\n";
             var s = t.hw.skills;
             var getInfo = function(idx, key, name, curLv, maxLv, bArr, cdArr) {
@@ -518,7 +515,7 @@ var BattleView = {
                 content += "   ├ 피해: " + rCurB + " ➔ " + s.r.b[rCurLv] + "\n";
                 content += "   └ 쿨탐: " + rCurCd + "s ➔ " + s.r.cd[rCurLv] + "s\n";
             } else { content += "   ├ 레벨: " + rCurLv + " (MAX)\n"; }
-            return LayoutManager.renderFrame("🆙 스킬 레벨업", content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
+            return LayoutManager.renderFrame(cU.skillUpTitle, content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
         }
     }
 };
@@ -996,9 +993,6 @@ var BattleEngine = {
     }
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎮 [3. CONTROLLER] 라우팅 및 유저 입력 핸들러
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var PrevScreenMap = {
     "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
     "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
@@ -1351,7 +1345,7 @@ var AdminController = {
                 Database.data[target][session.temp.editType] = val; Database.save();
                 Utils.sendNotify(target, m.adminNotifyEdit(typeName, val));
                 return SystemAction.go(room, replier, t.complete, m.adminEditSuccess, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminEditCancel, function() { session.screen = "ADMIN_EDIT_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
+            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "ADMIN_EDIT_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
         }
     }
 };
@@ -1428,7 +1422,7 @@ var BattleController = {
                         var mHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.myChamp]));
                         var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
                         cS.battle.instance = {
-                            turn: 1, strat: 0, lanePos: 0, distance: 600,
+                            turn: 1, strat: 0, lanePos: 0, distance: 600, isBroadcasting: false,
                             me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1, spells: {d: cS.battle.spells.d, f: cS.battle.spells.f, dCd: 0, fCd: 0} },
                             ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: cS.battle.enemy.spells.d, f: cS.battle.enemy.spells.f, dCd: 0, fCd: 0} }
                         };
@@ -1496,6 +1490,11 @@ var BattleController = {
             var state = session.battle.instance;
             var cleanMsg = msg.replace(/\s+/g, "").toLowerCase();
 
+            if (state.isBroadcasting) {
+                if (msg === "항복" || msg === "취소") {} 
+                else return replier.reply(LayoutManager.renderAlert("진행 중", "⚠️ 현재 전투 결과가 중계되고 있습니다.\n잠시만 기다려주세요.", null));
+            }
+
             if (msg === "1") { session.screen = "BATTLE_ENEMY_INFO"; SessionManager.save(); return replier.reply(vB.renderEnemyInfo(state)); }
             if (msg === "2") { session.screen = "BATTLE_DETAIL"; SessionManager.save(); return replier.reply(vB.renderDetail(state.me)); }
             if (msg === "3") { session.screen = "BATTLE_SKILLINFO"; SessionManager.save(); return replier.reply(vB.renderSkillInfo(state.me)); }
@@ -1523,68 +1522,48 @@ var BattleController = {
                 if (state.me.skLv.q === 0 && state.me.skLv.w === 0 && state.me.skLv.e === 0) return SystemAction.go(room, replier, cB.alerts.noSkill.title, cB.alerts.noSkill.msg, function(){ replier.reply(vB.render(state)); });
 
                 var stratMe = state.strat; state.strat = 0; 
-                var roomStr = room + ""; var senderStr = sender + ""; var sessionKey = SessionManager.getKey(roomStr, senderStr);
-                
-                var cS = SessionManager.sessions[sessionKey]; var st = cS.battle.instance;
+                var roomStr = room + ""; var senderStr = sender + ""; 
+                var sessionKey = SessionManager.getKey(roomStr, senderStr);
+                var cS = SessionManager.sessions[sessionKey]; 
+                var st = cS.battle.instance;
+
+                st.isBroadcasting = true;
+                SessionManager.save();
                 var stratAi = decideAIStrategy(st.ai, st.me, st.lanePos);
-                var isPhaseDeath = false;
-
-                // 🌟 TimerTask 스케줄러를 통한 전투 페이즈 큐잉 (씹힘/멈춤 절대 불가)
-                for (var i = 1; i <= 3; i++) {
-                    (function(phaseIdx) {
-                        RoomScheduler.add(roomStr, function() {
-                            if (isPhaseDeath) return; 
-                            var cS_current = SessionManager.sessions[sessionKey];
-                            if (!cS_current || cS_current.screen !== "BATTLE_MAIN") return;
-
-                            var p = bM.playPhase(st, stratMe, stratAi, phaseIdx);
-                            var mentalLog = "";
-                            if (st.me.hp <= 0) { 
-                                st.ai.kills++; st.me.hp = st.me.hw.hp; st.me.mp = st.me.hw.mp; st.lanePos = 0; st.distance = 600;
-                                mentalLog = cB.logs.killMe; isPhaseDeath = true; 
-                            } else if (st.ai.hp <= 0) { 
-                                st.me.kills++; st.ai.hp = st.ai.hw.hp; st.ai.mp = st.ai.hw.mp; st.lanePos = 0; st.distance = 600;
-                                mentalLog = cB.logs.killAi; isPhaseDeath = true; 
-                            }
-
-                            var phaseTitle = cB.screen.phasePrefix + phaseIdx + cB.screen.phaseSuffix;
-                            var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP";
-                            try { Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseTitle, phaseContent, false, cB.ui.watchNext)); } catch(sendErr) {}
-                        }, Config.Timers.phaseDelay);
-                    })(i);
-                }
                 
-                RoomScheduler.add(roomStr, function() {
-                    var cS_current = SessionManager.sessions[sessionKey];
-                    if (!cS_current || cS_current.screen !== "BATTLE_MAIN") return;
+                var phaseLogs = [];
+                var isTurnDeath = false;
 
-                    var laneMove = 0;
-                    if (stratMe === 2) laneMove += 1; else if (stratMe === 3) laneMove -= 1;
-                    if (stratAi === 2) laneMove -= 1; else if (stratAi === 3) laneMove += 1;
-                    st.lanePos = Math.max(-2, Math.min(2, st.lanePos + laneMove));
-
-                    if (st.me.spells.dCd > 0) st.me.spells.dCd--; if (st.me.spells.fCd > 0) st.me.spells.fCd--;
-                    if (st.ai.spells.dCd > 0) st.ai.spells.dCd--; if (st.ai.spells.fCd > 0) st.ai.spells.fCd--;
-                }, 2000);
-
-                RoomScheduler.add(roomStr, function() {
-                    var cS_current = SessionManager.sessions[sessionKey];
-                    if (!cS_current || cS_current.screen !== "BATTLE_MAIN") return;
-
-                    if (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0 || st.ai.kills >= 3 || st.ai.cs >= 100 || st.me.towerHp <= 0 || st.turn >= 30) {
-                        var isWin = (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0); 
-                        var reward = isWin ? 300 : 100; 
-                        Database.data[cS_current.tempId].gold += reward; Database.save();
-                        var endContent = (isWin ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + reward + " G";
-                        Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
-                        SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS_current.tempId; SessionManager.save();
-                        
-                        RoomScheduler.add(roomStr, function() {
-                            UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
-                        }, Config.Timers.systemAction);
-                        return;
+                for (var i = 1; i <= 3; i++) {
+                    var p = bM.playPhase(st, stratMe, stratAi, i);
+                    var mentalLog = "";
+                    if (st.me.hp <= 0) { 
+                        st.ai.kills++; st.me.hp = st.me.hw.hp; st.me.mp = st.me.hw.mp; st.lanePos = 0; st.distance = 600;
+                        mentalLog = cB.logs.killMe; isTurnDeath = true; 
+                    } else if (st.ai.hp <= 0) { 
+                        st.me.kills++; st.ai.hp = st.ai.hw.hp; st.ai.mp = st.ai.hw.mp; st.lanePos = 0; st.distance = 600;
+                        mentalLog = cB.logs.killAi; isTurnDeath = true; 
                     }
+                    var phaseTitle = cB.screen.phasePrefix + i + cB.screen.phaseSuffix;
+                    var phaseContent = p.lckLog + mentalLog + "\n\n" + Utils.getFixedDivider() + "\n[ ⚔️ 타임라인 기록 ]\n" + p.combatLogs + "\n\n" + Utils.getFixedDivider() + "\n" + p.farmLogs + "\n\n" + Utils.getFixedDivider() + "\n[ 📊 수치 변화 ]\n🩸 나: -" + p.aDmg + " HP / 🤖 적: -" + p.mDmg + " HP";
+                    phaseLogs.push({ title: phaseTitle, content: phaseContent });
+                    if (isTurnDeath) break; 
+                }
 
+                var laneMove = 0;
+                if (stratMe === 2) laneMove += 1; else if (stratMe === 3) laneMove -= 1;
+                if (stratAi === 2) laneMove -= 1; else if (stratAi === 3) laneMove += 1;
+                st.lanePos = Math.max(-2, Math.min(2, st.lanePos + laneMove));
+
+                if (st.me.spells.dCd > 0) st.me.spells.dCd--; if (st.me.spells.fCd > 0) st.me.spells.fCd--;
+                if (st.ai.spells.dCd > 0) st.ai.spells.dCd--; if (st.ai.spells.fCd > 0) st.ai.spells.fCd--;
+
+                var isWin = (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0 || st.ai.kills >= 3 || st.ai.cs >= 100 || st.me.towerHp <= 0 || st.turn >= 30);
+                var winReward = 0;
+                if (isWin) {
+                    winReward = (st.me.kills >= 3 || st.me.cs >= 100 || st.ai.towerHp <= 0) ? 300 : 100;
+                    Database.data[cS.tempId].gold += winReward; Database.save();
+                } else {
                     var expGain = (stratMe === 4) ? 0 : (stratMe === 3 ? 60 : 100); 
                     st.me.exp += expGain;
                     if (st.me.exp >= 100) { st.me.level++; st.me.exp -= 100; st.me.sp++; st.me.hw.baseAd += 3; st.me.hw.hp += 80; st.me.hp += 80; }
@@ -1594,12 +1573,38 @@ var BattleController = {
                         if(st.ai.level >= 6 && st.ai.skLv.r === 0) st.ai.skLv.r = 1;
                         else if(st.ai.skLv.q < 5) st.ai.skLv.q++; else if(st.ai.skLv.w < 5) st.ai.skLv.w++; else if(st.ai.skLv.e < 5) st.ai.skLv.e++;
                     }
+                    st.turn++; 
+                }
 
-                    st.turn++; SessionManager.save();
-                    try { Api.replyRoom(roomStr, vB.render(st)); } catch(e){}
-                }, 0);
+                replier.reply(LayoutManager.renderAlert("진입 중", "⚔️ 교전이 시작되었습니다.\n현장 중계를 연결합니다...", null));
 
-                return; // 메인 쓰레드는 기다리지 않고 즉시 종료!
+                for (var idx = 0; idx < phaseLogs.length; idx++) {
+                    let log = phaseLogs[idx];
+                    RoomScheduler.add(roomStr, function() {
+                        try { Api.replyRoom(roomStr, LayoutManager.renderFrame(log.title, log.content, false, cB.ui.watchNext)); } catch(e){}
+                    }, Config.Timers.phaseDelay);
+                }
+
+                RoomScheduler.add(roomStr, function() {
+                    var finalS = SessionManager.get(roomStr, senderStr);
+                    if(finalS && finalS.battle && finalS.battle.instance) {
+                        finalS.battle.instance.isBroadcasting = false;
+                        SessionManager.save();
+                    }
+
+                    if (isWin) {
+                        var endContent = (winReward === 300 ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + winReward + " G";
+                        try { Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait)); } catch(e){}
+                        SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
+                        RoomScheduler.add(roomStr, function() {
+                            UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
+                        }, Config.Timers.systemAction);
+                    } else {
+                        try { Api.replyRoom(roomStr, vB.render(finalS.battle.instance)); } catch(e){}
+                    }
+                }, 1500);
+
+                return;
             }
         }
     }
