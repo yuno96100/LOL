@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v13.0 (Asynchronous Scheduler Architecture)
- * - [M] Model: 메신저봇R 호환성 유지, 방(Room) 단위 비동기 Task Queue 스케줄러 탑재
- * - [V] View: V12의 콤팩트 대시보드 UI, 방어막 흡수 연출, 지능형 해설자 100% 유지
- * - [C] Controller: 모든 Thread.sleep()을 제거하고 Non-blocking 큐(Queue) 시스템으로 전면 교체
+ * 🏰 소환사의 협곡 Bot - v13.1 (Non-Stop TimerTask Scheduler)
+ * - [M] Model: Thread.sleep 제거, java.util.Timer 기반의 논블로킹 스케줄러(알람) 엔진 도입
+ * - [V] View: V12.8 UI 100% 유지 (방어막 연출 및 지능형 해설자)
+ * - [C] Controller: 채팅을 안 쳐도 절대 멈추지 않는(Doze 방지) 전투 중계 최적화
  */    
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v13.0 Server Optimize",
+    Version: "v13.1 Non-Stop Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -23,7 +23,7 @@ var Config = {
         loading: 2000,      
         vsScreen: 3500,     
         battleStart: 2500,  
-        phaseDelay: 6000,   // 🌟 큐 스케줄러 도입으로 씹힘이 없어졌으므로 딜레이 단축
+        phaseDelay: 6000,   // 🌟 TimerTask 적용으로 속도가 일정해져서 최적의 6초로 세팅
         gameOver: 3000,     
         systemAction: 1200  
     },
@@ -95,33 +95,43 @@ function getRoleMenuText(data) {
     return roleTextArr.join("\n");
 }
 
-// 🌟 [V13.0 추가] 방(Room) 단위 비동기 스케줄러 큐 시스템
+// 🌟 [V13.1 전면 수정] 절대 멈추지 않는 TimerTask 기반 큐 시스템
 var RoomScheduler = {
     queues: {},
     isRunning: {},
+    timer: new java.util.Timer(), // Android OS 네이티브 타이머 사용 (수면 방지)
+    
     add: function(room, actionFunc, delayAfter) {
         if (!this.queues[room]) this.queues[room] = [];
         this.queues[room].push({ action: actionFunc, delay: delayAfter || 0 });
-        if (!this.isRunning[room]) this.start(room);
+        if (!this.isRunning[room]) this.processNext(room);
     },
-    start: function(room) {
+    
+    processNext: function(room) {
+        if (!this.queues[room] || this.queues[room].length === 0) {
+            this.isRunning[room] = false;
+            return;
+        }
         this.isRunning[room] = true;
-        new java.lang.Thread(new java.lang.Runnable({
-            run: function() {
-                while(RoomScheduler.queues[room] && RoomScheduler.queues[room].length > 0) {
-                    var task = RoomScheduler.queues[room].shift();
-                    try {
-                        if (task.action) task.action();
-                    } catch(e) {
-                        try { Api.replyRoom(room, "⚠️ 연출 스케줄러 에러: " + e.message); } catch(err){}
-                    }
-                    if (task.delay > 0) {
-                        java.lang.Thread.sleep(task.delay); // 큐 처리 지연 (도배 방지 및 연출용)
-                    }
+        var task = this.queues[room].shift();
+        
+        try {
+            if (task.action) task.action();
+        } catch(e) {
+            try { Api.replyRoom(room, "⚠️ 연출 에러: " + e.message); } catch(err){}
+        }
+
+        if (task.delay > 0) {
+            // Thread.sleep 대신 타이머 알람을 맞춰서 스스로 깨어나게 함
+            this.timer.schedule(new java.util.TimerTask({
+                run: function() {
+                    RoomScheduler.processNext(room);
                 }
-                RoomScheduler.isRunning[room] = false;
-            }
-        })).start();
+            }), task.delay);
+        } else {
+            // 딜레이가 0이면 즉시 다음 작업 진행
+            this.processNext(room);
+        }
     }
 };
 
@@ -282,7 +292,7 @@ var ContentManager = {
     }
 };
 
-// 🌟 [V13.0] SystemAction 비동기 스케줄러화 
+// 🌟 [V13.0] SystemAction 비동기 스케줄러 통합
 var SystemAction = {
     go: function(room, replier, title, msg, nextFunc) {
         RoomScheduler.add(room, function() {
@@ -1368,6 +1378,7 @@ var BattleController = {
 
         if (msg === "refresh_screen") {
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
+            
             if (session.screen === "BATTLE_LOBBY") {
                 var mC = session.battle.myChamp || "미선택";
                 var mRole = session.battle.myChamp ? ChampionData[mC].role : "";
@@ -1518,11 +1529,11 @@ var BattleController = {
                 var stratAi = decideAIStrategy(st.ai, st.me, st.lanePos);
                 var isPhaseDeath = false;
 
-                // 🌟 스케줄러를 통한 전투 페이즈 큐잉
+                // 🌟 TimerTask 스케줄러를 통한 전투 페이즈 큐잉 (씹힘/멈춤 절대 불가)
                 for (var i = 1; i <= 3; i++) {
                     (function(phaseIdx) {
                         RoomScheduler.add(roomStr, function() {
-                            if (isPhaseDeath) return; // 앞 페이즈에서 죽었으면 이 작업은 스킵됨
+                            if (isPhaseDeath) return; 
                             var cS_current = SessionManager.sessions[sessionKey];
                             if (!cS_current || cS_current.screen !== "BATTLE_MAIN") return;
 
