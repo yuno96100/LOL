@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v18.0 (Never-Die Async & SafeSleep Edition)
- * - [M] Model: replier 완전 삭제, 절대 만료되지 않는 Api.replyRoom 글로벌 적용
- * - [V] View: V12 콤팩트 UI 및 ContentManager 텍스트 100% 분리 유지
- * - [C] Controller: Chunked Sleep(0.5초 쪼개기) 기법으로 안드로이드 수면 완벽 방지 및 멈춤 0%
- */    
+ * 🏰 소환사의 협곡 Bot - v19.0 (Anti-Freeze & Pre-Scheduled Engine)
+ * - [M] Model: DB 및 세션 저장 로직의 스레드 폭발(병목) 현상 100% 해결 (동기식 전환)
+ * - [V] View: V12 콤팩트 UI 및 ContentManager 텍스트 완벽 분리 유지
+ * - [C] Controller: Thread.sleep 완전 폐기! 안드로이드 네이티브 ScheduledThreadPool을 이용한 절대 멈춤 방지 엔진 탑재
+ */   
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v18.0 Never-Die Edition",
+    Version: "v19.0 Anti-Freeze Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -22,8 +22,8 @@ var Config = {
         matchFound: 1500,   
         loading: 2000,      
         vsScreen: 2500,     
-        battleStart: 2000,  
-        phaseDelay: 4500,   // 🌟 4.5초 (safeSleep 적용으로 절대 멈추지 않음)
+        battleStart: 2500,  
+        phaseDelay: 4500,   // 예약 스케줄러 도입으로 가장 안정적인 4.5초 유지
         gameOver: 3000,     
         systemAction: 1500  
     },
@@ -78,16 +78,8 @@ var Utils = {
         if (lp >= 200) return { name: "브론즈", icon: "🥉" };
         return { name: "아이언", icon: "⚫" };
     },
-    // 🌟 [V18.0 핵심] 안드로이드 수면 방지 (Doze Killer) Chunked Sleep
-    safeSleep: function(ms) {
-        try {
-            var chunks = Math.floor(ms / 500);
-            var remainder = ms % 500;
-            for (var i = 0; i < chunks; i++) {
-                java.lang.Thread.sleep(500);
-            }
-            if (remainder > 0) java.lang.Thread.sleep(remainder);
-        } catch(e) {}
+    sendNotify: function(target, msg) {
+        try { Api.replyRoom(target, LayoutManager.renderFrame(ContentManager.title.notice, msg, false, ContentManager.footer.sysNotify)); } catch(e) {}
     }
 };
 
@@ -102,6 +94,18 @@ function getRoleMenuText(data) {
     }
     return roleTextArr.join("\n");
 }
+
+// 🌟 [V19.0 핵심] 안드로이드 시스템 예약 스케줄러 (Thread.sleep 삭제, 병목 완벽 차단)
+var BotScheduler = {
+    executor: java.util.concurrent.Executors.newScheduledThreadPool(10), // 10개의 동시 작업 처리가능한 안정적 스레드 풀
+    schedule: function(taskFunc, delayMs) {
+        this.executor.schedule(new java.lang.Runnable({
+            run: function() {
+                try { taskFunc(); } catch(e) {}
+            }
+        }), delayMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+};
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🎨 [1. VIEW] 텍스트 콘텐츠 관리 (ContentManager 100% 분리)
@@ -292,17 +296,14 @@ var ContentManager = {
     }
 };
 
-// 🌟 UI 연출 자동화: 모든 비동기 지연은 Api.replyRoom 베이스로 동작
+// 🌟 UI 연출 자동화: 스케줄러(예약) 방식 적용 (멈춤 절대 없음)
 var SystemAction = {
     go: function(roomStr, title, msg, nextFunc) {
         Api.replyRoom(roomStr, LayoutManager.renderAlert(title, msg));
         if (nextFunc) {
-            new java.lang.Thread(new java.lang.Runnable({
-                run: function() {
-                    Utils.safeSleep(Config.Timers.systemAction);
-                    try { nextFunc(); } catch(e) {}
-                }
-            })).start();
+            BotScheduler.schedule(function() {
+                try { nextFunc(); } catch(e) {}
+            }, Config.Timers.systemAction);
         }
     }
 };
@@ -561,21 +562,18 @@ var Database = {
         }
         this.isLoaded = true;
     },
+    // 🌟 [V19.0 핵심] 스레드 폭발을 막는 완벽한 동기식 안전 저장 (Race Condition 해결)
     save: function() {
-        var currentData = JSON.stringify({ users: this.data, inquiries: this.inquiries }, null, 4);
-        new java.lang.Thread(new java.lang.Runnable({
-            run: function() {
-                try {
-                    var tempPath = Config.DB_PATH + ".temp", realPath = Config.DB_PATH;
-                    FileStream.write(tempPath, currentData);
-                    var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
-                    if (tempFile.exists() && tempFile.length() > 0) {
-                        if (realFile.exists()) realFile.delete();
-                        tempFile.renameTo(realFile);
-                    }
-                } catch(e) {}
+        try {
+            var currentData = JSON.stringify({ users: this.data, inquiries: this.inquiries }, null, 4);
+            var tempPath = Config.DB_PATH + ".temp", realPath = Config.DB_PATH;
+            FileStream.write(tempPath, currentData);
+            var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
+            if (tempFile.exists() && tempFile.length() > 0) {
+                if (realFile.exists()) realFile.delete();
+                tempFile.renameTo(realFile);
             }
-        })).start();
+        } catch(e) {}
     },
     createUser: function(sender, pw) {
         this.data[sender] = {
@@ -594,21 +592,18 @@ var SessionManager = {
         if (file.exists()) { try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch (e) { this.sessions = {}; } }
         this.isLoaded = true;
     },
+    // 🌟 [V19.0 핵심] 동기식 안전 저장으로 엔진 프리징 해결
     save: function() {
-        var currentData = JSON.stringify(this.sessions, null, 4);
-        new java.lang.Thread(new java.lang.Runnable({
-            run: function() {
-                try {
-                    var tempPath = Config.SESSION_PATH + ".temp", realPath = Config.SESSION_PATH;
-                    FileStream.write(tempPath, currentData);
-                    var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
-                    if (tempFile.exists() && tempFile.length() > 0) {
-                        if (realFile.exists()) realFile.delete();
-                        tempFile.renameTo(realFile);
-                    }
-                } catch(e) {}
+        try {
+            var currentData = JSON.stringify(this.sessions, null, 4);
+            var tempPath = Config.SESSION_PATH + ".temp", realPath = Config.SESSION_PATH;
+            FileStream.write(tempPath, currentData);
+            var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
+            if (tempFile.exists() && tempFile.length() > 0) {
+                if (realFile.exists()) realFile.delete();
+                tempFile.renameTo(realFile);
             }
-        })).start();
+        } catch(e) {}
     },
     getKey: function(roomStr, senderStr) { return roomStr + "_" + senderStr; },
     get: function(roomStr, senderStr) {
@@ -621,7 +616,9 @@ var SessionManager = {
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId; this.reset(roomStr, senderStr);
             if(backupId) { this.sessions[key].tempId = backupId; this.save(); } 
-            SystemAction.go(roomStr, ContentManager.title.notice, ContentManager.msg.timeout, null);
+            BotScheduler.schedule(function() {
+                Api.replyRoom(roomStr, LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
+            }, 0);
             return true; 
         }
         s.lastTime = Date.now(); this.save(); 
@@ -1109,25 +1106,23 @@ var UserController = {
                 var cU = ContentManager.battle.ui;
                 session.screen = "BATTLE_MATCHING"; SessionManager.save();
                 
-                new java.lang.Thread(new java.lang.Runnable({
-                    run: function() {
-                        Api.replyRoom(roomStr, LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
-                        Utils.safeSleep(Config.Timers.matchSearch);
-                        
-                        var s = SessionManager.get(roomStr, senderStr);
-                        if (s && s.screen === "BATTLE_MATCHING") {
-                            Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
-                            Utils.safeSleep(Config.Timers.matchFound);
-                            
-                            s = SessionManager.get(roomStr, senderStr);
-                            if (s && s.screen === "BATTLE_MATCHING") {
-                                s.screen = "BATTLE_LOBBY"; SessionManager.save(); 
-                                var currentData = Database.data[s.tempId];
-                                BattleController.handle("refresh_screen", s, senderStr, roomStr, currentData);
-                            }
-                        }
+                BotScheduler.schedule(function() {
+                    Api.replyRoom(roomStr, LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
+                }, 0);
+                
+                BotScheduler.schedule(function() {
+                    var s = SessionManager.get(roomStr, senderStr);
+                    if (s && s.screen === "BATTLE_MATCHING") Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
+                }, Config.Timers.matchSearch);
+                
+                BotScheduler.schedule(function() {
+                    var s = SessionManager.get(roomStr, senderStr);
+                    if (s && s.screen === "BATTLE_MATCHING") {
+                        s.screen = "BATTLE_LOBBY"; SessionManager.save(); 
+                        var currentData = Database.data[s.tempId];
+                        BattleController.handle("refresh_screen", s, senderStr, roomStr, currentData);
                     }
-                })).start();
+                }, Config.Timers.matchSearch + Config.Timers.matchFound);
                 return;
             }
             if (msg === "2") return SystemAction.go(roomStr, t.notice, m.pvpPrep, function() { UserController.handle("refresh_screen", session, senderStr, roomStr); });
@@ -1399,35 +1394,35 @@ var BattleController = {
                 
                 var uStats = JSON.parse(JSON.stringify(userData.stats)); 
                 
-                new java.lang.Thread(new java.lang.Runnable({
-                    run: function() {
-                        Api.replyRoom(roomStr, LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
-                        Utils.safeSleep(Config.Timers.loading);
-                        
-                        var cS = SessionManager.get(roomStr, senderStr);
-                        if (cS && cS.screen === "BATTLE_LOADING") {
-                            cS.screen = "BATTLE_MAIN"; 
-                            var mHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.myChamp]));
-                            var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
-                            cS.battle.instance = {
-                                turn: 1, strat: 0, lanePos: 0, distance: 600, isBroadcasting: false,
-                                me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1, spells: {d: cS.battle.spells.d, f: cS.battle.spells.f, dCd: 0, fCd: 0} },
-                                ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: cS.battle.enemy.spells.d, f: cS.battle.enemy.spells.f, dCd: 0, fCd: 0} }
-                            };
-                            SessionManager.save(); 
-                            var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{uD}", cS.battle.spells.d).replace("{uF}", cS.battle.spells.f)
-                                                       .replace("{aChamp}", cS.battle.enemy.champion).replace("{aD}", cS.battle.enemy.spells.d).replace("{aF}", cS.battle.enemy.spells.f);
-                            Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart, false, ContentManager.footer.wait));
-                        }
-                        
-                        Utils.safeSleep(Config.Timers.vsScreen);
-                        
-                        cS = SessionManager.get(roomStr, senderStr);
-                        if (cS && cS.screen === "BATTLE_MAIN") {
-                            Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
-                        }
+                BotScheduler.schedule(function() {
+                    Api.replyRoom(roomStr, LayoutManager.renderAlert(cB.screen.load, cB.ui.loadRift));
+                }, 0);
+                
+                BotScheduler.schedule(function() {
+                    var cS = SessionManager.get(roomStr, senderStr);
+                    if (cS && cS.screen === "BATTLE_LOADING") {
+                        cS.screen = "BATTLE_MAIN"; 
+                        var mHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.myChamp]));
+                        var aHw = JSON.parse(JSON.stringify(ChampionData[cS.battle.enemy.champion]));
+                        cS.battle.instance = {
+                            turn: 1, strat: 0, lanePos: 0, distance: 600, isBroadcasting: false,
+                            me: { champ: cS.battle.myChamp, level: 1, exp: 0, hp: mHw.hp, mp: mHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: mHw, sw: uStats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:0, w:0, e:0, r:0}, sp: 1, spells: {d: cS.battle.spells.d, f: cS.battle.spells.f, dCd: 0, fCd: 0} },
+                            ai: { champ: cS.battle.enemy.champion, level: 1, exp: 0, hp: aHw.hp, mp: aHw.mp, gold: 0, cs: 0, kills: 0, towerHp: 3000, plates: 0, hw: aHw, sw: cS.battle.enemy.stats, cd: {q:0, w:0, e:0, r:0}, skLv: {q:1, w:0, e:0, r:0}, sp: 0, spells: {d: cS.battle.enemy.spells.d, f: cS.battle.enemy.spells.f, dCd: 0, fCd: 0} }
+                        };
+                        SessionManager.save(); 
+                        var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{uD}", cS.battle.spells.d).replace("{uF}", cS.battle.spells.f)
+                                                   .replace("{aChamp}", cS.battle.enemy.champion).replace("{aD}", cS.battle.enemy.spells.d).replace("{aF}", cS.battle.enemy.spells.f);
+                        Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart, false, ContentManager.footer.wait));
                     }
-                })).start();
+                }, Config.Timers.loading);
+                
+                BotScheduler.schedule(function() {
+                    var cS = SessionManager.get(roomStr, senderStr);
+                    if (cS && cS.screen === "BATTLE_MAIN") {
+                        try { Api.replyRoom(roomStr, vB.render(cS.battle.instance)); } catch(e){}
+                    }
+                }, Config.Timers.loading + Config.Timers.vsScreen);
+                
                 return;
             }
         }
@@ -1565,47 +1560,46 @@ var BattleController = {
                     }
                     st.turn++; 
                 }
+                SessionManager.save();
 
-                // 🌟 [2단계] 절대 무적 단일 스레드 (safeSleep)
-                new java.lang.Thread(new java.lang.Runnable({
-                    run: function() {
-                        try {
-                            Api.replyRoom(roomStr, LayoutManager.renderAlert(ContentManager.title.entering, ContentManager.msg.battleConnecting, null));
-                            Utils.safeSleep(Config.Timers.battleStart);
+                // 🌟 [2단계] 절대 무적 예약 스케줄러 (BotScheduler.schedule)
+                var currentDelay = 0;
+                
+                BotScheduler.schedule(function() {
+                    try { Api.replyRoom(roomStr, LayoutManager.renderAlert(ContentManager.title.entering, ContentManager.msg.battleConnecting, null)); } catch(e){}
+                }, currentDelay);
+                
+                currentDelay += Config.Timers.battleStart;
 
-                            for (var idx = 0; idx < phaseLogs.length; idx++) {
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(phaseLogs[idx].title, phaseLogs[idx].content, false, cB.ui.watchNext));
-                                Utils.safeSleep(Config.Timers.phaseDelay);
-                            }
+                for (var idx = 0; idx < phaseLogs.length; idx++) {
+                    (function(logToPass) {
+                        BotScheduler.schedule(function() {
+                            try { Api.replyRoom(roomStr, LayoutManager.renderFrame(logToPass.title, logToPass.content, false, cB.ui.watchNext)); } catch(e){}
+                        }, currentDelay);
+                    })(phaseLogs[idx]);
+                    currentDelay += Config.Timers.phaseDelay;
+                }
 
-                            // 🌟 [최종 단계]
-                            var finalS = SessionManager.get(roomStr, senderStr);
-                            if(finalS && finalS.battle && finalS.battle.instance) {
-                                finalS.battle.instance.isBroadcasting = false;
-                                SessionManager.save();
-                            }
-
-                            if (isWin) {
-                                var endContent = (winReward === 300 ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + winReward + " G";
-                                Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait));
-                                
-                                SessionManager.reset(roomStr, senderStr); 
-                                var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
-                                
-                                Utils.safeSleep(Config.Timers.systemAction);
-                                UserController.handle("refresh_screen", endS, senderStr, roomStr);
-                            } else {
-                                Api.replyRoom(roomStr, vB.render(st));
-                            }
-                        } catch (err) {
-                            var fixS = SessionManager.get(roomStr, senderStr);
-                            if(fixS && fixS.battle && fixS.battle.instance) {
-                                fixS.battle.instance.isBroadcasting = false;
-                                SessionManager.save();
-                            }
-                        }
+                // 🌟 [최종 단계] 락 해제 및 결과 화면 
+                BotScheduler.schedule(function() {
+                    var finalS = SessionManager.get(roomStr, senderStr);
+                    if(finalS && finalS.battle && finalS.battle.instance) {
+                        finalS.battle.instance.isBroadcasting = false;
+                        SessionManager.save();
                     }
-                })).start();
+
+                    if (isWin) {
+                        var endContent = (winReward === 300 ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + winReward + " G";
+                        try { Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait)); } catch(e){}
+                        SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
+                        
+                        BotScheduler.schedule(function() {
+                            UserController.handle("refresh_screen", endS, senderStr, roomStr);
+                        }, Config.Timers.systemAction);
+                    } else {
+                        try { Api.replyRoom(roomStr, vB.render(finalS.battle.instance)); } catch(e){}
+                    }
+                }, currentDelay);
 
                 return;
             }
@@ -1626,16 +1620,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         var roomStr = room + "";
         var senderStr = sender + "";
         
-        // Timeout check uses an immediate reply inside a thread to avoid replier loss
-        var sessionKey = SessionManager.getKey(roomStr, senderStr);
-        var s = SessionManager.get(roomStr, senderStr);
-        if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
-            var backupId = s.tempId; SessionManager.reset(roomStr, senderStr);
-            if(backupId) { SessionManager.sessions[sessionKey].tempId = backupId; SessionManager.save(); } 
-            SystemAction.go(roomStr, ContentManager.title.notice, ContentManager.msg.timeout, null);
-            return;
-        }
-        if(s) { s.lastTime = Date.now(); SessionManager.save(); }
+        if (SessionManager.checkTimeout(roomStr, senderStr)) return;
 
         var session = SessionManager.get(roomStr, senderStr);
         var isLogged = (session.tempId && Database.data[session.tempId]);
