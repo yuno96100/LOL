@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v13.3 (Full Unabridged Masterpiece)
- * - [M] Model: 메신저봇R 호환성 100% 패치, 사전 연산(Simulation) 적용
- * - [V] View: UI 카테고리화, 미니맵 렌더링, 0데미지 전용 연출
- * - [C] Controller: 안드로이드 Doze 모드를 무시하는 TimerTask 스케줄러 적용
- */    
+ * 🏰 소환사의 협곡 Bot - v13.6 (Enterprise Pipeline & Full Text Separation)
+ * - [M] Model: 3단 비동기 파이프라인 (Executors) 도입으로 Doze 모드(수면) 완벽 방지
+ * - [V] View: V12 콤팩트 UI 유지, 모든 알림/에러/출력 텍스트 ContentManager 100% 분리
+ * - [C] Controller: 모든 Thread.sleep() 제거, 사전 연산(Simulation) 및 절대 씹힘 방지
+ */   
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v13.3 Masterpiece",
+    Version: "v13.6 Enterprise Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -95,44 +95,30 @@ function getRoleMenuText(data) {
     return roleTextArr.join("\n");
 }
 
-// 🌟 [V13.3] 안드로이드 수면(Doze) 방지용 TimerTask 스케줄러 
-var RoomScheduler = {
-    queues: {},
-    isRunning: {},
-    timer: new java.util.Timer(),
+// 🌟 [V13.6 전면 수정] 3단 분리형 비동기 파이프라인 (Executors)
+var Pipeline = {
+    LogicQueue: java.util.concurrent.Executors.newSingleThreadScheduledExecutor(),
+    SaveExecutor: java.util.concurrent.Executors.newSingleThreadExecutor(),
     
-    add: function(room, actionFunc, delayAfter) {
-        if (!this.queues[room]) this.queues[room] = [];
-        this.queues[room].push({ action: actionFunc, delay: delayAfter || 0 });
-        if (!this.isRunning[room]) this.processNext(room);
+    schedule: function(task, delayMs) {
+        this.LogicQueue.schedule(new java.lang.Runnable({
+            run: function() {
+                try { task(); } catch(e) { }
+            }
+        }), delayMs, java.util.concurrent.TimeUnit.MILLISECONDS);
     },
     
-    processNext: function(room) {
-        if (!this.queues[room] || this.queues[room].length === 0) {
-            this.isRunning[room] = false;
-            return;
-        }
-        this.isRunning[room] = true;
-        var task = this.queues[room].shift();
-        
-        try {
-            if (task.action) task.action();
-        } catch(e) {
-            try { Api.replyRoom(room, "⚠️ 연출 에러: " + e.message); } catch(err){}
-        }
-
-        if (task.delay > 0) {
-            this.timer.schedule(new java.util.TimerTask({
-                run: function() { RoomScheduler.processNext(room); }
-            }), task.delay);
-        } else {
-            this.processNext(room);
-        }
+    saveAsync: function(task) {
+        this.SaveExecutor.execute(new java.lang.Runnable({
+            run: function() {
+                try { task(); } catch(e) {}
+            }
+        }));
     }
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎨 [1. VIEW] 텍스트 콘텐츠 관리 (ContentManager & Layout)
+// 🎨 [1. VIEW] 텍스트 콘텐츠 관리 (ContentManager 100% 분리)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var ContentManager = {
     menus: {
@@ -170,7 +156,11 @@ var ContentManager = {
         aSelectUser: "유저 번호 입력", aInputInq: "문의 번호 입력", aInputRep: "답변 내용을 입력하세요.",
         reStart: "다시 시작하려면 '메뉴'를 입력하세요.", sysNotify: "시스템 알림", wait: "잠시만 기다려주세요..."
     },
-    title: { error: "오류", fail: "실패", success: "성공", complete: "완료", notice: "알림", sysError: "시스템 오류" },
+    title: { 
+        error: "오류", fail: "실패", success: "성공", complete: "완료", notice: "알림", sysError: "시스템 오류",
+        notReady: "준비 불가", entering: "진입 중", selectChamp: "챔피언 선택", spellDup: "스펠 선택 불가",
+        broadcasting: "진행 중", cancel: "취소", prevError: "이전 불가", surrender: "항복"
+    },
     statMap: { keys: {"1":"acc", "2":"ref", "3":"com", "4":"int"}, names: {"1":"정확", "2":"반응", "3":"침착", "4":"직관"} },
     ui: { replyMark: "🔔 [운영진 답변 도착]", sender: "👤 보낸이: ", date: "📅 날짜: ", time: "⏰ 시간: ", read: " ✅ ", unread: " ⬜ ", datePrefix: "📅 [", dateSuffix: "]", pTarget: "👤 대상: ", pTitle: "🏅 칭호: [", pTier: "🏅 티어: ", pLp: "🏆 점수: ", pGold: "💰 골드: ", pRecord: "⚔️ 전적: ", pLevel: "🆙 레벨: Lv.", pExp: "🔷 경험: ", pStatH: " [ 상세 능력치 ]", pAcc: "🎯 정확: ", pRef: "⚡ 반응: ", pCom: "🧘 침착: ", pInt: "🧠 직관: ", pPoint: "✨ 포인트: " },
     msg: {
@@ -201,10 +191,35 @@ var ContentManager = {
         adminInqDelSuccess: "문의 삭제 완료.", adminReplySuccess: "답변 전송 완료.", adminEditSuccess: "수정 완료.", adminEditCancel: "수정 취소.",
         adminNotifyInit: "계정 초기화됨.", adminNotifyDelete: "계정 삭제됨.", adminNotifyBan: "차단됨.", adminNotifyUnban: "차단 해제됨.",
         adminNotifyEdit: function(type, val) { return "[" + type + "] " + val + "(으)로 수정됨."; },
-        sysErrorLog: function(e) { return ["⛔ 오류 발생!", "💬 내용: " + e].join("\n"); }
+        sysErrorLog: function(e) { return ["⛔ 오류 발생!", "💬 내용: " + e].join("\n"); },
+        
+        // 🌟 전투 시스템 하드코딩 완전 분리 완료
+        needChampPick: "⚠️ 챔피언을 먼저 선택해주세요.",
+        diffSpells: "⚠️ 두 스펠을 다르게 선택해주세요.",
+        battleConnecting: "⚔️ 교전이 시작되었습니다.\n현장 중계를 연결합니다...",
+        spellDup: "⚠️ 이미 선택된 스펠입니다.",
+        broadcastingBlock: "⚠️ 현재 전투 결과가 중계되고 있습니다.\n잠시만 기다려주세요.",
+        backToLobby: "로비로 돌아갑니다.",
+        noPrevBattle: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)"
     },
     
     battle: {
+        lobby: {
+            title: "⚔️ 라인전 출전 준비",
+            content: "[ ⚔️ 출전 준비 ]\n👤 챔피언: {champ}\n✨ 스펠 D: [{d}]\n✨ 스펠 F: [{f}]\n\n[ 준비 메뉴 ]\n1. 👤 챔피언 선택/변경\n2. 🏃 스펠 D 변경\n3. 🔥 스펠 F 변경\n\n0. ✅ 준비완료 (전투 진입)",
+            footer: "번호를 입력하세요. (취소: 로비로)",
+            pickTitle: "🎯 [{role}] 출전 챔피언 선택:\n\n",
+            noChampInRole: "해당 역할군 챔피언 없음"
+        },
+        director: {
+            Aggressive: { MildTrade: "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요.", Kiting: "🎙️ 해설: 사거리를 이용한 일방적인 딜교환! 상대는 닿지도 못합니다!", Assassinate: "🎙️ 캐스터: 거리를 좁히며 순식간에 파고들어 콤보를 꽂아 넣습니다!", Bloodbath: "🎙️ 해설: 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!", Countered: "🎙️ 캐스터: 무리한 진입! 오히려 뼈아픈 역공을 고스란히 맞습니다!", MissAll: "🎙️ 해설: 서로의 스킬이 아슬아슬하게 빗나갑니다!" },
+            Defensive: { NormalFarm: "🎙️ 해설: 안전한 거리를 유지하며 훌륭하게 CS를 챙깁니다.", PerfectCS: "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 챙깁니다!", CannonMissed: "🎙️ 해설: 아아아!! 거리가 닿지 않아 대포 미니언을 놓칩니다!!", GreedyCS: "🎙️ 캐스터: 파밍을 위해 앞으로 나갔다가 딜교환을 강제당합니다!", ZonedOut: "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하며 파밍도 못하고 있어요!", Disaster: "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 일방적으로 맞았어요!" },
+            baseRecall: "🏠 우물로 귀환합니다.",
+            shieldPerfect: "🎙️ 해설: 엄청난 방어막 활용!! 맹렬한 공격을 생채기 하나 없이 완벽하게 씹어버립니다!",
+            peaceful1: "🏠 거리를 완전히 벌리고 우물로 귀환하여 전열을 가다듬습니다.",
+            peaceful2: "🎙️ 해설: 양측 모두 딜교환을 피하고 미니언 파밍에만 집중합니다.",
+            peaceful3: "🎙️ 캐스터: 서로 거리를 주지 않네요! 날카로운 무빙과 눈치싸움만 이어집니다."
+        },
         effectMap: {
             "shield_on_hit": "적중 시 보호막 획득", "slow_field": "광역 둔화 지대 생성", "block_dash_ms": "돌진 차단 및 이동속도 증가", "wall_stun": "지형(벽) 충돌 시 대상 기절", "knockup_away": "적을 멀리 날려버림 (에어본)",
             "shield_regen": "비전투 시 바위 보호막 재생", "steal_ms": "대상 이동속도 강탈", "armor_up_aoe": "방어력 증가 및 주위 마법 피해", "atkSpdDown": "적중 대상 공격속도 둔화", "aoe_stun": "광역 에어본 및 기절",
@@ -228,7 +243,7 @@ var ContentManager = {
         screen: {
             match: "매칭 대기열", lobby: "전투 준비 로비", load: "로딩중",
             start: "전투 진입중", detail: "상세 스탯 정보", skillInfo: "스킬 정보", skillUp: "스킬 강화",
-            phasePrefix: "⏱️ ", phaseSuffix: "페이즈 현장 중계", end: "🏆 라인전 종료!"
+            phasePrefix: "⏱️ ", phaseSuffix: "페이즈 현장 중계", end: "🏆 라인전 종료!", enemyInfo: "🔍 적 정보 확인"
         },
         ui: {
             findMsg: "🔍 상대를 탐색합니다...", searching: "상대를 탐색하는 중입니다...",
@@ -239,7 +254,9 @@ var ContentManager = {
             battleStart: "🔥 소환사의 협곡에 오신 것을 환영합니다.\n\n[ 🏆 1v1 공식 룰 적용 ]\n- 3킬 선취\n- CS 100개 우선 달성\n- 1차 포탑 파괴",
             boardTitle: "📊 라인전 현황판 [ {turn}턴 ]", detailTitle: "🔍 상세 스탯 및 장비 창", skillUpTitle: "🆙 스킬 레벨업",
             watchNext: "다음 상황을 지켜봅니다...", endWait: "결과가 기록되었으며 로비로 돌아갑니다.",
-            win: "🎉 라인전 승리!", lose: "☠️ 라인전 패배..."
+            win: "🎉 라인전 승리!", lose: "☠️ 라인전 패배...",
+            boardFooter: "번호를 입력하세요.\n게임을 포기하려면 '항복'을 입력하세요.",
+            backBtn: "0. 🔙 이전 화면", backFooter: "돌아가려면 0을 입력하세요."
         },
         logs: {
             baseHeal: "🏠 우물에 도착하여 체력을 회복합니다.",
@@ -262,6 +279,8 @@ var ContentManager = {
             spellCleanseAi: "✨ [스펠] 적이 [정화]로 군중 제어기(CC)를 무력화시킵니다!",
             spellExhaustMe: "📉 [스펠] 적에게 [탈진]을 걸어 화력과 무빙을 봉쇄합니다!",
             spellExhaustAi: "📉 [스펠] 적이 내게 [탈진]을 걸어 무력화시킵니다!",
+            shieldAbsorbMe: "🛡️ [방어막 흡수] 적의 공격을 방어막으로 완벽히 막아냅니다! (방어: {amt})",
+            shieldAbsorbAi: "🛡️ [방어막 흡수] 적이 내 공격을 방어막으로 씹어버립니다! (방어: {amt})",
             punish: "⚡ [빈틈 노리기] 상대의 스킬이 빠진 틈을 타 맹렬하게 반격합니다!",
             minionAggro: "🛡️ [미니언 어그로] 무리한 딜교환으로 적 미니언들에게 두들겨 맞습니다. (-{dmg} HP)",
             towerAggro: "🚨 [포탑 어그로] 상대 포탑 사거리 내에서 적을 공격하여 포탑에 맞습니다! (-{dmg} HP)",
@@ -288,17 +307,14 @@ var ContentManager = {
     }
 };
 
-// 🌟 [V13.0] SystemAction 비동기 스케줄러 통합
+// 🌟 UI 연출(Alert) 자동화 처리기 (Pipeline 전격 적용)
 var SystemAction = {
     go: function(room, replier, title, msg, nextFunc) {
-        RoomScheduler.add(room, function() {
-            replier.reply(LayoutManager.renderAlert(title, msg));
-        }, Config.Timers.systemAction); 
-        
+        replier.reply(LayoutManager.renderAlert(title, msg));
         if (nextFunc) {
-            RoomScheduler.add(room, function() {
+            Pipeline.schedule(function() {
                 nextFunc();
-            }, 0);
+            }, Config.Timers.systemAction);
         }
     }
 };
@@ -334,35 +350,36 @@ var LayoutManager = {
 
 var BattleDirector = {
     generateLog: function(ctx) {
+        var bDir = ContentManager.battle.director;
         var realTotalDmg = ctx.mDmg + ctx.aDmg + (ctx.mBlocked || 0) + (ctx.aBlocked || 0);
 
         if ((ctx.mBlocked > 0 || ctx.aBlocked > 0) && (ctx.mDmg === 0 && ctx.aDmg === 0)) {
-            return "🎙️ 해설: 엄청난 방어막 활용!! 맹렬한 공격을 생채기 하나 없이 완벽하게 씹어버립니다!";
+            return bDir.shieldPerfect;
         }
 
         if (realTotalDmg === 0 && ctx.mHits === 0 && ctx.aHits === 0) {
-            if (ctx.strat === 4) return "🏠 거리를 완전히 벌리고 우물로 귀환하여 전열을 가다듬습니다.";
-            if (ctx.strat === 2 || ctx.strat === 3) return "🎙️ 해설: 양측 모두 딜교환을 피하고 미니언 파밍에만 집중합니다.";
-            return "🎙️ 캐스터: 서로 거리를 주지 않네요! 날카로운 무빙과 눈치싸움만 이어집니다.";
+            if (ctx.strat === 4) return bDir.peaceful1;
+            if (ctx.strat === 2 || ctx.strat === 3) return bDir.peaceful2;
+            return bDir.peaceful3;
         }
 
         var txt = "";
         if (ctx.strat === 1) { 
-            if (ctx.mHits > ctx.aHits * 2) txt = "🎙️ 해설: 사거리를 이용한 일방적인 딜교환! 상대는 닿지도 못합니다!";
-            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (realTotalDmg < 150) ? "🎙️ 캐스터: 가벼운 딜교환이 오갑니다. 서로 간만 보네요." : "🎙️ 해설: 엄청난 스킬 난타전!! 피가 쭉쭉 빠집니다!";
-            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = "🎙️ 캐스터: 무리한 진입! 오히려 뼈아픈 역공을 고스란히 맞습니다!";
-            else txt = "🎙️ 해설: 서로의 스킬이 아슬아슬하게 빗나갑니다!";
+            if (ctx.mHits > ctx.aHits * 2) txt = bDir.Aggressive.Kiting;
+            else if (ctx.mHits > 0 && ctx.aHits > 0) txt = (realTotalDmg < 150) ? bDir.Aggressive.MildTrade : bDir.Aggressive.Bloodbath;
+            else if (ctx.mHits === 0 && ctx.aHits > 0) txt = bDir.Aggressive.Countered;
+            else txt = bDir.Aggressive.MissAll;
         } else if (ctx.strat === 2 || ctx.strat === 3) {
-            if (ctx.isCannonPhase && !ctx.gotCannon) txt = "🎙️ 해설: 아아아!! 거리가 닿지 않아 대포 미니언을 놓칩니다!!";
+            if (ctx.isCannonPhase && !ctx.gotCannon) txt = bDir.Defensive.CannonMissed;
             else {
-                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (realTotalDmg < 50) ? "🎙️ 해설: 안전한 거리를 유지하며 훌륭하게 CS를 챙깁니다." : "🎙️ 캐스터: 엄청난 침착함! 견제 속에서도 막타를 챙깁니다!";
-                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = "🎙️ 캐스터: 파밍을 위해 앞으로 나갔다가 딜교환을 강제당합니다!";
-                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = "🎙️ 해설: 라인 장악력이 숨 막힙니다! 디나이 당하며 파밍도 못하고 있어요!";
-                else txt = "🎙️ 캐스터: 최악의 구도입니다!! 파밍도 놓치고 일방적으로 맞았어요!";
+                if (ctx.aHits === 0 && ctx.csPercent >= 80) txt = (realTotalDmg < 50) ? bDir.Defensive.NormalFarm : bDir.Defensive.PerfectCS;
+                else if (ctx.aHits > 0 && ctx.csPercent >= 60) txt = bDir.Defensive.GreedyCS;
+                else if (ctx.aHits === 0 && ctx.csPercent < 60) txt = bDir.Defensive.ZonedOut;
+                else txt = bDir.Defensive.Disaster;
             }
         } else if (ctx.strat === 8) {
             return "💥 방해를 무릅쓰고 적 포탑을 향해 공성을 시도합니다!";
-        } else return "🏠 우물로 귀환합니다.";
+        } else return bDir.baseRecall;
         return txt;
     }
 };
@@ -418,7 +435,7 @@ var BattleView = {
             content += "0. 턴 시작 (준비 완료)"; 
             
             var title = cU.boardTitle.replace("{turn}", state.turn);
-            return LayoutManager.renderFrame(title, content, false, "번호를 입력하세요.\n게임을 포기하려면 '항복'을 입력하세요.");
+            return LayoutManager.renderFrame(title, content, false, cU.boardFooter);
         },
         renderEnemyInfo: function(state) {
             var t = state.ai;
@@ -441,7 +458,7 @@ var BattleView = {
             content += "[ ✨ 스펠 상태 ]\n";
             content += "🌟 D["+t.spells.d+"]: " + dStatus + "\n";
             content += "   F["+t.spells.f+"]: " + fStatus + "\n";
-            return LayoutManager.renderFrame("🔍 적 정보 확인", content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
+            return LayoutManager.renderFrame(ContentManager.battle.screen.enemyInfo, content, [ContentManager.battle.ui.backBtn], ContentManager.battle.ui.backFooter);
         },
         renderDetail: function(t) {
             var cU = ContentManager.battle.ui;
@@ -451,7 +468,7 @@ var BattleView = {
             content += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
             content += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
             content += "🎒 [ 보유 아이템 ]\n(상점 업데이트 예정)";
-            return LayoutManager.renderFrame("🔍 상세 스탯 및 장비 창", content, ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
+            return LayoutManager.renderFrame(ContentManager.battle.screen.detail, content, [ContentManager.battle.ui.backBtn], ContentManager.battle.ui.backFooter);
         },
         renderSkillInfo: function(t) {
             var hw = t.hw;
@@ -482,7 +499,7 @@ var BattleView = {
             content += getDesc("w", hw.skills.w);
             content += getDesc("e", hw.skills.e);
             content += getDesc("r", hw.skills.r);
-            return LayoutManager.renderFrame("📝 스킬 정보", content.trim(), ["0. 🔙 이전 화면"], "돌아가려면 0을 입력하세요.");
+            return LayoutManager.renderFrame(ContentManager.battle.screen.skillInfo, content.trim(), [ContentManager.battle.ui.backBtn], ContentManager.battle.ui.backFooter);
         },
         renderSkillUp: function(t) {
             var cU = ContentManager.battle.ui;
@@ -515,7 +532,7 @@ var BattleView = {
                 content += "   ├ 피해: " + rCurB + " ➔ " + s.r.b[rCurLv] + "\n";
                 content += "   └ 쿨탐: " + rCurCd + "s ➔ " + s.r.cd[rCurLv] + "s\n";
             } else { content += "   ├ 레벨: " + rCurLv + " (MAX)\n"; }
-            return LayoutManager.renderFrame(cU.skillUpTitle, content, ["0. 🔙 이전 화면"], "강화할 번호를 입력하세요.");
+            return LayoutManager.renderFrame(cU.skillUpTitle, content, [ContentManager.battle.ui.backBtn], "강화할 번호를 입력하세요.");
         }
     }
 };
@@ -561,18 +578,16 @@ var Database = {
     save: function() {
         var currentData = JSON.stringify({ users: this.data, inquiries: this.inquiries }, null, 4);
         var tempPath = Config.DB_PATH + ".temp", realPath = Config.DB_PATH;
-        new java.lang.Thread(new java.lang.Runnable({
-            run: function() {
-                try {
-                    FileStream.write(tempPath, currentData);
-                    var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
-                    if (tempFile.exists() && tempFile.length() > 0) {
-                        if (realFile.exists()) realFile.delete();
-                        tempFile.renameTo(realFile);
-                    }
-                } catch(e) {}
-            }
-        })).start();
+        Pipeline.saveAsync(function() {
+            try {
+                FileStream.write(tempPath, currentData);
+                var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
+                if (tempFile.exists() && tempFile.length() > 0) {
+                    if (realFile.exists()) realFile.delete();
+                    tempFile.renameTo(realFile);
+                }
+            } catch(e) {}
+        });
     },
     createUser: function(sender, pw) {
         this.data[sender] = {
@@ -594,18 +609,16 @@ var SessionManager = {
     save: function() {
         var currentData = JSON.stringify(this.sessions, null, 4);
         var tempPath = Config.SESSION_PATH + ".temp", realPath = Config.SESSION_PATH;
-        new java.lang.Thread(new java.lang.Runnable({
-            run: function() {
-                try {
-                    FileStream.write(tempPath, currentData);
-                    var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
-                    if (tempFile.exists() && tempFile.length() > 0) {
-                        if (realFile.exists()) realFile.delete();
-                        tempFile.renameTo(realFile);
-                    }
-                } catch(e) {}
-            }
-        })).start();
+        Pipeline.saveAsync(function() {
+            try {
+                FileStream.write(tempPath, currentData);
+                var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
+                if (tempFile.exists() && tempFile.length() > 0) {
+                    if (realFile.exists()) realFile.delete();
+                    tempFile.renameTo(realFile);
+                }
+            } catch(e) {}
+        });
     },
     getKey: function(room, sender) { return room + "_" + sender; },
     get: function(room, sender) {
@@ -618,7 +631,7 @@ var SessionManager = {
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId; this.reset(room, sender);
             if(backupId) { this.sessions[key].tempId = backupId; this.save(); } 
-            RoomScheduler.add(room, function() {
+            Pipeline.schedule(function() {
                 replier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
             }, 0);
             return true; 
@@ -931,13 +944,13 @@ var BattleEngine = {
             mBlocked = Math.min(me.status.shield, mRawDmg);
             mRawDmg -= mBlocked; 
             me.status.shield -= mBlocked; 
-            combatLogs.push("🛡️ [방어막 흡수] 적의 공격을 방어막으로 완벽히 막아냅니다! (방어: " + Math.floor(mBlocked) + ")");
+            combatLogs.push(bLogs.shieldAbsorbMe.replace("{amt}", Math.floor(mBlocked)));
         }
         if(ai.status.shield > 0 && aRawDmg > 0) { 
             aBlocked = Math.min(ai.status.shield, aRawDmg);
             aRawDmg -= aBlocked; 
             ai.status.shield -= aBlocked; 
-            combatLogs.push("🛡️ [방어막 흡수] 적이 내 공격을 방어막으로 씹어버립니다! (방어: " + Math.floor(aBlocked) + ")");
+            combatLogs.push(bLogs.shieldAbsorbAi.replace("{amt}", Math.floor(aBlocked)));
         }
         
         var mRegen = me.hw.hpRegen * 6 + Math.floor(aRawDmg * (me.hw.omniVamp / 100));
@@ -993,363 +1006,6 @@ var BattleEngine = {
     }
 };
 
-var PrevScreenMap = {
-    "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
-    "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
-    "STAT_INPUT": "STAT_SELECT", "STAT_INPUT_CONFIRM": "STAT_INPUT", "STAT_RESET_CONFIRM": "PROFILE_MAIN",
-    "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN", "CHAMP_LIST_ROLE": "COLLECTION_MAIN", "CHAMP_LIST": "CHAMP_LIST_ROLE",
-    "SHOP_MAIN": "MAIN", "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS_ROLE": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_CHAMPS_ROLE",
-    "USER_INQUIRY": "MAIN", "MODE_SELECT": "MAIN", "BATTLE_LOBBY": "MODE_SELECT", "BATTLE_PICK_ROLE": "BATTLE_LOBBY", "BATTLE_PICK": "BATTLE_PICK_ROLE",
-    "BATTLE_SPELL_PICK": "BATTLE_LOBBY", 
-    "ADMIN_SYS_INFO": "ADMIN_MAIN", "ADMIN_INQUIRY_LIST": "ADMIN_MAIN", "ADMIN_USER_SELECT": "ADMIN_MAIN",
-    "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT", "ADMIN_ACTION_CONFIRM": "ADMIN_USER_DETAIL", 
-    "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT", 
-    "ADMIN_EDIT_INPUT_CONFIRM": "ADMIN_EDIT_INPUT", "ADMIN_INQUIRY_DETAIL": "ADMIN_INQUIRY_LIST", 
-    "ADMIN_INQUIRY_REPLY": "ADMIN_INQUIRY_DETAIL"
-};
-
-var AuthController = { 
-    handle: function(msg, session, sender, replier, room) {
-        var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title;
-        if (msg === "refresh_screen") {
-            if (session.screen === "IDLE" || session.screen === "GUEST_MAIN") {
-                session.screen = "GUEST_MAIN"; return replier.reply(LayoutManager.renderFrame(s.gMain, LayoutManager.templates.menuList(null, ContentManager.menus.guest), false, f.selectNum)); 
-            }
-            if (session.screen === "JOIN_ID") return replier.reply(LayoutManager.renderFrame(s.joinId, m.inputID_Join, true, f.inputId));
-            if (session.screen === "JOIN_PW") return replier.reply(LayoutManager.renderFrame(s.joinPw, m.inputPW, true, f.inputPw));
-            if (session.screen === "LOGIN_ID") return replier.reply(LayoutManager.renderFrame(s.loginId, m.inputID_Login, true, f.inputId));
-            if (session.screen === "LOGIN_PW") return replier.reply(LayoutManager.renderFrame(s.loginPw, m.inputPW, true, f.inputPw));
-            if (session.screen === "GUEST_INQUIRY") return replier.reply(LayoutManager.renderFrame(s.inq, "운영진에게 보낼 내용을 입력하세요.", true, f.inputContent));
-        }
-        if (session.screen === "GUEST_MAIN") {
-            if (msg === "1") { session.screen = "JOIN_ID"; return AuthController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2") { session.screen = "LOGIN_ID"; return AuthController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "3") { session.screen = "GUEST_INQUIRY"; return AuthController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "JOIN_ID") {
-            if (msg.length > 10) return SystemAction.go(room, replier, t.error, "아이디는 10자 이내여야 합니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
-            if (Database.data[msg]) return SystemAction.go(room, replier, t.error, "이미 존재하는 아이디입니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
-            session.temp.id = msg; session.screen = "JOIN_PW"; return AuthController.handle("refresh_screen", session, sender, replier, room);
-        }
-        if (session.screen === "JOIN_PW") {
-            Database.createUser(session.temp.id, msg); session.tempId = session.temp.id; session.screen = "MAIN"; SessionManager.save(); 
-            return SystemAction.go(room, replier, t.success, m.registerComplete, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-        }
-        if (session.screen === "LOGIN_ID") {
-            if (!Database.data[msg]) return SystemAction.go(room, replier, t.error, "존재하지 않는 아이디입니다.", function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
-            session.temp.id = msg; session.screen = "LOGIN_PW"; return AuthController.handle("refresh_screen", session, sender, replier, room);
-        }
-        if (session.screen === "LOGIN_PW") {
-            if (Database.data[session.temp.id] && Database.data[session.temp.id].pw === msg) {
-                session.tempId = session.temp.id; session.screen = "MAIN"; SessionManager.save(); 
-                return SystemAction.go(room, replier, t.success, session.tempId + "님 환영합니다!", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-            } else return SystemAction.go(room, replier, t.fail, m.loginFail, function(){ AuthController.handle("refresh_screen", session, sender, replier, room); });
-        }
-        if (session.screen === "GUEST_INQUIRY") {
-            Database.inquiries.push({ sender: "비회원(" + sender + ")", room: room, content: msg, time: Utils.get24HTime(), read: false }); Database.save(); SessionManager.reset(room, sender);
-            return SystemAction.go(room, replier, t.complete, m.inqSubmitSuccess, function(){ AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
-        }
-    }
-};
-
-var UserController = {
-    handle: function(msg, session, sender, replier, room) {
-        var data = Database.data[session.tempId]; 
-        var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title;
-        
-        if (data) {
-            var needSave = false;
-            if (!data.items) { data.items = { statReset: 0, nameChange: 0 }; needSave = true; }
-            if (!data.inventory) { data.inventory = { titles: ["뉴비"], champions: [] }; needSave = true; }
-            if (!data.inventory.champions) { data.inventory.champions = []; needSave = true; }
-            if (!data.inventory.titles) { data.inventory.titles = ["뉴비"]; needSave = true; }
-            if (needSave) Database.save();
-        }
-        
-        if (!data) return AuthController.handle(msg, session, sender, replier, room);
-        if (data.banned) return replier.reply(LayoutManager.renderFrame(t.notice, m.banned, false, null));
-
-        if (msg === "refresh_screen") {
-            if (session.screen === "MAIN") return replier.reply(LayoutManager.renderFrame(s.main, LayoutManager.templates.menuList(null, ContentManager.menus.main), false, f.selectNum));
-            if (session.screen === "MODE_SELECT") return replier.reply(LayoutManager.renderFrame(s.modeSel, LayoutManager.templates.menuList(null, ContentManager.menus.modeSelect), true, f.selectNum));
-            if (session.screen === "PROFILE_MAIN") {
-                var head = LayoutManager.renderProfileHead(data, session.tempId);
-                return replier.reply(LayoutManager.renderFrame(s.profile, head + "\n" + Utils.getFixedDivider() + "\n" + LayoutManager.templates.menuList(null, ContentManager.menus.profileSub), true, f.selectAction));
-            }
-            if (session.screen === "STAT_SELECT") return replier.reply(LayoutManager.renderFrame(s.statSel, LayoutManager.templates.menuList(null, ContentManager.menus.stats), true, f.selectStat));
-            if (session.screen === "STAT_RESET_CONFIRM") return replier.reply(LayoutManager.renderFrame(s.resetCon, m.statResetConfirm(data.items.statReset || 0) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo), true, f.selectNum));
-            if (session.screen === "STAT_INPUT") return replier.reply(LayoutManager.renderFrame(session.temp.statName + " 강화", LayoutManager.templates.inputRequest(null, data.stats[session.temp.statKey], "보유 포인트: " + data.point + " P"), true, f.inputPoint));
-            if (session.screen === "STAT_INPUT_CONFIRM") return replier.reply(LayoutManager.renderFrame(s.statCon, m.statEnhanceConfirm(session.temp.statName, session.temp.statAmt) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo), true, f.selectNum));
-            if (session.screen === "COLLECTION_MAIN") return replier.reply(LayoutManager.renderFrame(s.col, LayoutManager.templates.menuList(null, ["1. 보유 칭호", "2. 보유 챔피언"]), true, f.selectNum));
-            if (session.screen === "TITLE_EQUIP") return replier.reply(LayoutManager.renderFrame(s.title, "👑 현재 칭호: [" + data.title + "]\n" + Utils.getFixedDivider() + "\n" + data.inventory.titles.map(function(t, i) { return (i+1) + ". " + t + (t === data.title ? " [장착중]" : ""); }).join("\n"), true, f.inputTitle));
-            
-            if (session.screen === "CHAMP_LIST_ROLE") return replier.reply(LayoutManager.renderFrame(s.roleSelect, getRoleMenuText(data), true, f.selectNum));
-            if (session.screen === "CHAMP_LIST") {
-                var myChamps = data.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
-                var text = "📊 [" + session.temp.role + "] 보유 챔피언\n" + Utils.getFixedDivider() + "\n\n";
-                text += (myChamps.length > 0) ? myChamps.map(function(c, i){ return (i+1) + ". " + c; }).join("\n") : "보유 챔피언 없음";
-                return replier.reply(LayoutManager.renderFrame(s.champ, text, true, f.checkList));
-            }
-            
-            if (session.screen === "SHOP_MAIN") return replier.reply(LayoutManager.renderFrame(s.shop, LayoutManager.templates.menuList(null, ContentManager.menus.shopMain), true, f.selectCat));
-            if (session.screen === "SHOP_ITEMS") return replier.reply(LayoutManager.renderFrame(s.shopItem, "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n" + LayoutManager.templates.menuList(null, ContentManager.menus.shopItems), true, f.inputBuyNum));
-            
-            if (session.screen === "SHOP_CHAMPS_ROLE") return replier.reply(LayoutManager.renderFrame(s.roleSelect, getRoleMenuText(data), true, f.selectNum));
-            if (session.screen === "SHOP_CHAMPS") {
-                var shopChamps = ChampionList.filter(function(c) { return ChampionData[c].role === session.temp.role; });
-                var text = "💰 보유 골드: " + (data.gold || 0).toLocaleString() + " G\n" + Utils.getFixedDivider() + "\n[ " + session.temp.role + " 상점 ]\n\n";
-                text += shopChamps.map(function(c, i){ return (i+1) + ". " + c + (data.inventory.champions.indexOf(c)!==-1?" [보유]":" [500G]"); }).join("\n");
-                return replier.reply(LayoutManager.renderFrame(s.shopChamp, text, true, f.inputHireNum));
-            }
-            if (session.screen === "USER_INQUIRY") return replier.reply(LayoutManager.renderFrame(s.inq, "운영진에게 보낼 내용을 입력해 주세요.", true, f.inputContent));
-        }
-
-        if (session.screen === "MAIN") {
-            if (msg === "1") { session.screen = "PROFILE_MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2") { session.screen = "COLLECTION_MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "3") { session.screen = "MODE_SELECT"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "4") { session.screen = "SHOP_MAIN"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "5") { session.screen = "USER_INQUIRY"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "6") { 
-                var backupId = session.tempId; SessionManager.reset(room, sender); 
-                return SystemAction.go(room, replier, t.notice, m.logout, function() { AuthController.handle("refresh_screen", SessionManager.get(room, sender), sender, replier, room); });
-            }
-        }
-        
-        if (session.screen === "MODE_SELECT") {
-            if (msg === "1") {
-                if (data.inventory.champions.length === 0) return SystemAction.go(room, replier, t.fail, m.noChamp, function() { session.screen = "MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
-                
-                var cU = ContentManager.battle.ui;
-                session.screen = "BATTLE_MATCHING"; SessionManager.save();
-                replier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
-                
-                var roomStr = room + ""; var senderStr = sender + ""; 
-                RoomScheduler.add(roomStr, function() {
-                    var s = SessionManager.get(roomStr, senderStr);
-                    if (s && s.screen === "BATTLE_MATCHING") {
-                        Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
-                    }
-                }, Config.Timers.matchSearch);
-
-                RoomScheduler.add(roomStr, function() {
-                    var s = SessionManager.get(roomStr, senderStr);
-                    if (s && s.screen === "BATTLE_MATCHING") {
-                        s.screen = "BATTLE_LOBBY"; SessionManager.save(); 
-                        var currentData = Database.data[s.tempId];
-                        BattleController.handle("refresh_screen", s, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr, currentData);
-                    }
-                }, Config.Timers.matchFound);
-                return;
-            }
-            if (msg === "2") return SystemAction.go(room, replier, t.notice, m.pvpPrep, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-        }
-
-        if (session.screen === "PROFILE_MAIN") {
-            if (msg === "1") { session.screen = "STAT_SELECT"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2") { session.screen = "STAT_RESET_CONFIRM"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-        }
-
-        if (session.screen === "STAT_RESET_CONFIRM") {
-            if (msg === "1") {
-                if ((data.items.statReset || 0) <= 0) return SystemAction.go(room, replier, t.error, m.noItem, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-                data.items.statReset -= 1; data.stats = { acc: 50, ref: 50, com: 50, int: 50 }; data.point = (data.level - 1) * POINT_PER_LEVEL; Database.save();
-                return SystemAction.go(room, replier, t.success, m.statResetSuccess, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
-            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "PROFILE_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
-        }
-        if (session.screen === "STAT_SELECT") {
-            if (ContentManager.statMap.keys[msg]) {
-                session.temp.statKey = ContentManager.statMap.keys[msg]; session.temp.statName = ContentManager.statMap.names[msg]; 
-                session.screen = "STAT_INPUT"; return UserController.handle("refresh_screen", session, sender, replier, room);
-            }
-        }
-        if (session.screen === "STAT_INPUT") {
-            var amt = parseInt(msg);
-            if (isNaN(amt) || amt <= 0) return SystemAction.go(room, replier, t.error, m.onlyNumber, function() { UserController.handle("refresh_screen", session, sender, replier, room); }); 
-            if (data.point < amt) return SystemAction.go(room, replier, t.fail, "포인트가 부족합니다.", function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-            session.temp.statAmt = amt; session.screen = "STAT_INPUT_CONFIRM"; return UserController.handle("refresh_screen", session, sender, replier, room);
-        }
-        if (session.screen === "STAT_INPUT_CONFIRM") {
-            if (msg === "1") {
-                var amt = session.temp.statAmt;
-                if (data.point < amt) return SystemAction.go(room, replier, t.fail, "포인트 부족", function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
-                data.point -= amt; data.stats[session.temp.statKey] += amt; Database.save(); 
-                return SystemAction.go(room, replier, t.success, m.statEnhanceSuccess(session.temp.statName, amt), function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); });
-            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "STAT_SELECT"; UserController.handle("refresh_screen", session, sender, replier, room); }); }
-        }
-        if (session.screen === "COLLECTION_MAIN") {
-             if (msg === "1") { session.screen = "TITLE_EQUIP"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-             if (msg === "2") { session.screen = "CHAMP_LIST_ROLE"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "TITLE_EQUIP") {
-            if (data.inventory.titles.indexOf(msg) === -1) return SystemAction.go(room, replier, t.error, m.noTitleError, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-            data.title = msg; Database.save();
-            return SystemAction.go(room, replier, t.complete, m.titleEquipSuccess(msg), function() { session.screen = "COLLECTION_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
-        }
-        if (session.screen === "CHAMP_LIST_ROLE") {
-            var rIdx = parseInt(msg) - 1;
-            if (RoleList[rIdx]) {
-                session.temp.role = RoleList[rIdx]; session.screen = "CHAMP_LIST"; return UserController.handle("refresh_screen", session, sender, replier, room);
-            }
-        }
-        if (session.screen === "SHOP_MAIN") {
-            if (msg === "1") { session.screen = "SHOP_ITEMS"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2") { session.screen = "SHOP_CHAMPS_ROLE"; return UserController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "SHOP_ITEMS") {
-            var p = 0, n = "", act = "";
-            if (msg === "1") { p = 500; n = "닉네임 변경권"; act = "name"; } else if (msg === "2") { p = 1500; n = "스탯 초기화권"; act = "reset"; }
-            if (p > 0) {
-                if (data.gold < p) return SystemAction.go(room, replier, t.fail, m.notEnoughGold, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
-                data.gold -= p; if (act === "reset") data.items.statReset = (data.items.statReset || 0) + 1; if (act === "name") data.items.nameChange = (data.items.nameChange || 0) + 1; Database.save();
-                return SystemAction.go(room, replier, t.success, m.buySuccess(n), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
-            }
-        }
-        if (session.screen === "SHOP_CHAMPS_ROLE") {
-            var rIdx = parseInt(msg) - 1;
-            if (RoleList[rIdx]) {
-                session.temp.role = RoleList[rIdx]; session.screen = "SHOP_CHAMPS"; return UserController.handle("refresh_screen", session, sender, replier, room);
-            }
-        }
-        if (session.screen === "SHOP_CHAMPS") {
-            var shopChamps = ChampionList.filter(function(c) { return ChampionData[c].role === session.temp.role; });
-            var target = shopChamps[parseInt(msg) - 1];
-            if (target) {
-                if (data.inventory.champions.indexOf(target) !== -1 || data.gold < 500) return SystemAction.go(room, replier, t.fail, m.champFail, function(){ UserController.handle("refresh_screen", session, sender, replier, room); });
-                data.gold -= 500; data.inventory.champions.push(target); Database.save();
-                return SystemAction.go(room, replier, t.success, m.champSuccess(target), function(){ session.screen = "SHOP_MAIN"; UserController.handle("refresh_screen", session, sender, replier, room); });
-            }
-        }
-        if (session.screen === "USER_INQUIRY") {
-            Database.inquiries.push({ sender: session.tempId, room: room, content: msg, time: Utils.get24HTime(), read: false }); Database.save(); session.screen = "MAIN";
-            return SystemAction.go(room, replier, t.complete, m.inqSubmitSuccess, function() { UserController.handle("refresh_screen", session, sender, replier, room); });
-        }
-    }
-};
-
-var AdminController = { 
-    handle: function(msg, session, sender, replier, room) {
-        var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title, ui = ContentManager.ui;
-        if (msg === "refresh_screen") {
-            if (session.screen === "IDLE" || session.screen === "ADMIN_MAIN") {
-                session.screen = "ADMIN_MAIN"; var unreadCount = Database.inquiries.filter(function(iq){ return !iq.read; }).length;
-                return replier.reply(LayoutManager.renderFrame(s.aMain, LayoutManager.templates.menuList(null, ContentManager.menus.getAdminMain(unreadCount)), false, f.selectNum));
-            }
-            if (session.screen === "ADMIN_SYS_INFO") {
-                var rt = java.lang.Runtime.getRuntime(), used = Math.floor((rt.totalMemory() - rt.freeMemory()) / 1024 / 1024);
-                return replier.reply(LayoutManager.renderFrame(s.aSys, m.adminSysInfo(used, Object.keys(Database.data).length, Config.Version), true, "확인 완료"));
-            }
-            if (session.screen === "ADMIN_USER_SELECT") {
-                var users = Object.keys(Database.data);
-                if (users.length === 0) return SystemAction.go(room, replier, t.notice, m.adminNoUser, function(){ session.screen = "ADMIN_MAIN"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-                session.temp.userList = users; var listText = users.map(function(u, i) { return (i+1) + ". " + u; }).join("\n");
-                return replier.reply(LayoutManager.renderFrame(s.aUser, listText, true, f.selectNum));
-            }
-            if (session.screen === "ADMIN_USER_DETAIL") {
-                var head = LayoutManager.renderProfileHead(Database.data[session.temp.targetUser], session.temp.targetUser);
-                return replier.reply(LayoutManager.renderFrame(session.temp.targetUser + s.aUserDetail, head + "\n" + Utils.getFixedDivider() + "\n" + LayoutManager.templates.menuList(null, ContentManager.menus.adminUser), true, f.selectAction));
-            }
-            if (session.screen === "ADMIN_ACTION_CONFIRM") return replier.reply(LayoutManager.renderFrame(s.aActionCon, m.adminActionConfirm(ContentManager.adminMap.actionName[session.temp.adminAction]) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo), true, f.selectNum));
-            if (session.screen === "ADMIN_INQUIRY_LIST") {
-                if (Database.inquiries.length === 0) return SystemAction.go(room, replier, t.notice, m.adminNoInq, function(){ session.screen = "ADMIN_MAIN"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-                var listArr = [], curDate = "";
-                for (var i = 0; i < Database.inquiries.length; i++) {
-                    var iq = Database.inquiries[i]; var datePart = (iq.time && iq.time.length >= 10) ? iq.time.substring(0, 10) : "이전 문의";
-                    if (curDate !== datePart) { curDate = datePart; if(listArr.length > 0) listArr.push(""); listArr.push(ui.datePrefix + curDate + ui.dateSuffix); }
-                    listArr.push((i+1) + "." + (iq.read ? ui.read : ui.unread) + iq.sender);
-                }
-                return replier.reply(LayoutManager.renderFrame(s.aInqList, listArr.join("\n"), true, f.aInputInq));
-            }
-            if (session.screen === "ADMIN_INQUIRY_DETAIL") {
-                var iq = Database.inquiries[session.temp.inqIdx];
-                if (!iq) return AdminController.handle("이전", session, sender, replier, room);
-                if (!iq.read) { iq.read = true; Database.save(); }
-                var timeParts = iq.time ? iq.time.split(" ") : ["알 수 없음", ""];
-                var content = ui.sender + iq.sender + "\n" + ui.date + timeParts[0] + "\n" + ui.time + (timeParts[1] || "정보 없음") + "\n" + Utils.getFixedDivider() + "\n" + iq.content;
-                return replier.reply(LayoutManager.renderFrame(s.aInqDet, content + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.adminInqDetail), true, f.selectAction));
-            }
-            if (session.screen === "ADMIN_INQUIRY_REPLY") return replier.reply(LayoutManager.renderFrame(s.aInqRep, f.aInputRep, true, f.inputContent));
-            if (session.screen === "ADMIN_EDIT_SELECT") return replier.reply(LayoutManager.renderFrame(s.aEditSel, LayoutManager.templates.menuList(null, ContentManager.menus.adminEdit), true, f.selectNum));
-            if (session.screen === "ADMIN_EDIT_INPUT") return replier.reply(LayoutManager.renderFrame(s.aEditIn, m.inputNewVal, true, "숫자 입력"));
-            if (session.screen === "ADMIN_EDIT_INPUT_CONFIRM") return replier.reply(LayoutManager.renderFrame(s.aEditCon, m.adminEditConfirm(ContentManager.adminMap.editName[session.temp.editType], session.temp.editVal) + "\n\n" + LayoutManager.templates.menuList(null, ContentManager.menus.yesNo), true, f.selectNum));
-        }
-
-        if (session.screen === "ADMIN_MAIN") {
-            if (msg === "1") { session.screen = "ADMIN_SYS_INFO"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2") { session.screen = "ADMIN_USER_SELECT"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "3") { session.screen = "ADMIN_INQUIRY_LIST"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "ADMIN_USER_SELECT") {
-            var idx = parseInt(msg) - 1;
-            if (session.temp.userList && session.temp.userList[idx]) { session.temp.targetUser = session.temp.userList[idx]; session.screen = "ADMIN_USER_DETAIL"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "ADMIN_USER_DETAIL") {
-            if (msg === "1") { session.screen = "ADMIN_EDIT_SELECT"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2" || msg === "3" || msg === "4") { session.temp.adminAction = msg; session.screen = "ADMIN_ACTION_CONFIRM"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "ADMIN_ACTION_CONFIRM") {
-            var target = session.temp.targetUser; var tData = Database.data[target]; var action = session.temp.adminAction;
-            if (msg === "1") {
-                if (action === "2") {
-                    var currentPw = tData.pw; var currentBan = tData.banned;
-                    Database.data[target] = { pw: currentPw, name: target, title: "뉴비", lp: 0, win: 0, lose: 0, level: 1, exp: 0, gold: 1000, point: 0, stats: { acc: 50, ref: 50, com: 50, int: 50 }, inventory: { titles: ["뉴비"], champions: [] }, items: { statReset: 0, nameChange: 0 }, banned: currentBan };
-                    Database.save(); Utils.sendNotify(target, m.adminNotifyInit);
-                    return SystemAction.go(room, replier, t.complete, m.adminInitSuccess, function() { session.screen="ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-                }
-                if (action === "3") {
-                    delete Database.data[target]; Database.save(); Utils.sendNotify(target, m.adminNotifyDelete);
-                    return SystemAction.go(room, replier, t.complete, m.adminDelSuccess, function() { session.screen="ADMIN_USER_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-                }
-                if (action === "4") {
-                     tData.banned = !tData.banned; Database.save();
-                     Utils.sendNotify(target, tData.banned ? m.adminNotifyBan : m.adminNotifyUnban);
-                     return SystemAction.go(room, replier, t.complete, m.adminBanSuccess, function() { session.screen="ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-                }
-            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
-        }
-        if (session.screen === "ADMIN_INQUIRY_LIST") {
-            var iIdx = parseInt(msg) - 1;
-            if (Database.inquiries[iIdx]) { session.temp.inqIdx = iIdx; session.screen = "ADMIN_INQUIRY_DETAIL"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "ADMIN_INQUIRY_DETAIL") {
-            var idx = session.temp.inqIdx;
-            if (msg === "1") { session.screen = "ADMIN_INQUIRY_REPLY"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-            if (msg === "2") {
-                Database.inquiries.splice(idx, 1); Database.save();
-                return SystemAction.go(room, replier, t.complete, m.adminInqDelSuccess, function(){ session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-            }
-        }
-        if (session.screen === "ADMIN_INQUIRY_REPLY") {
-            var idx = session.temp.inqIdx; var iq = Database.inquiries[idx];
-            if (iq && iq.room) {
-                try { Api.replyRoom(iq.room, ui.replyMark + "\n" + Utils.getFixedDivider() + "\n" + msg + "\n" + Utils.getFixedDivider()); } catch(e){}
-                return SystemAction.go(room, replier, t.complete, m.adminReplySuccess, function(){ session.screen = "ADMIN_INQUIRY_LIST"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-            }
-        }
-        if (session.screen === "ADMIN_EDIT_SELECT") {
-            if (ContentManager.adminMap.editType[msg]) { session.temp.editType = ContentManager.adminMap.editType[msg]; session.screen = "ADMIN_EDIT_INPUT"; return AdminController.handle("refresh_screen", session, sender, replier, room); }
-        }
-        if (session.screen === "ADMIN_EDIT_INPUT") {
-             var val = parseInt(msg);
-             if(isNaN(val)) return SystemAction.go(room, replier, t.error, m.onlyNumber, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
-             if (session.temp.editType === "level" && (val < 1 || val > MAX_LEVEL)) return SystemAction.go(room, replier, t.error, m.invalidLevel, function(){ AdminController.handle("refresh_screen", session, sender, replier, room); });
-             session.temp.editVal = val; session.screen = "ADMIN_EDIT_INPUT_CONFIRM"; return AdminController.handle("refresh_screen", session, sender, replier, room);
-        }
-        if (session.screen === "ADMIN_EDIT_INPUT_CONFIRM") {
-            if (msg === "1") {
-                var val = session.temp.editVal; var target = session.temp.targetUser; var typeName = ContentManager.adminMap.editName[session.temp.editType];
-                if (session.temp.editType === "level") {
-                    var diff = val - Database.data[target].level;
-                    if (diff !== 0) { Database.data[target].point += (diff * POINT_PER_LEVEL); if(Database.data[target].point < 0) Database.data[target].point = 0; }
-                }
-                Database.data[target][session.temp.editType] = val; Database.save();
-                Utils.sendNotify(target, m.adminNotifyEdit(typeName, val));
-                return SystemAction.go(room, replier, t.complete, m.adminEditSuccess, function() { session.screen = "ADMIN_USER_DETAIL"; AdminController.handle("refresh_screen", session, sender, replier, room); });
-            } else if (msg === "2") { return SystemAction.go(room, replier, t.notice, m.adminCancel, function() { session.screen = "ADMIN_EDIT_SELECT"; AdminController.handle("refresh_screen", session, sender, replier, room); }); }
-        }
-    }
-};
-
 var BattleController = {
     handle: function(msg, session, sender, replier, room, userData) {
         var cB = ContentManager.battle; var vB = BattleView.Board; var bM = BattleEngine;
@@ -1376,19 +1032,16 @@ var BattleController = {
             if (session.screen === "BATTLE_LOBBY") {
                 var mC = session.battle.myChamp || "미선택";
                 var mRole = session.battle.myChamp ? ChampionData[mC].role : "";
-                var content = "👤 챔피언: " + (mC !== "미선택" ? mC + " [" + mRole + "]" : "미선택") + "\n";
-                content += "✨ 스펠 D: [" + session.battle.spells.d + "]\n";
-                content += "✨ 스펠 F: [" + session.battle.spells.f + "]\n\n";
-                content += "[ 준비 메뉴 ]\n1. 👤 챔피언 선택/변경\n2. 🏃 스펠 D 변경\n3. 🔥 스펠 F 변경\n\n0. ✅ 준비완료 (전투 진입)";
-                return replier.reply(LayoutManager.renderFrame(ContentManager.screen.lobby, content, false, "번호를 입력하세요. (취소: 로비로)"));
+                var content = cB.lobby.content.replace("{champ}", (mC !== "미선택" ? mC + " [" + mRole + "]" : "미선택")).replace("{d}", session.battle.spells.d).replace("{f}", session.battle.spells.f);
+                return replier.reply(LayoutManager.renderFrame(cB.lobby.title, content, false, cB.lobby.footer));
             }
-            if (session.screen === "BATTLE_PICK_ROLE") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.roleSelect, getRoleMenuText(userData), true, "번호 선택"));
+            if (session.screen === "BATTLE_PICK_ROLE") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.roleSelect, getRoleMenuText(userData), true, ContentManager.footer.selectNum));
             if (session.screen === "BATTLE_PICK") {
                 var pickChamps = userData.inventory.champions.filter(function(c) { return ChampionData[c] && ChampionData[c].role === session.temp.role; });
-                var text = "🎯 [" + session.temp.role + "] 출전 챔피언 선택:\n\n" + (pickChamps.length > 0 ? pickChamps.map(function(c, i) { return (i+1) + ". " + c; }).join("\n") : "해당 역할군 챔피언 없음");
-                return replier.reply(LayoutManager.renderFrame("챔피언 선택", text, true, "번호 선택"));
+                var text = cB.lobby.pickTitle.replace("{role}", session.temp.role) + (pickChamps.length > 0 ? pickChamps.map(function(c, i) { return (i+1) + ". " + c; }).join("\n") : cB.lobby.noChampInRole);
+                return replier.reply(LayoutManager.renderFrame(ContentManager.title.selectChamp, text, true, ContentManager.footer.selectNum));
             }
-            if (session.screen === "BATTLE_SPELL_PICK") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.spellPick, LayoutManager.templates.menuList(null, ContentManager.menus.spells), true, "장착할 스펠 번호를 선택하세요."));
+            if (session.screen === "BATTLE_SPELL_PICK") return replier.reply(LayoutManager.renderFrame(ContentManager.screen.spellPick, LayoutManager.templates.menuList(null, ContentManager.menus.spells), true, ContentManager.footer.selectNum));
 
             if (session.screen === "BATTLE_MAIN") return replier.reply(vB.render(session.battle.instance));
             if (session.screen === "BATTLE_ENEMY_INFO") return replier.reply(vB.renderEnemyInfo(session.battle.instance));
@@ -1403,10 +1056,10 @@ var BattleController = {
             if (msg === "3") { session.temp.spellSlot = "f"; session.screen = "BATTLE_SPELL_PICK"; SessionManager.save(); return BattleController.handle("refresh_screen", session, sender, replier, room, userData); }
             if (msg === "0") {
                 if (!session.battle.myChamp) {
-                    return SystemAction.go(room, replier, "준비 불가", "⚠️ 챔피언을 먼저 선택해주세요.", function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
+                    return SystemAction.go(room, replier, ContentManager.title.notReady, ContentManager.msg.needChampPick, function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
                 }
                 if (session.battle.spells.d === session.battle.spells.f) {
-                    return SystemAction.go(room, replier, "준비 불가", "⚠️ 두 스펠을 다르게 선택해주세요.", function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
+                    return SystemAction.go(room, replier, ContentManager.title.notReady, ContentManager.msg.diffSpells, function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
                 }
                 
                 session.battle.enemy = bM.generateAI(); 
@@ -1415,7 +1068,7 @@ var BattleController = {
                 
                 var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(userData.stats)); 
                 
-                RoomScheduler.add(roomStr, function() {
+                Pipeline.schedule(function() {
                     var cS = SessionManager.get(roomStr, senderStr);
                     if (cS && cS.screen === "BATTLE_LOADING") {
                         cS.screen = "BATTLE_MAIN"; 
@@ -1429,16 +1082,16 @@ var BattleController = {
                         SessionManager.save(); 
                         var vsText = cB.ui.vsFormat.replace("{uName}", senderStr).replace("{uChamp}", cS.battle.myChamp).replace("{uD}", cS.battle.spells.d).replace("{uF}", cS.battle.spells.f)
                                                    .replace("{aChamp}", cS.battle.enemy.champion).replace("{aD}", cS.battle.enemy.spells.d).replace("{aF}", cS.battle.enemy.spells.f);
-                        Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart, false, "잠시 후 전투 현황판이 출력됩니다."));
+                        Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.ui.vsTitle, vsText + "\n\n" + Utils.getFixedDivider() + "\n" + cB.ui.battleStart, false, ContentManager.footer.wait));
                     }
                 }, Config.Timers.vsScreen + 1000);
 
-                RoomScheduler.add(roomStr, function() {
+                Pipeline.schedule(function() {
                     var cS = SessionManager.get(roomStr, senderStr);
                     if (cS && cS.screen === "BATTLE_MAIN") {
-                        Api.replyRoom(roomStr, vB.render(cS.battle.instance)); 
+                        try { Api.replyRoom(roomStr, vB.render(cS.battle.instance)); } catch(e){}
                     }
-                }, 0);
+                }, Config.Timers.vsScreen + 1000 + Config.Timers.systemAction);
                 return;
             }
         }
@@ -1458,7 +1111,7 @@ var BattleController = {
             if (pickedSpell) {
                 var otherSlot = session.temp.spellSlot === 'd' ? 'f' : 'd';
                 if (session.battle.spells[otherSlot] === pickedSpell) {
-                    return SystemAction.go(room, replier, "스펠 선택 불가", "⚠️ 두 스펠은 중복될 수 없습니다.", function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
+                    return SystemAction.go(room, replier, ContentManager.title.spellDup, ContentManager.msg.spellDup, function(){ BattleController.handle("refresh_screen", session, sender, replier, room, userData); });
                 }
                 session.battle.spells[session.temp.spellSlot] = pickedSpell; session.screen = "BATTLE_LOBBY"; SessionManager.save();
                 return BattleController.handle("refresh_screen", session, sender, replier, room, userData);
@@ -1492,7 +1145,7 @@ var BattleController = {
 
             if (state.isBroadcasting) {
                 if (msg === "항복" || msg === "취소") {} 
-                else return replier.reply(LayoutManager.renderAlert("진행 중", "⚠️ 현재 전투 결과가 중계되고 있습니다.\n잠시만 기다려주세요.", null));
+                else return replier.reply(LayoutManager.renderAlert(ContentManager.title.broadcasting, ContentManager.msg.broadcastingBlock, null));
             }
 
             if (msg === "1") { session.screen = "BATTLE_ENEMY_INFO"; SessionManager.save(); return replier.reply(vB.renderEnemyInfo(state)); }
@@ -1514,7 +1167,7 @@ var BattleController = {
             
             if (msg === "항복" || msg === "취소") { 
                 SessionManager.reset(room, sender); var newS = SessionManager.get(room, sender); newS.tempId = session.tempId; SessionManager.save(); 
-                return SystemAction.go(room, replier, "항복", "로비로 돌아갑니다.", function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); 
+                return SystemAction.go(room, replier, ContentManager.title.surrender, ContentManager.msg.backToLobby, function(){ UserController.handle("refresh_screen", newS, sender, replier, room); }); 
             }
 
             if (msg === "0" || cleanMsg === "준비완료") {
@@ -1534,6 +1187,7 @@ var BattleController = {
                 var phaseLogs = [];
                 var isTurnDeath = false;
 
+                // 🌟 [1단계] 사전 연산 (단 0.001초 소요)
                 for (var i = 1; i <= 3; i++) {
                     var p = bM.playPhase(st, stratMe, stratAi, i);
                     var mentalLog = "";
@@ -1550,6 +1204,7 @@ var BattleController = {
                     if (isTurnDeath) break; 
                 }
 
+                // 턴 종료 처리 (사전 연산)
                 var laneMove = 0;
                 if (stratMe === 2) laneMove += 1; else if (stratMe === 3) laneMove -= 1;
                 if (stratAi === 2) laneMove -= 1; else if (stratAi === 3) laneMove += 1;
@@ -1575,17 +1230,26 @@ var BattleController = {
                     }
                     st.turn++; 
                 }
+                SessionManager.save();
 
-                replier.reply(LayoutManager.renderAlert("진입 중", "⚔️ 교전이 시작되었습니다.\n현장 중계를 연결합니다...", null));
+                // 🌟 [2단계] 스케줄러를 통한 순차 전송 (배달)
+                var currentDelay = Config.Timers.systemAction;
+                Pipeline.schedule(function() {
+                    try { replier.reply(LayoutManager.renderAlert(ContentManager.title.entering, ContentManager.msg.battleConnecting, null)); } catch(e){}
+                }, 0);
 
                 for (var idx = 0; idx < phaseLogs.length; idx++) {
-                    let log = phaseLogs[idx];
-                    RoomScheduler.add(roomStr, function() {
-                        try { Api.replyRoom(roomStr, LayoutManager.renderFrame(log.title, log.content, false, cB.ui.watchNext)); } catch(e){}
-                    }, Config.Timers.phaseDelay);
+                    (function(log, cDelay) {
+                        Pipeline.schedule(function() {
+                            try { Api.replyRoom(roomStr, LayoutManager.renderFrame(log.title, log.content, false, cB.ui.watchNext)); } catch(e){}
+                        }, cDelay);
+                    })(phaseLogs[idx], currentDelay);
+                    currentDelay += Config.Timers.phaseDelay;
                 }
 
-                RoomScheduler.add(roomStr, function() {
+                // 🌟 [최종 단계] 락(Lock) 해제 및 결과 화면 전송
+                currentDelay += 1500;
+                Pipeline.schedule(function() {
                     var finalS = SessionManager.get(roomStr, senderStr);
                     if(finalS && finalS.battle && finalS.battle.instance) {
                         finalS.battle.instance.isBroadcasting = false;
@@ -1596,13 +1260,14 @@ var BattleController = {
                         var endContent = (winReward === 300 ? cB.ui.win : cB.ui.lose) + "\n\n보상 골드: +" + winReward + " G";
                         try { Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait)); } catch(e){}
                         SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
-                        RoomScheduler.add(roomStr, function() {
+                        
+                        Pipeline.schedule(function() {
                             UserController.handle("refresh_screen", endS, senderStr, {reply: function(msg){ Api.replyRoom(roomStr, msg); }}, roomStr);
                         }, Config.Timers.systemAction);
                     } else {
                         try { Api.replyRoom(roomStr, vB.render(finalS.battle.instance)); } catch(e){}
                     }
-                }, 1500);
+                }, currentDelay);
 
                 return;
             }
@@ -1639,7 +1304,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (realMsg === "이전") {
             if (session.screen && session.screen.indexOf("BATTLE_MAIN") !== -1) {
-                return SystemAction.go(room, replier, ContentManager.title.notice, ContentManager.battle.alerts.noPrev.msg, null);
+                return SystemAction.go(room, replier, ContentManager.title.prevError, ContentManager.msg.noPrevBattle, null);
             }
             if (PrevScreenMap[session.screen]) {
                 session.screen = PrevScreenMap[session.screen];
