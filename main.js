@@ -3,7 +3,7 @@
  * - [M] Model: 3단 비동기 파이프라인 (Executors) 도입으로 Doze 모드(수면) 완벽 방지
  * - [V] View: V12 콤팩트 UI 유지, 모든 알림/에러/출력 텍스트 ContentManager 100% 분리
  * - [C] Controller: 모든 Thread.sleep() 제거, 사전 연산(Simulation) 및 절대 씹힘 방지
- */   
+ */    
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
