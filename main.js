@@ -1,15 +1,15 @@
 /*
- * 🏰 소환사의 협곡 Bot - v13.7 (Enterprise Pipeline & Async Context Fix)
- * - [M] Model: 3단 비동기 파이프라인 (Executors) 도입으로 Doze 모드(수면) 완벽 방지
- * - [V] View: V12 콤팩트 UI 유지, 모든 알림/에러/출력 텍스트 ContentManager 100% 분리
- * - [C] Controller: 비동기 컨텍스트 만료(replier 증발) 방지를 위한 safeReplier 도입 (에러/씹힘 0%)
- */     
+ * 🏰 소환사의 협곡 Bot - v14.0 (Time-Based Native Ticker Edition)
+ * - [M] Model: Thread.sleep 완전 삭제! 절대 멈추지 않는(Doze 방지) 타임라인 큐(RoomQueue) 도입
+ * - [V] View: V13의 콤팩트 UI, 방어막/0데미지 연출 및 텍스트 관리(ContentManager) 100% 보존
+ * - [C] Controller: 아무 채팅을 안 쳐도 시간이 되면 알아서 척척 중계하는 완전 비동기 엔진 구축
+ */    
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var Config = {
-    Version: "v13.7 Master Edition",
+    Version: "v14.0 Never-Sleep Edition",
     AdminRoom: "소환사의협곡관리", 
     BotName: "소환사의 협곡",
     DB_PATH: "sdcard/msgbot/Bots/main/database.json",
@@ -18,12 +18,12 @@ var Config = {
     TIMEOUT_MS: 300000, 
     
     Timers: {
-        matchSearch: 6000,  
-        matchFound: 6000,   
-        loading: 6000,      
-        vsScreen: 6000,     
-        battleStart: 6000,  
-        phaseDelay: 6000,   
+        matchSearch: 5000,  
+        matchFound: 5000,   
+        loading: 5000,      
+        vsScreen: 5000,     
+        battleStart: 5000,  
+        phaseDelay: 8000,   // 네이티브 타이머로 오차가 없어져 6초로 쾌적하게 픽스
         gameOver: 3000,     
         systemAction: 2000  
     },
@@ -95,25 +95,52 @@ function getRoleMenuText(data) {
     return roleTextArr.join("\n");
 }
 
-// 🌟 3단 분리형 비동기 파이프라인 (Thread Pipeline)
-var Pipeline = {
-    LogicQueue: java.util.concurrent.Executors.newSingleThreadScheduledExecutor(),
-    SaveExecutor: java.util.concurrent.Executors.newSingleThreadExecutor(),
+// 🌟 [V14.0 핵심] 안드로이드 수면(Doze)을 뚫어내는 타임라인 큐 (Thread.sleep 원천 차단)
+var RoomQueue = {
+    queues: {},
+    timer: null,
     
-    schedule: function(task, delayMs) {
-        this.LogicQueue.schedule(new java.lang.Runnable({
+    init: function() {
+        if (this.timer !== null) return;
+        this.timer = new java.util.Timer();
+        // 매 0.5초마다 백그라운드에서 깨어나서 보낼 메시지가 있는지 체크함 (안드로이드 잠자기 방지)
+        this.timer.scheduleAtFixedRate(new java.util.TimerTask({
             run: function() {
-                try { task(); } catch(e) { }
+                try {
+                    var now = Date.now();
+                    for (var room in RoomQueue.queues) {
+                        var q = RoomQueue.queues[room];
+                        if (q && q.length > 0 && now >= q[0].executeAt) {
+                            var task = q.shift();
+                            try { task.action(); } catch(err) {}
+                        }
+                    }
+                } catch(e) {}
             }
-        }), delayMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        }), 0, 500);
     },
     
-    saveAsync: function(task) {
-        this.SaveExecutor.execute(new java.lang.Runnable({
-            run: function() {
-                try { task(); } catch(e) {}
-            }
-        }));
+    add: function(room, actionFunc, delayAfterPrev) {
+        this.init(); // 최초 호출 시 백그라운드 심장(타이머) 가동
+        if (!this.queues[room]) this.queues[room] = [];
+        var q = this.queues[room];
+        
+        var executeTime = Date.now();
+        if (q.length > 0) {
+            // 이전에 예약된 작업이 있다면, 그 작업 시간 기준으로 지연시간을 추가로 더함
+            executeTime = q[q.length - 1].executeAt + (delayAfterPrev || 0);
+        } else {
+            executeTime += (delayAfterPrev || 0);
+        }
+        
+        q.push({
+            action: actionFunc,
+            executeAt: executeTime
+        });
+    },
+    
+    clear: function(room) {
+        if (this.queues[room]) this.queues[room] = [];
     }
 };
 
@@ -241,7 +268,7 @@ var ContentManager = {
         },
         screen: {
             match: "매칭 대기열", lobby: "전투 준비 로비", load: "로딩중",
-            start: "전투 진입중", detail: "상세 스탯 정보", skillInfo: "스킬 정보", skillUp: "스킬 강화",
+            start: "전투 진입중", detail: "🔍 상세 스탯 및 장비 창", skillInfo: "📝 스킬 정보", skillUp: "🆙 스킬 레벨업",
             phasePrefix: "⏱️ ", phaseSuffix: "페이즈 현장 중계", end: "🏆 라인전 종료!", enemyInfo: "🔍 적 정보 확인"
         },
         ui: {
@@ -306,12 +333,15 @@ var ContentManager = {
     }
 };
 
-// 🌟 [V13.7 복구] replier 만료 오류 해결을 위한 safeReplier 설계
+// 🌟 UI 연출(Alert) 자동화 처리기 (RoomQueue를 이용한 무적 순차 처리)
 var SystemAction = {
     go: function(room, safeReplier, title, msg, nextFunc) {
-        safeReplier.reply(LayoutManager.renderAlert(title, msg));
+        RoomQueue.add(room, function() {
+            safeReplier.reply(LayoutManager.renderAlert(title, msg));
+        }, 0);
+        
         if (nextFunc) {
-            Pipeline.schedule(function() {
+            RoomQueue.add(room, function() {
                 nextFunc();
             }, Config.Timers.systemAction);
         }
@@ -576,16 +606,18 @@ var Database = {
     save: function() {
         var currentData = JSON.stringify({ users: this.data, inquiries: this.inquiries }, null, 4);
         var tempPath = Config.DB_PATH + ".temp", realPath = Config.DB_PATH;
-        Pipeline.saveAsync(function() {
-            try {
-                FileStream.write(tempPath, currentData);
-                var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
-                if (tempFile.exists() && tempFile.length() > 0) {
-                    if (realFile.exists()) realFile.delete();
-                    tempFile.renameTo(realFile);
-                }
-            } catch(e) {}
-        });
+        new java.lang.Thread(new java.lang.Runnable({
+            run: function() {
+                try {
+                    FileStream.write(tempPath, currentData);
+                    var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
+                    if (tempFile.exists() && tempFile.length() > 0) {
+                        if (realFile.exists()) realFile.delete();
+                        tempFile.renameTo(realFile);
+                    }
+                } catch(e) {}
+            }
+        })).start();
     },
     createUser: function(sender, pw) {
         this.data[sender] = {
@@ -607,16 +639,18 @@ var SessionManager = {
     save: function() {
         var currentData = JSON.stringify(this.sessions, null, 4);
         var tempPath = Config.SESSION_PATH + ".temp", realPath = Config.SESSION_PATH;
-        Pipeline.saveAsync(function() {
-            try {
-                FileStream.write(tempPath, currentData);
-                var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
-                if (tempFile.exists() && tempFile.length() > 0) {
-                    if (realFile.exists()) realFile.delete();
-                    tempFile.renameTo(realFile);
-                }
-            } catch(e) {}
-        });
+        new java.lang.Thread(new java.lang.Runnable({
+            run: function() {
+                try {
+                    FileStream.write(tempPath, currentData);
+                    var tempFile = new java.io.File(tempPath), realFile = new java.io.File(realPath);
+                    if (tempFile.exists() && tempFile.length() > 0) {
+                        if (realFile.exists()) realFile.delete();
+                        tempFile.renameTo(realFile);
+                    }
+                } catch(e) {}
+            }
+        })).start();
     },
     getKey: function(room, sender) { return room + "_" + sender; },
     get: function(room, sender) {
@@ -629,7 +663,7 @@ var SessionManager = {
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
             var backupId = s.tempId; this.reset(room, sender);
             if(backupId) { this.sessions[key].tempId = backupId; this.save(); } 
-            Pipeline.schedule(function() {
+            RoomQueue.add(room, function() {
                 safeReplier.reply(LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
             }, 0);
             return true; 
@@ -1015,7 +1049,7 @@ var AuthController = {
             if (session.screen === "JOIN_PW") return safeReplier.reply(LayoutManager.renderFrame(s.joinPw, m.inputPW, true, f.inputPw));
             if (session.screen === "LOGIN_ID") return safeReplier.reply(LayoutManager.renderFrame(s.loginId, m.inputID_Login, true, f.inputId));
             if (session.screen === "LOGIN_PW") return safeReplier.reply(LayoutManager.renderFrame(s.loginPw, m.inputPW, true, f.inputPw));
-            if (session.screen === "GUEST_INQUIRY") return safeReplier.reply(LayoutManager.renderFrame(s.inq, "운영진에게 보낼 내용을 입력하세요.", true, f.inputContent));
+            if (session.screen === "GUEST_INQUquiry") return safeReplier.reply(LayoutManager.renderFrame(s.inq, "운영진에게 보낼 내용을 입력하세요.", true, f.inputContent));
         }
         if (session.screen === "GUEST_MAIN") {
             if (msg === "1") { session.screen = "JOIN_ID"; return AuthController.handle("refresh_screen", session, sender, safeReplier, room); }
@@ -1121,21 +1155,21 @@ var UserController = {
                 safeReplier.reply(LayoutManager.renderAlert(ContentManager.battle.screen.match, cU.findMsg, cU.searching));
                 
                 var roomStr = room + ""; var senderStr = sender + ""; 
-                Pipeline.schedule(function() {
+                RoomQueue.add(roomStr, function() {
                     var s = SessionManager.get(roomStr, senderStr);
                     if (s && s.screen === "BATTLE_MATCHING") {
                         Api.replyRoom(roomStr, LayoutManager.renderAlert("✅ " + ContentManager.battle.screen.match, cU.matchOk, cU.matchFoundInfo));
                     }
                 }, Config.Timers.matchSearch);
 
-                Pipeline.schedule(function() {
+                RoomQueue.add(roomStr, function() {
                     var s = SessionManager.get(roomStr, senderStr);
                     if (s && s.screen === "BATTLE_MATCHING") {
                         s.screen = "BATTLE_LOBBY"; SessionManager.save(); 
                         var currentData = Database.data[s.tempId];
                         BattleController.handle("refresh_screen", s, senderStr, safeReplier, roomStr, currentData);
                     }
-                }, Config.Timers.matchSearch + Config.Timers.matchFound);
+                }, Config.Timers.matchFound);
                 return;
             }
             if (msg === "2") return SystemAction.go(room, safeReplier, t.notice, m.pvpPrep, function() { UserController.handle("refresh_screen", session, sender, safeReplier, room); });
@@ -1408,7 +1442,7 @@ var BattleController = {
                 
                 var roomStr = room + ""; var senderStr = sender + ""; var uStats = JSON.parse(JSON.stringify(userData.stats)); 
                 
-                Pipeline.schedule(function() {
+                RoomQueue.add(roomStr, function() {
                     var cS = SessionManager.get(roomStr, senderStr);
                     if (cS && cS.screen === "BATTLE_LOADING") {
                         cS.screen = "BATTLE_MAIN"; 
@@ -1426,12 +1460,12 @@ var BattleController = {
                     }
                 }, Config.Timers.vsScreen + 1000);
 
-                Pipeline.schedule(function() {
+                RoomQueue.add(roomStr, function() {
                     var cS = SessionManager.get(roomStr, senderStr);
                     if (cS && cS.screen === "BATTLE_MAIN") {
                         try { Api.replyRoom(roomStr, vB.render(cS.battle.instance)); } catch(e){}
                     }
-                }, Config.Timers.vsScreen + 1000 + Config.Timers.systemAction);
+                });
                 return;
             }
         }
@@ -1572,24 +1606,21 @@ var BattleController = {
                 }
                 SessionManager.save();
 
-                // 🌟 [2단계] 스케줄러를 통한 순차 전송 (배달)
-                var currentDelay = Config.Timers.systemAction;
-                Pipeline.schedule(function() {
+                // 🌟 [2단계] 타이머 기반 순차 전송 (TimerTask)
+                RoomQueue.add(roomStr, function() {
                     try { safeReplier.reply(LayoutManager.renderAlert(ContentManager.title.entering, ContentManager.msg.battleConnecting, null)); } catch(e){}
                 }, 0);
 
                 for (var idx = 0; idx < phaseLogs.length; idx++) {
-                    (function(log, cDelay) {
-                        Pipeline.schedule(function() {
+                    (function(log) {
+                        RoomQueue.add(roomStr, function() {
                             try { Api.replyRoom(roomStr, LayoutManager.renderFrame(log.title, log.content, false, cB.ui.watchNext)); } catch(e){}
-                        }, cDelay);
-                    })(phaseLogs[idx], currentDelay);
-                    currentDelay += Config.Timers.phaseDelay;
+                        }, Config.Timers.phaseDelay);
+                    })(phaseLogs[idx]);
                 }
 
                 // 🌟 [최종 단계] 락(Lock) 해제 및 결과 화면 전송
-                currentDelay += 1500;
-                Pipeline.schedule(function() {
+                RoomQueue.add(roomStr, function() {
                     var finalS = SessionManager.get(roomStr, senderStr);
                     if(finalS && finalS.battle && finalS.battle.instance) {
                         finalS.battle.instance.isBroadcasting = false;
@@ -1601,13 +1632,13 @@ var BattleController = {
                         try { Api.replyRoom(roomStr, LayoutManager.renderFrame(cB.screen.end, endContent, false, cB.ui.endWait)); } catch(e){}
                         SessionManager.reset(roomStr, senderStr); var endS = SessionManager.get(roomStr, senderStr); endS.tempId = cS.tempId; SessionManager.save();
                         
-                        Pipeline.schedule(function() {
+                        RoomQueue.add(roomStr, function() {
                             UserController.handle("refresh_screen", endS, senderStr, safeReplier, roomStr);
                         }, Config.Timers.systemAction);
                     } else {
                         try { Api.replyRoom(roomStr, vB.render(finalS.battle.instance)); } catch(e){}
                     }
-                }, currentDelay);
+                }, 2000);
 
                 return;
             }
