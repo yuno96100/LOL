@@ -18,14 +18,14 @@ var Config = {
     TIMEOUT_MS: 300000, 
     
     Timers: {
-        matchSearch: 2000,  
-        matchFound: 1500,   
-        loading: 2000,      
-        vsScreen: 3500,     
-        battleStart: 2500,  
-        phaseDelay: 6000,   
+        matchSearch: 5000,  
+        matchFound: 5000,   
+        loading: 5000,      
+        vsScreen: 5000,     
+        battleStart: 4000,  
+        phaseDelay: 8000,   
         gameOver: 3000,     
-        systemAction: 1200  
+        systemAction: 2000  
     },
     SpellCD: {
         "점멸": 5, "점화": 4, "회복": 4, "방어막": 4, "정화": 4, "탈진": 4
