@@ -3,7 +3,7 @@
  * - [M] Model: DB 및 세션 저장 로직의 스레드 폭발(병목) 현상 100% 해결 (동기식 전환)
  * - [V] View: V12 콤팩트 UI 및 ContentManager 텍스트 완벽 분리 유지
  * - [C] Controller: Thread.sleep 완전 폐기! 안드로이드 네이티브 ScheduledThreadPool을 이용한 절대 멈춤 방지 엔진 탑재
- */   
+ */    
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ⚙️ [0. 전역 설정 및 유틸리티 (Config & Utils)]
