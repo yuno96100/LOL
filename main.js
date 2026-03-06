@@ -146,10 +146,11 @@ var ContentManager = {
         aSelectUser: "유저 번호 입력", aInputInq: "문의 번호 입력", aInputRep: "답변 내용을 입력하세요.",
         reStart: "다시 시작하려면 '메뉴'를 입력하세요.", sysNotify: "시스템 알림", wait: "잠시만 기다려주세요..."
     },
-    title: { 
+title: { 
         error: "오류", fail: "실패", success: "성공", complete: "완료", notice: "알림", sysError: "시스템 오류",
         notReady: "준비 불가", entering: "진입 중", selectChamp: "챔피언 선택", spellDup: "스펠 선택 불가",
-        broadcasting: "진행 중", cancel: "취소", prevError: "이전 불가", surrender: "항복"
+        broadcasting: "진행 중", cancel: "취소", prevError: "이전 불가", surrender: "항복",
+        resume: "전투 복구" // 🌟 추가됨
     },
     statMap: { keys: {"1":"acc", "2":"ref", "3":"com", "4":"int"}, names: {"1":"정확", "2":"반응", "3":"침착", "4":"직관"} },
     ui: { replyMark: "🔔 [운영진 답변 도착]", sender: "👤 보낸이: ", date: "📅 날짜: ", time: "⏰ 시간: ", read: " ✅ ", unread: " ⬜ ", datePrefix: "📅 [", dateSuffix: "]", pTarget: "👤 대상: ", pTitle: "🏅 칭호: [", pTier: "🏅 티어: ", pLp: "🏆 점수: ", pGold: "💰 골드: ", pRecord: "⚔️ 전적: ", pLevel: "🆙 레벨: Lv.", pExp: "🔷 경험: ", pStatH: " [ 상세 능력치 ]", pAcc: "🎯 정확: ", pRef: "⚡ 반응: ", pCom: "🧘 침착: ", pInt: "🧠 직관: ", pPoint: "✨ 포인트: " },
@@ -189,7 +190,10 @@ var ContentManager = {
         spellDup: "⚠️ 이미 선택된 스펠입니다.",
         broadcastingBlock: "⚠️ 현재 전투 결과가 중계되고 있습니다.\n잠시만 기다려주세요.",
         backToLobby: "로비로 돌아갑니다.",
-        noPrevBattle: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)"
+        noPrevBattle: "⚠️ 전투 중에는 이전 화면으로 갈 수 없습니다. (취소 시 로비로 강제 이동)",
+        
+        // 🌟 추가됨: 전투 이어하기 프롬프트 메시지
+        battleResumePrompt: "⌛ 세션이 만료되었으나 진행 중인 전투가 있습니다.\n이어서 진행하시겠습니까?\n\n 1. 예 (이어하기)\n 2. 아니오 (포기하고 로비로)"
     },
     
     battle: {
@@ -242,7 +246,7 @@ var ContentManager = {
             vsFormat: "🎯 [ {uName} ]\n🤖 {uChamp}\n✨ 스펠: [{uD}, {uF}]\n\n━━━━━━━ VS ━━━━━━━\n\n🎯 [ AI Bot ]\n🤖 {aChamp}\n✨ 스펠: [{aD}, {aF}]",
             battleStart: "🔥 소환사의 협곡에 오신 것을 환영합니다.\n\n[ 🏆 1v1 공식 룰 적용 ]\n- 3킬 선취\n- CS 100개 우선 달성\n- 1차 포탑 파괴",
             boardTitle: "📊 라인전 현황판 [ {turn}턴 ]", detailTitle: "🔍 상세 스탯 및 장비 창", skillUpTitle: "🆙 스킬 레벨업",
-            watchNext: "다음 상황을 지켜봅니다...", endWait: "결과가 기록되었으며 로비로 돌아갑니다.",
+            watchNext: "다음 상황을 지켜봅니다...\n\n(※ 진행이 멈추면 아무 채팅이나 쳐주세요!)", endWait: "결과가 기록되었으며 로비로 돌아갑니다.",
             win: "🎉 라인전 승리!", lose: "☠️ 라인전 패배...",
             boardFooter: "번호를 입력하세요.\n게임을 포기하려면 '항복'을 입력하세요.",
             backBtn: "0. 🔙 이전 화면", backFooter: "돌아가려면 0을 입력하세요."
@@ -592,7 +596,6 @@ var SessionManager = {
         if (file.exists()) { try { this.sessions = JSON.parse(FileStream.read(Config.SESSION_PATH)); } catch (e) { this.sessions = {}; } }
         this.isLoaded = true;
     },
-    // 🌟 [V19.0 핵심] 동기식 안전 저장으로 엔진 프리징 해결
     save: function() {
         try {
             var currentData = JSON.stringify(this.sessions, null, 4);
@@ -614,14 +617,27 @@ var SessionManager = {
     checkTimeout: function(roomStr, senderStr) {
         var key = this.getKey(roomStr, senderStr), s = this.get(roomStr, senderStr);
         if (s && s.screen !== "IDLE" && (Date.now() - s.lastTime > Config.TIMEOUT_MS)) {
-            var backupId = s.tempId; this.reset(roomStr, senderStr);
-            if(backupId) { this.sessions[key].tempId = backupId; this.save(); } 
-            BotScheduler.schedule(function() {
-                Api.replyRoom(roomStr, LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
-            }, 0);
-            return true; 
+            // 🌟 전투 중인지 판별 (준비 로비 제외, 실제 전투 화면들만 포함)
+            var inBattle = ["BATTLE_MAIN", "BATTLE_ENEMY_INFO", "BATTLE_DETAIL", "BATTLE_SKILLINFO", "BATTLE_SKILLUP"].indexOf(s.screen) !== -1;
+            
+            if (inBattle) {
+                s.temp.pausedScreen = s.screen; // 튕기기 전 화면 기억
+                s.screen = "BATTLE_RESUME_PROMPT";
+                s.lastTime = Date.now(); // 타이머 리셋
+                this.save();
+                
+                Api.replyRoom(roomStr, LayoutManager.renderFrame(ContentManager.title.resume, ContentManager.msg.battleResumePrompt, true, ContentManager.footer.selectNum));
+                return true; 
+            } else {
+                var backupId = s.tempId; this.reset(roomStr, senderStr);
+                if(backupId) { this.sessions[key].tempId = backupId; this.save(); } 
+                BotScheduler.schedule(function() {
+                    Api.replyRoom(roomStr, LayoutManager.renderFrame(ContentManager.title.notice, ContentManager.msg.timeout, false, ContentManager.footer.reStart));
+                }, 0);
+                return true; 
+            }
         }
-        s.lastTime = Date.now(); this.save(); 
+        if(s) { s.lastTime = Date.now(); this.save(); }
         return false;
     },
     reset: function(roomStr, senderStr) {
@@ -991,6 +1007,21 @@ var BattleEngine = {
     }
 };
 
+var PrevScreenMap = {
+    "JOIN_ID": "GUEST_MAIN", "JOIN_PW": "GUEST_MAIN", "LOGIN_ID": "GUEST_MAIN", "LOGIN_PW": "GUEST_MAIN",
+    "GUEST_INQUIRY": "GUEST_MAIN", "PROFILE_MAIN": "MAIN", "STAT_SELECT": "PROFILE_MAIN",
+    "STAT_INPUT": "STAT_SELECT", "STAT_INPUT_CONFIRM": "STAT_INPUT", "STAT_RESET_CONFIRM": "PROFILE_MAIN",
+    "COLLECTION_MAIN": "MAIN", "TITLE_EQUIP": "COLLECTION_MAIN", "CHAMP_LIST_ROLE": "COLLECTION_MAIN", "CHAMP_LIST": "CHAMP_LIST_ROLE",
+    "SHOP_MAIN": "MAIN", "SHOP_ITEMS": "SHOP_MAIN", "SHOP_CHAMPS_ROLE": "SHOP_MAIN", "SHOP_CHAMPS": "SHOP_CHAMPS_ROLE",
+    "USER_INQUIRY": "MAIN", "MODE_SELECT": "MAIN", "BATTLE_MATCHING": "MODE_SELECT", "BATTLE_LOBBY": "MODE_SELECT", 
+    "BATTLE_PICK_ROLE": "BATTLE_LOBBY", "BATTLE_PICK": "BATTLE_PICK_ROLE", "BATTLE_SPELL_PICK": "BATTLE_LOBBY", 
+    "ADMIN_SYS_INFO": "ADMIN_MAIN", "ADMIN_INQUIRY_LIST": "ADMIN_MAIN", "ADMIN_USER_SELECT": "ADMIN_MAIN",
+    "ADMIN_USER_DETAIL": "ADMIN_USER_SELECT", "ADMIN_ACTION_CONFIRM": "ADMIN_USER_DETAIL", 
+    "ADMIN_EDIT_SELECT": "ADMIN_USER_DETAIL", "ADMIN_EDIT_INPUT": "ADMIN_EDIT_SELECT", 
+    "ADMIN_EDIT_INPUT_CONFIRM": "ADMIN_EDIT_INPUT", "ADMIN_INQUIRY_DETAIL": "ADMIN_INQUIRY_LIST", 
+    "ADMIN_INQUIRY_REPLY": "ADMIN_INQUIRY_DETAIL"
+};
+
 var AuthController = { 
     handle: function(msg, session, senderStr, roomStr) {
         var s = ContentManager.screen, f = ContentManager.footer, m = ContentManager.msg, t = ContentManager.title;
@@ -1353,8 +1384,13 @@ var BattleController = {
             }
         }
 
-        if (msg === "refresh_screen") {
+if (msg === "refresh_screen") {
             if (session.screen === "BATTLE_MATCHING" || session.screen === "BATTLE_LOADING") return; 
+            
+            // 🌟 복구 프롬프트 화면 출력
+            if (session.screen === "BATTLE_RESUME_PROMPT") {
+                return Api.replyRoom(roomStr, LayoutManager.renderFrame(ContentManager.title.resume, ContentManager.msg.battleResumePrompt, true, ContentManager.footer.selectNum));
+            }
             
             if (session.screen === "BATTLE_LOBBY") {
                 var mC = session.battle.myChamp || "미선택";
@@ -1375,6 +1411,20 @@ var BattleController = {
             if (session.screen === "BATTLE_DETAIL") return Api.replyRoom(roomStr, vB.renderDetail(session.battle.instance.me));
             if (session.screen === "BATTLE_SKILLINFO") return Api.replyRoom(roomStr, vB.renderSkillInfo(session.battle.instance.me));
             if (session.screen === "BATTLE_SKILLUP") return Api.replyRoom(roomStr, vB.renderSkillUp(session.battle.instance.me));
+        }
+        
+        // 🌟 이어하기 선택 처리 로직
+        if (session.screen === "BATTLE_RESUME_PROMPT") {
+            if (msg === "1") {
+                session.screen = session.temp.pausedScreen || "BATTLE_MAIN";
+                SessionManager.save();
+                return BattleController.handle("refresh_screen", session, senderStr, roomStr, userData);
+            } else if (msg === "2") {
+                SessionManager.reset(roomStr, senderStr); 
+                var newS = SessionManager.get(roomStr, senderStr); newS.tempId = session.tempId; SessionManager.save(); 
+                return SystemAction.go(roomStr, ContentManager.title.surrender, ContentManager.msg.backToLobby, function(){ UserController.handle("refresh_screen", newS, senderStr, roomStr); }); 
+            }
+            return;
         }
 
         if (session.screen === "BATTLE_LOBBY") {
@@ -1639,7 +1689,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         if (realMsg === "이전") {
-            if (session.screen && session.screen.indexOf("BATTLE_MAIN") !== -1) {
+            // 🌟 복구 프롬프트 창에서도 이전 버튼은 차단
+            if (session.screen && (session.screen.indexOf("BATTLE_MAIN") !== -1 || session.screen === "BATTLE_RESUME_PROMPT")) {
                 return SystemAction.go(roomStr, ContentManager.title.prevError, ContentManager.battle.alerts.noPrev.msg, null);
             }
             if (PrevScreenMap[session.screen]) {
@@ -1667,6 +1718,16 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         if (e.lineNumber) errLog += "\n(코드 " + e.lineNumber + "줄)";
         try { Api.replyRoom(Config.AdminRoom, errLog); } catch(err) {} 
         try { Api.replyRoom(room, errLog); } catch(err){}
-        SessionManager.reset(room, sender);
+        
+        // 🌟 에러가 발생해도 아이디(세션)를 보호하여 로그아웃 방지
+        var sKey = room + "_" + sender;
+        var cSession = SessionManager.sessions[sKey];
+        if (cSession && cSession.tempId) {
+            cSession.screen = "MAIN";
+            cSession.temp = {};
+            SessionManager.save();
+        } else {
+            SessionManager.reset(room, sender);
+        }
     }
 }
