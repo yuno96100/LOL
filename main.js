@@ -429,11 +429,12 @@ var BattleView = {
             content += "- 마나: " + t.mp + " / " + t.hw.mp + "\n";
             content += "- CS: " + t.cs + " 개\n\n";
             
-            content += "[ ⚔️ 전투 스탯 ]\n";
-            content += "- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n";
-            content += "- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n\n";
+            // 🌟 내 정보와 동일하게 상세 스탯 출력 적용
+            content += "⚔️ [ 공격 능력치 ]\n- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n- 물관: "+t.hw.lethality+" ("+t.hw.arPenPer+"%) | 마관: "+t.hw.mPenFlat+" ("+t.hw.mPenPer+"%)\n- 공속: "+t.hw.as+" | 치명타: "+t.hw.crit+"%\n\n";
+            content += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
             
-            content += "[ 🧠 두뇌 스탯 ]\n";
+            // 🌟 두뇌 스탯 -> 유저 피지컬로 명칭 변경
+            content += "💪 [ 유저 피지컬 ]\n";
             content += "- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n";
             content += "- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
             
@@ -449,7 +450,9 @@ var BattleView = {
             content += "💰 보유 골드: " + t.gold + " G\n\n";
             content += "⚔️ [ 공격 능력치 ]\n- 공격력: "+(t.hw.baseAd+t.hw.bonusAd)+" | 주문력: "+t.hw.ap+"\n- 물관: "+t.hw.lethality+" ("+t.hw.arPenPer+"%) | 마관: "+t.hw.mPenFlat+" ("+t.hw.mPenPer+"%)\n- 공속: "+t.hw.as+" | 치명타: "+t.hw.crit+"%\n\n";
             content += "🛡️ [ 방어/유틸 능력치 ]\n- 방어력: "+t.hw.def+" | 마저: "+t.hw.mdef+"\n- 체젠: "+t.hw.hpRegen+" | 마젠: "+t.hw.mpRegen+"\n- 모든피해흡혈: "+t.hw.omniVamp+"%\n- 사거리: "+t.hw.range+" | 이속: "+t.hw.spd+"\n\n";
-            content += "🧠 [ 소프트웨어 (피지컬) ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
+            
+            // 🌟 두뇌 스탯 -> 유저 피지컬로 명칭 변경
+            content += "💪 [ 유저 피지컬 ]\n- 정확: "+t.sw.acc+" | 반응: "+t.sw.ref+"\n- 침착: "+t.sw.com+" | 직관: "+t.sw.int+"\n\n";
             content += "🎒 [ 보유 아이템 ]\n(상점 업데이트 예정)";
             return LayoutManager.renderFrame(ContentManager.battle.screen.detail, content, [ContentManager.battle.ui.backBtn], ContentManager.battle.ui.backFooter);
         },
