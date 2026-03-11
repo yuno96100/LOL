@@ -1,20 +1,23 @@
 // =======섹터번호 1=======
-// (새 파일 최상단)
+// (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [mybot 비서 봇] v1.0.0 (Gemini API 전용)
+ * [mybot 비서 봇] v2.1.0 (접두사 제거 및 도움말 적용)
  */
 
 var MYBOT_HASH = "1249612734"; 
 
-// 🔑 제미나이 API 키 (필수)
-var GEMINI_KEY = "여기에_제미나이_API_키를_넣으세요";
+var CONFIG = {
+    GEMINI_KEY: "여기에_제미나이_API_키를_넣으세요",
+    GH_TOKEN: "ghp_여기에_새로_발급받은_토큰을_넣어주세요", // 🚨 절대 노출 주의!
+    GH_OWNER: "yuno96100",
+    GH_REPO: "LOL",
+    BACKUP_DIR: "backup/" 
+};
 
-function askGemini(prompt) {
-    try {
-        var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + GEMINI_KEY;
-        var payload = JSON.stringify({
-            "contents": [{"parts": [{"text": prompt}]}]
-        });
-        
-       
+var STATE_TARGET = "sdcard/msgbot/Bots/mybot/state_target.txt";
+var STATE_CODE = "sdcard/msgbot/Bots/mybot/state_code.txt";
+
+var UI = {
+    LINE_CHAR: "━", FIXED_LINE: 15,
+ 
