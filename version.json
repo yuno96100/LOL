@@ -3,7 +3,7 @@
     "updateDate": "2026-02-03",
     "files": [
         "main.js",
-        "mybot.js"
+        "project.js"
     ],
     "note": "v2.6.7 : 개인톡 가입/조작 및 단톡방 안내 시스템 통합 완료"
 }
