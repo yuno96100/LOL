@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v14.0.0
- * - 주요 기능: 파티 생성, 참여, 이동, 취소, 쫑, 예약 시스템
- * - 변경 사항: 유저 피드백 반영 (UI/UX 텍스트 및 이모티콘 아기자기하고 귀엽게 전면 개편)
+ * [롤 구인구직 봇] lolgtec.js v15.1.0
+ * - 주요 기능: 파티 생성, 참여, 이동, 예약, 예약취소, 파티삭제 시스템
+ * - 변경 사항: '나가기' -> '예약취소', '삭제' -> '파티삭제'로 명령어 직관성 강화
  */
 
 // 봇이 켜져 있는 동안 파티 데이터를 기억할 저장소 (메모리 DB)
@@ -67,8 +67,8 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 귀여운 통합 메뉴얼
-    if (msg === "도움말" || msg === "명령어" || msg === "양식") {
+    // 1. 단일화된 명령어 안내 메뉴
+    if (msg === "명령어") {
         var help = "✨ [ 롤 구인 시스템 이용 방법 ] ✨\n\n" +
                    "🎀 파티 뚝딱 만들기\n" +
                    " [모드] [시간] [분위기]\n" +
@@ -77,15 +77,15 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "🐾 현황 : 지금 있는 파티들 보기!\n" +
                    "🐾 참여 [파티명] : 파티에 쏙 들어가기\n" +
                    "🐾 예약 [파티명] : 꽉 찼을때 자리 찜하기\n" +
-                   "🐾 취소 (또는 탈퇴) : 파티/예약 나가기\n" +
-                   "🐾 쫑 (또는 삭제) : 내 파티 해산하기\n\n" +
+                   "🐾 예약취소 : 내 파티/예약에서 나가기\n" +
+                   "🐾 파티삭제 : 내 파티 완전히 해산하기\n\n" +
                    "※ 지원: 내전, 아레나(8명), 자랭, 듀랭, 칼바람";
         replier.reply(help);
         return;
     }
 
-    // 2. 전체 파티 현황 조회
-    if (msg === "파티" || msg === "현황") {
+    // 2. 파티 현황 조회
+    if (msg === "현황") {
         var keys = Object.keys(partyDB);
         if (keys.length === 0) {
             replier.reply("텅~ 비었어요! 💦\n지금 바로 '자랭 22시 즐겜'을 쳐서 첫 파티를 열어보세요! (๑>ᴗ<๑)");
@@ -173,12 +173,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         if (currentResId) partyDB[currentResId].reservations.splice(partyDB[currentResId].reservations.indexOf(sender), 1);
 
         p.reservations.push(sender);
-        replier.reply("찜콩 완료! 🐾 " + sender + "님 조금만 기다려주세요~ (대기 " + p.reservations.length + "번)" + getPartyStatusText(targetId));
+        replier.reply("찜콩 완료! 🐾 " + sender + "님 조금만 기다려주세요~ (순번: " + p.reservations.length + "번)" + getPartyStatusText(targetId));
         return;
     }
 
-    // 6. 삭제/쫑
-    if (msg === "삭제" || msg === "쫑") {
+    // 6. 파티삭제 (파티 완전 해산)
+    if (msg === "파티삭제") {
         var targetId = findUserParty(sender);
         if (!targetId) { replier.reply("지울 파티가 없는걸요? 🥺"); return; }
         delete partyDB[targetId];
@@ -186,8 +186,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 7. 탈퇴 (또는 취소)
-    if (msg === "탈퇴" || msg === "취소") {
+    // 7. 예약취소 (파티 퇴장 또는 예약 취소)
+    if (msg === "예약취소") {
         var targetId = findUserParty(sender);
         var resId = findUserReservation(sender);
         
@@ -203,149 +203,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 delete partyDB[targetId];
                 replier.reply("마지막 분이 나가셔서 [" + targetId + "] 파티가 조용히 사라졌어요 🍃");
             } else {
-                var exitMsg = "호다닥! " + sender + "님이 나가셨어요 ㅠ_ㅠ 💦" + getPartyStatusText(targetId);
+                var exitMsg = "호다닥! " + sender + "님이 파티에서 나가셨어요 ㅠ_ㅠ 💦" + getPartyStatusText(targetId);
                 if (p.reservations.length > 0) {
                     exitMsg += "\n\n🔔 삐용삐용! 예약 1순위 [" + p.reservations[0] + "]님! 자리가 났어요!\n얼른 '참여 " + targetId + "'를 쳐주세요! (๑•̀ㅂ•́)و✧";
                 }
-                replier.reply(exitMsg);
-            }
-        }
-        return;
-    }
-}
-//=== 수정 끝 ===
-// (파일 최하단)                   "🔹 참여 [파티명] : 파티 합류 (이동 시 자동 탈퇴)\n" +
-                   "🔹 대기 [파티명] : 파티 풀방일 때 대기 등록\n" +
-                   "🔹 탈퇴 : 현재 파티/대기열에서 나가기\n" +
-                   "🔹 삭제 (또는 쫑) : 현재 참여 중인 파티 폭파";
-        replier.reply(help);
-        return;
-    }
-
-    // 2. 양식 카테고리
-    if (msg === "양식") {
-        var formMenu = "[ 파티 생성 양식 ]\n\n" +
-                       "아래 양식에 맞춰 띄어쓰기로 입력하시면 파티가 자동 생성됩니다.\n\n" +
-                       "🔹 양식: [모드] [시간] [분위기]\n\n" +
-                       "👉 예시) 자랭 22시 즐겜\n" +
-                       "👉 예시) 내전 지금 디코필수\n\n" +
-                       "※ 지원 모드: 내전, 아레나(8명), 자랭, 듀랭, 칼바람";
-        replier.reply(formMenu);
-        return;
-    }
-
-    // 3. 파티 현황 조회
-    if (msg === "파티" || msg === "현황") {
-        var keys = Object.keys(partyDB);
-        var res = "[ 현재 파티 현황 ]\n\n";
-        if (keys.length === 0) {
-            res += "❌ 현재 모집 중인 파티가 없습니다.";
-        } else {
-            keys.sort();
-            for (var i = 0; i < keys.length; i++) {
-                res += "🔹 " + keys[i] + " (" + partyDB[keys[i]].members.length + "/" + partyDB[keys[i]].max + ")\n";
-                res += " ⏰ " + partyDB[keys[i]].time + " | 💬 " + partyDB[keys[i]].vibe + "\n";
-                res += " 👤 멤버: " + partyDB[keys[i]].members.join(", ") + "\n";
-                if (partyDB[keys[i]].waiting.length > 0) res += " ⏳ 대기: " + partyDB[keys[i]].waiting.join(", ") + "\n";
-                res += "\n";
-            }
-        }
-        replier.reply(res.trim());
-        return;
-    }
-
-    // 4. 파티 생성
-    var modeMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람)(?:\s+|$)/);
-    if (modeMatch && msg.indexOf("참여 ") !== 0 && msg.indexOf("대기 ") !== 0) {
-        var createMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람)\s+([^\s]+)\s+(.+)$/);
-        if (createMatch) {
-            var oldPartyId = findUserParty(sender);
-            var oldWaitId = findUserWaiting(sender);
-            if (oldPartyId) {
-                var oldP = partyDB[oldPartyId];
-                oldP.members.splice(oldP.members.indexOf(sender), 1);
-                if (oldP.members.length === 0) delete partyDB[oldPartyId];
-            }
-            if (oldWaitId) partyDB[oldWaitId].waiting.splice(partyDB[oldWaitId].waiting.indexOf(sender), 1);
-
-            var mode = createMatch[1]; 
-            var pId = getNextPartyId(mode); 
-            partyDB[pId] = {
-                mode: mode, members: [sender], waiting: [],
-                max: maxMembers[mode], time: createMatch[2], vibe: createMatch[3]
-            };
-            replier.reply("🎉 [" + pId + "] 파티가 생성되었습니다!" + getPartyStatusText(pId));
-            return;
-        }
-    }
-
-    // 5. 파티 참여 및 이동
-    if (msg.indexOf("참여 ") === 0) {
-        var targetId = msg.split(" ")[1];
-        if (!partyDB[targetId]) { replier.reply("❌ 존재하지 않는 파티입니다."); return; }
-        var p = partyDB[targetId];
-        if (p.members.length >= p.max) { replier.reply("❌ [" + targetId + "] 파티는 풀방입니다. '대기 " + targetId + "'를 입력하세요."); return; }
-        if (p.members.indexOf(sender) !== -1) { replier.reply("❌ 이미 참여 중입니다."); return; }
-
-        var currentPartyId = findUserParty(sender);
-        var currentWaitId = findUserWaiting(sender);
-        if (currentPartyId) {
-            var cp = partyDB[currentPartyId];
-            cp.members.splice(cp.members.indexOf(sender), 1);
-            if (cp.members.length === 0) delete partyDB[currentPartyId];
-        }
-        if (currentWaitId) partyDB[currentWaitId].waiting.splice(partyDB[currentWaitId].waiting.indexOf(sender), 1);
-        
-        p.members.push(sender);
-        var replyMsg = "✅ " + sender + "님이 [" + targetId + "] 파티에 합류했습니다!" + getPartyStatusText(targetId);
-        if (p.members.length === p.max) replyMsg += "\n🚀 인원이 모두 모였습니다!";
-        replier.reply(replyMsg);
-        return;
-    }
-
-    // 6. 대기열 등록
-    if (msg.indexOf("대기 ") === 0) {
-        var targetId = msg.split(" ")[1];
-        if (!partyDB[targetId]) { replier.reply("❌ 파티명이 존재하지 않습니다."); return; }
-        var p = partyDB[targetId];
-        if (p.members.indexOf(sender) !== -1) { replier.reply("❌ 이미 해당 파티 멤버입니다."); return; }
-        if (p.waiting.indexOf(sender) !== -1) { replier.reply("❌ 이미 대기 중입니다."); return; }
-
-        var currentWaitId = findUserWaiting(sender);
-        if (currentWaitId) partyDB[currentWaitId].waiting.splice(partyDB[currentWaitId].waiting.indexOf(sender), 1);
-
-        p.waiting.push(sender);
-        replier.reply("⏳ " + sender + "님이 [" + targetId + "] 대기열에 등록되었습니다." + getPartyStatusText(targetId));
-        return;
-    }
-
-    // 7. 삭제/쫑
-    if (msg === "삭제" || msg === "쫑") {
-        var targetId = findUserParty(sender);
-        if (!targetId) { replier.reply("❌ 참여 중인 파티가 없습니다."); return; }
-        delete partyDB[targetId];
-        replier.reply("🗑️ [" + targetId + "] 파티가 삭제되었습니다.");
-        return;
-    }
-
-    // 8. 탈퇴
-    if (msg === "탈퇴") {
-        var targetId = findUserParty(sender);
-        var waitId = findUserWaiting(sender);
-        if (!targetId && !waitId) { replier.reply("❌ 참여/대기 중인 파티가 없습니다."); return; }
-        
-        if (waitId) {
-            partyDB[waitId].waiting.splice(partyDB[waitId].waiting.indexOf(sender), 1);
-            replier.reply("💨 [" + waitId + "] 대기열에서 제외되었습니다." + getPartyStatusText(waitId));
-        } else {
-            var p = partyDB[targetId];
-            p.members.splice(p.members.indexOf(sender), 1);
-            if (p.members.length === 0) {
-                delete partyDB[targetId];
-                replier.reply("💨 [" + targetId + "] 파티가 해산되었습니다.");
-            } else {
-                var exitMsg = "💨 " + sender + "님이 [" + targetId + "] 파티에서 퇴장했습니다." + getPartyStatusText(targetId);
-                if (p.waiting.length > 0) exitMsg += "\n🔔 대기 1순위 [" + p.waiting[0] + "]님! 빈자리가 생겼습니다.";
                 replier.reply(exitMsg);
             }
         }
