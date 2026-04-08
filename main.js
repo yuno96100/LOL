@@ -2,15 +2,15 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v4.5.0
+ * [롤 구인구직 봇] lolgtec.js v4.7.0
  * - 주요 기능: 시간+분위기 기반 자동 파티 생성 시스템
- * - 변경 사항: UI 객체(구분선) 완전 제거, 순수 텍스트 출력으로 원복
+ * - 변경 사항: 멤버 목록 기호 변경 (괄호 제거, 하이픈 추가)
  */
 
 // 봇이 켜져 있는 동안 파티 데이터를 기억할 저장소 (메모리 DB)
 var partyDB = {};
 
-// 모드별 파티 번호를 매기기 위한 카운터 (예: 자랭1, 자랭2...)
+// 모드별 파티 번호를 매기기 위한 카운터
 var partyCounters = {
     "내전": 1, "아레나": 1, "자랭": 1, "듀랭": 1, "칼바람": 1
 };
@@ -53,7 +53,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             var p = partyDB[pId];
             res += "🔹 " + pId + " (" + p.members.length + "/" + p.max + ")\n";
             res += " ⏰ 시간: " + p.time + " | 💬 " + p.vibe + "\n";
-            res += " 👤 멤버: " + p.members.join(", ") + "\n\n";
+            res += " 👤 멤버\n";
+            // 멤버 표시: 하이픈(-) 사용
+            for (var j = 0; j < p.members.length; j++) {
+                res += " - " + p.members[j] + "\n";
+            }
+            res += "\n";
         }
         res += "💡 참여: 참여 [파티명] (예: 참여 자랭1)\n";
         res += "💡 탈퇴: 탈퇴 [파티명] (예: 탈퇴 자랭1)";
@@ -122,10 +127,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         
         var replyMsg = "✅ " + sender + "님이 [" + targetId + "] 파티에 합류했습니다!\n" +
                        "현재 인원: (" + p.members.length + "/" + p.max + ")\n" +
-                       "참여자: " + p.members.join(", ");
+                       "참여자 목록:\n";
+        
+        for (var k = 0; k < p.members.length; k++) {
+            replyMsg += " - " + p.members[k] + "\n";
+        }
                        
         if (isFull) {
-            replyMsg += "\n\n🚀 인원이 모두 모였습니다! 파티를 시작해주세요.";
+            replyMsg += "\n🚀 인원이 모두 모였습니다! 파티를 시작해주세요.";
         }
         replier.reply(replyMsg);
         return;
