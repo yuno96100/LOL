@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v7.0.0
+ * [롤 구인구직 봇] lolgtec.js v7.1.0
  * - 주요 기능: 자동 파티 생성, 이동, 참여/탈퇴/삭제(쫑) 시스템
- * - 변경 사항: 방장 시스템 제거, 파티명 없는 탈퇴/삭제 지원, 자동 파티 이동 기능 추가
+ * - 변경 사항: '양식' 명령어 카테고리 단독 호출 기능 복구
  */
 
 // 봇이 켜져 있는 동안 파티 데이터를 기억할 저장소 (메모리 DB)
@@ -39,6 +39,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "🔹 [모드] [시간] [분위기]\n" +
                    "👉 예시) 자랭 22시 즐겜\n\n" +
                    "2️⃣ 참여 및 관리\n" +
+                   "🔹 양식 : 파티 생성 양식 보기\n" +
                    "🔹 현황 : 현재 모집 중인 파티 목록\n" +
                    "🔹 참여 [파티명] : 파티 합류 (이동 시 자동 탈퇴)\n" +
                    "🔹 탈퇴 : 현재 내가 속한 파티에서 나가기\n" +
@@ -48,7 +49,19 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 2. 파티 현황 조회
+    // 2. 양식 카테고리 복구
+    if (msg === "양식") {
+        var formMenu = "[ 파티 생성 양식 ]\n\n" +
+                       "아래 양식에 맞춰 띄어쓰기로 입력하시면 파티가 자동 생성됩니다.\n\n" +
+                       "🔹 양식: [모드] [시간] [분위기]\n\n" +
+                       "👉 예시) 자랭 22시 즐겜\n" +
+                       "👉 예시) 내전 지금 디코필수\n\n" +
+                       "※ 지원 모드: 내전, 아레나, 자랭, 듀랭, 칼바람";
+        replier.reply(formMenu);
+        return;
+    }
+
+    // 3. 파티 현황 조회
     if (msg === "파티" || msg === "현황") {
         var keys = Object.keys(partyDB);
         var res = "[ 현재 파티 현황 ]\n\n";
@@ -75,7 +88,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 3. 파티 생성
+    // 4. 파티 생성
     var modeMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람)(?:\s+|$)/);
     if (modeMatch && msg.indexOf("참여 ") !== 0) {
         var createMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람)\s+([^\s]+)\s+(.+)$/);
@@ -115,7 +128,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
     }
 
-    // 4. 파티 참여 및 이동
+    // 5. 파티 참여 및 이동
     if (msg.indexOf("참여 ") === 0) {
         var targetId = msg.split(" ")[1];
         
@@ -160,7 +173,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 5. 파티 삭제/쫑 (파티원 누구나 가능)
+    // 6. 파티 삭제/쫑 (파티원 누구나 가능)
     if (msg === "삭제" || msg === "쫑") {
         var targetId = findUserParty(sender);
         
@@ -174,7 +187,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 6. 파티 탈퇴 (파티명 생략 가능)
+    // 7. 파티 탈퇴 (파티명 생략 가능)
     if (msg === "탈퇴") {
         var targetId = findUserParty(sender);
         
