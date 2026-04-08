@@ -2,18 +2,10 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v4.3.0
+ * [롤 구인구직 봇] lolgtec.js v4.5.0
  * - 주요 기능: 시간+분위기 기반 자동 파티 생성 시스템
- * - 변경 사항: 파티 현황 조회 시 멤버 목록 가시성 개선
+ * - 변경 사항: UI 객체(구분선) 완전 제거, 순수 텍스트 출력으로 원복
  */
-
-// 간단한 UI 객체
-const UI = {
-    divider: "━━━━━━━━━━━━━━━━━━━━━",
-    render: function(title, content) {
-        return "『 " + title + " 』\n" + this.divider + "\n" + content + "\n" + this.divider;
-    }
-};
 
 // 봇이 켜져 있는 동안 파티 데이터를 기억할 저장소 (메모리 DB)
 var partyDB = {};
@@ -34,7 +26,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
     // 통합 명령어 안내
     if (msg === "양식" || msg === "명령어") {
-        var menu = "1. 파티 생성\n" +
+        var menu = "[ 롤 자동 구인 시스템 ]\n\n" +
+                   "1. 파티 생성\n" +
                    "🔹 [모드] [시간] [분위기]\n" +
                    "👉 예시) 자랭 22시 즐겜유저만\n" +
                    "👉 예시) 내전 지금 디코필수\n\n" +
@@ -42,7 +35,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "🔹 파티 (또는 현황) : 모집 중인 파티 보기\n" +
                    "🔹 참여 [파티명] : (예: 참여 자랭1)\n" +
                    "🔹 탈퇴 [파티명] : (예: 탈퇴 자랭1)";
-        replier.reply(UI.render("롤 자동 구인 시스템", menu));
+        replier.reply(menu);
         return;
     }
 
@@ -54,7 +47,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
         
-        var res = "";
+        var res = "[ 현재 파티 현황 ]\n\n";
         for (var i = 0; i < keys.length; i++) {
             var pId = keys[i];
             var p = partyDB[pId];
@@ -64,7 +57,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
         res += "💡 참여: 참여 [파티명] (예: 참여 자랭1)\n";
         res += "💡 탈퇴: 탈퇴 [파티명] (예: 탈퇴 자랭1)";
-        replier.reply(UI.render("현재 파티 현황", res.trim()));
+        replier.reply(res.trim());
         return;
     }
 
@@ -89,13 +82,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             };
             partyCounters[mode]++;
             
-            var content = "⏰ 시간: " + time + "\n" +
+            var content = "🎉 [" + pId + "] 파티가 생성되었습니다!\n\n" +
+                          "⏰ 시간: " + time + "\n" +
                           "💬 분위기: " + vibe + "\n" +
                           "👑 방장: " + sender + "\n" +
                           "👥 인원: (1/" + maxMembers[mode] + ")\n\n" +
                           "💡 같이 하실 분들은 '참여 " + pId + "' 을 입력해주세요.";
                           
-            replier.reply(UI.render("🎉 " + pId + " 파티 생성", content));
+            replier.reply(content);
             return;
         } else {
             var modeName = modeMatch[1];
