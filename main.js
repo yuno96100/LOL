@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v19.0.0
+ * [롤 구인구직 봇] lolgtec.js v20.0.0
  * - 주요 기능: 파티 생성, 참여, 이동, 예약, 예약취소, 파티삭제
- * - 변경 사항: 상단 구분선 제거, 도움말 메뉴 가독성 대폭 개선(리스트형 배치)
+ * - 변경 사항: 멤버 트리 연결선 제거, 파티 간 짧은 구분선 적용
  */
 
 var partyDB = {};
@@ -13,16 +13,15 @@ const maxMembers = {
     "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "칼바람": 5
 };
 
-// 🎨 군더더기를 뺀 미니멀 UI 엔진
+// 🎨 심플함을 강조한 UI 엔진
 const UI = {
-    D: "--------------------------", // 항목 간 구분선
+    D: "----------", // 파티 사이 짧은 구분선
     format: function(title, content) {
-        // 상단 구분선을 없애고 제목과 내용 사이 여백만 확보
         return title + "\n" + content;
     }
 };
 
-// 🐥 가독성 최적화 파티 정보 유닛
+// 🐥 깔끔하게 정돈된 파티 정보 유닛
 function getPartyStatusText(pId) {
     var p = partyDB[pId];
     if (!p) return "";
@@ -30,16 +29,14 @@ function getPartyStatusText(pId) {
     var status = "🏆 [ " + pId + " ]\n";
     status += "📅 " + p.time + "  |  💬 " + p.vibe + "\n";
     status += "📊 현황 : " + p.members.length + " / " + p.max + " 명\n";
-    status += " " + UI.D + "\n";
     
+    // 트리 연결선 제거 및 심플한 불렛(-) 적용
     for (var i = 0; i < p.members.length; i++) {
-        var prefix = (i === p.members.length - 1 && p.reservations.length === 0) ? " ┗ " : " ┣ ";
-        status += prefix + "👤 " + p.members[i] + "\n";
+        status += " - 🐥 " + p.members[i] + "\n";
     }
     
     if (p.reservations.length > 0) {
-        status += " ┃ \n";
-        status += " ┗ ⏳ 예약 : " + p.reservations.join(", ") + "\n";
+        status += "⏳ 예약 : " + p.reservations.join(", ") + "\n";
     }
     
     return status.replace(/\n$/, "");
@@ -64,7 +61,7 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 명령어 가이드 (리스트형으로 가독성 복구)
+    // 1. 명령어 가이드
     if (msg === "명령어") {
         var help = "\n✨ [ 이용 메뉴얼 ] ✨\n" +
                    " " + UI.D + "\n\n" +
@@ -82,7 +79,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 2. 파티 현황
+    // 2. 파티 현황 (짧은 구분선 적용)
     if (msg === "현황") {
         var keys = Object.keys(partyDB);
         if (keys.length === 0) {
@@ -94,6 +91,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         keys.sort();
         for (var i = 0; i < keys.length; i++) {
             body += getPartyStatusText(keys[i]) + "\n";
+            // 파티 사이에 짧은 구분선 추가
             if (i < keys.length - 1) body += " " + UI.D + "\n\n";
         }
         body += "\n💡 참여 [파티명] / 예약 [파티명]";
