@@ -15,7 +15,7 @@ const maxMembers = {
 
 // 🎨 심플함을 강조한 UI 엔진
 const UI = {
-    D: "----------", // 파티 사이 짧은 구분선
+    D: "--------------------------", // 파티 사이 짧은 구분선
     format: function(title, content) {
         return title + "\n" + content;
     }
