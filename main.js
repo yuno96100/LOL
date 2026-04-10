@@ -32,7 +32,7 @@ function getPartyStatusText(pId) {
     
     // 트리 연결선 제거 및 심플한 불렛(-) 적용
     for (var i = 0; i < p.members.length; i++) {
-        status += " - 🐥 " + p.members[i] + "\n";
+        status += " 🐥 " + p.members[i] + "\n";
     }
     
     if (p.reservations.length > 0) {
