@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v18.0.0
+ * [롤 구인구직 봇] lolgtec.js v19.0.0
  * - 주요 기능: 파티 생성, 참여, 이동, 예약, 예약취소, 파티삭제
- * - 변경 사항: 외곽 테두리 제거 및 제목-내용 사이 상단 구분선 레이아웃 적용
+ * - 변경 사항: 상단 구분선 제거, 도움말 메뉴 가독성 대폭 개선(리스트형 배치)
  */
 
 var partyDB = {};
@@ -13,16 +13,16 @@ const maxMembers = {
     "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "칼바람": 5
 };
 
-// 🎨 프레임 없는 깔끔한 UI 레이아웃 엔진
+// 🎨 군더더기를 뺀 미니멀 UI 엔진
 const UI = {
-    L: "━━━━━━━━━━━━━━━━━━", // 제목 하단 구분선
     D: "--------------------------", // 항목 간 구분선
     format: function(title, content) {
-        return title + "\n" + this.L + "\n" + content;
+        // 상단 구분선을 없애고 제목과 내용 사이 여백만 확보
+        return title + "\n" + content;
     }
 };
 
-// 🐥 가독성 최적화 파티 정보 유닛 생성
+// 🐥 가독성 최적화 파티 정보 유닛
 function getPartyStatusText(pId) {
     var p = partyDB[pId];
     if (!p) return "";
@@ -64,17 +64,21 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 명령어 가이드 (프레임 제거 버전)
+    // 1. 명령어 가이드 (리스트형으로 가독성 복구)
     if (msg === "명령어") {
-        var help = "\n[ 파티 생성 ]\n" +
-                   "📝 모드 시간 분위기\n" +
-                   "(예: 자랭 22시 즐겁게)\n\n" +
-                   "[ 빠른 명령어 ]\n" +
-                   "🔍 현황  |  ✅ 참여 [파티명]\n" +
-                   "⏳ 예약 [파티명]  |  ❌ 예약취소\n" +
-                   "🧨 파티삭제\n\n" +
+        var help = "\n✨ [ 이용 메뉴얼 ] ✨\n" +
+                   " " + UI.D + "\n\n" +
+                   "📝 파티 만들기\n" +
+                   "👉 모드 시간 분위기\n" +
+                   "👉 예) 자랭 22시 즐겜\n\n" +
+                   "🔍 현황 : 파티 목록 보기\n" +
+                   "✅ 참여 [파티명] : 파티 합류하기\n" +
+                   "⏳ 예약 [파티명] : 예약 명단 등록\n" +
+                   "❌ 예약취소 : 참여/예약 나가기\n" +
+                   "🧨 파티삭제 : 내 파티 해산하기\n\n" +
+                   " " + UI.D + "\n" +
                    "※ 아레나(8) / 내전(10) / 그외(5)";
-        replier.reply(UI.format("✨ 롤봇 이용 안내 ✨", help));
+        replier.reply(help);
         return;
     }
 
@@ -82,7 +86,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (msg === "현황") {
         var keys = Object.keys(partyDB);
         if (keys.length === 0) {
-            replier.reply(UI.format("✨ 실시간 파티 현황 ✨", "\n💡 현재 모집 중인 팀이 없어요.\n새로운 파티를 만들어보세요! (๑>ᴗ<๑)"));
+            replier.reply("✨ [ 실시간 파티 현황 ] ✨\n\n💡 현재 모집 중인 팀이 없어요.\n새로운 파티를 만들어보세요! (๑>ᴗ<๑)");
             return;
         }
         
@@ -92,8 +96,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             body += getPartyStatusText(keys[i]) + "\n";
             if (i < keys.length - 1) body += " " + UI.D + "\n\n";
         }
-        body += "\n💡 명령어: 참여 [파티명] / 예약 [파티명]";
-        replier.reply(UI.format("✨ 실시간 파티 현황 ✨", body));
+        body += "\n💡 참여 [파티명] / 예약 [파티명]";
+        replier.reply(UI.format("✨ [ 실시간 파티 현황 ] ✨", body));
         return;
     }
 
