@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v25.0.0
+ * [롤 구인구직 봇] lolgtec.js v26.0.0
  * - 주요 기능: 파티 생성, 참여(비고 포함), 이동, 예약, 예약취소(탈퇴)
- * - 변경 사항: 예약취소 명령어를 명시적으로 메뉴얼에 추가 및 기능 통합
+ * - 변경 사항: 메뉴얼 상단 공백 제거 및 파티 생성 후 합류 안내 문구 추가
  */
 
 var partyDB = {};
@@ -65,9 +65,9 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 명령어 가이드 (예약취소 명시)
+    // 1. 명령어 가이드 (상단 빈칸 제거)
     if (msg === "명령어") {
-        var help = "\n✨ [ 티모 대위의 작전 메뉴얼 ] ✨\n\n" +
+        var help = "✨ [ 티모 대위의 작전 메뉴얼 ] ✨\n\n" +
                    "📝 정찰조 편성하기\n" +
                    "👉 모드 시간 분위기\n" +
                    "👉 예) 자랭 22시 즐겜\n\n" +
@@ -101,7 +101,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 3. 파티 생성
+    // 3. 파티 생성 (합류 안내 문구 추가)
     var modeMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람)(?:\s+|$)/);
     if (modeMatch && msg.indexOf("참여 ") !== 0 && msg.indexOf("예약 ") !== 0) {
         var createMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람)\s+([^\s]+)\s+(.+)$/);
@@ -130,7 +130,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 time: createMatch[2], 
                 vibe: createMatch[3]
             };
-            replier.reply("🎉 정찰조 편성 완료\n\n티모 대위, 명 받들겠슴다! 🍄\n\n" + getPartyStatusText(pId));
+            replier.reply("🎉 정찰조 편성 완료\n\n티모 대위, 명 받들겠슴다! 🍄\n\n" + getPartyStatusText(pId) + "\n\n💡 같이 갈 대원은 '참여 " + pId + " [비고]'를 입력해주십쇼!");
             return;
         } else if (!msg.match(/^(내전|아레나|자랭|듀랭|칼바람)$/)) {
             replier.reply("⚠️ 통신 불량\n\n암호가 틀렸지 말입니다 💦\n👉 예시: 자랭 22시 즐겜\n띄어쓰기를 꼭 맞춰주십쇼!");
