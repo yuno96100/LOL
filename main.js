@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v23.0.0
- * - 주요 기능: 파티 생성, 참여(비고 포함), 이동, 예약, 예약취소, 파티삭제
- * - 변경 사항: 구분선 완전 제거, 명단 하이픈(-) 제거로 극강의 깔끔함 추구
+ * [롤 구인구직 봇] lolgtec.js v25.0.0
+ * - 주요 기능: 파티 생성, 참여(비고 포함), 이동, 예약, 예약취소(탈퇴)
+ * - 변경 사항: 예약취소 명령어를 명시적으로 메뉴얼에 추가 및 기능 통합
  */
 
 var partyDB = {};
@@ -22,7 +22,7 @@ function getPartyStatusText(pId) {
     status += "📅 " + p.time + "  |  💬 " + p.vibe + "\n";
     status += "📊 대원 현황 : " + p.members.length + " / " + p.max + " 명\n";
     
-    // 멤버 이름 옆에 비고(note)가 있으면 출력 (하이픈 기호 제거)
+    // 멤버 명단 출력 (하이픈 제거)
     for (var i = 0; i < p.members.length; i++) {
         var m = p.members[i];
         var noteStr = m.t ? " (" + m.t + ")" : "";
@@ -65,7 +65,7 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 명령어 가이드
+    // 1. 명령어 가이드 (예약취소 명시)
     if (msg === "명령어") {
         var help = "\n✨ [ 티모 대위의 작전 메뉴얼 ] ✨\n\n" +
                    "📝 정찰조 편성하기\n" +
@@ -73,7 +73,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "👉 예) 자랭 22시 즐겜\n\n" +
                    "🔍 현황 : 전체 정찰조 보기\n" +
                    "✅ 참여 [파티명] [비고]\n" +
-                   "👉 예) 참여 자랭1 탑\n" +
+                   "👉 예) 참여 자랭1 정글\n" +
                    "⏳ 예약 [파티명] : 대기조 등록\n" +
                    "❌ 예약취소 : 정찰조/대기조 이탈\n" +
                    "🧨 파티삭제 : 내 정찰조 해산하기\n\n" +
@@ -94,7 +94,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         keys.sort();
         for (var i = 0; i < keys.length; i++) {
             body += getPartyStatusText(keys[i]) + "\n";
-            // 구분선 대신 빈 줄로 파티 간격 띄움
             if (i < keys.length - 1) body += "\n";
         }
         body += "\n💡 참여 [파티명] [비고] / 예약 [파티명]";
@@ -139,7 +138,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
     }
 
-    // 4. 파티 참여 (비고란 처리 포함)
+    // 4. 파티 참여
     if (msg.indexOf("참여 ") === 0) {
         var parts = msg.split(" ");
         var targetId = parts[1];
@@ -205,15 +204,15 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 7. 예약취소
-    if (msg === "예약취소") {
+    // 7. 예약취소 및 탈퇴 통합
+    if (msg === "예약취소" || msg === "탈퇴") {
         var targetId = findUserParty(sender);
         var resId = findUserReservation(sender);
-        if (!targetId && !resId) { replier.reply("⚠️ 취소 실패\n\n취소할 작전이 없슴다! 💦"); return; }
+        if (!targetId && !resId) { replier.reply("⚠️ 취소 실패\n\n참여 중인 정찰조나 대기 명단이 없슴다! 💦"); return; }
         
         if (resId) {
             partyDB[resId].reservations.splice(partyDB[resId].reservations.indexOf(sender), 1);
-            replier.reply("💨 은신 완료\n\n대기조 명단에서 쇽! 빠져나왔슴다. 👋");
+            replier.reply("💨 작전 예약 취소\n\n대기조 명단에서 쇽! 빠져나왔슴다. 다음에 또 보십쇼! 👋");
         } else {
             var p = partyDB[targetId];
             for (var i = 0; i < p.members.length; i++) {
@@ -224,11 +223,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
             if (p.members.length === 0) {
                 delete partyDB[targetId];
-                replier.reply("🍃 정찰조 해산\n\n정찰대원이 모두 이탈해 부대가 해산됐슴다.");
+                replier.reply("🍃 정찰조 해산\n\n대원이 모두 이탈해 부대가 조용히 사라졌슴다.");
             } else {
-                var exitMsg = "호다닥! " + sender + " 대원님이 은신해버렸슴다 💦\n\n" + getPartyStatusText(targetId);
+                var exitMsg = "호다닥! " + sender + " 대원님이 작전에서 빠졌슴다 💦\n\n" + getPartyStatusText(targetId);
                 if (p.reservations.length > 0) exitMsg += "\n\n🔔 삐용삐용! 대기 1순위 [" + p.reservations[0] + "] 대원님!\n자리가 났슴다! '참여 " + targetId + "' 입력 실시! ٩(๑•̀ㅂ•́)و";
-                replier.reply("💨 대원 이탈\n\n" + exitMsg);
+                replier.reply("💨 대원 퇴장\n\n" + exitMsg);
             }
         }
         return;
