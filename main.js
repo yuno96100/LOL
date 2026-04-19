@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v31.0.0
+ * [롤 구인구직 봇] lolgtec.js v32.0.0
  * - 주요 기능: 파티 생성, 참여, 예약, 탈퇴, 삭제
- * - 변경 사항: 메인 파티 귀속형 서브 파티(대기게임) 시스템 도입
+ * - 변경 사항: 대기게임 참여 권한 외부인 개방, 파티 생성 안내 문구 롤백
  */
 
 var partyDB = {};
@@ -22,7 +22,7 @@ function getPartyStatusText(pId) {
     status += "📅 " + p.time + "  |  💬 " + p.vibe + "\n";
     status += "📊 현황 : " + p.members.length + " / " + p.max + " 명\n";
     
-    // 메인 멤버 명단 (구분선/하이픈 없음)
+    // 메인 멤버 명단
     for (var i = 0; i < p.members.length; i++) {
         var m = p.members[i];
         var noteStr = m.t ? " (" + m.t + ")" : "";
@@ -43,31 +43,36 @@ function getPartyStatusText(pId) {
     return status.replace(/\n$/, "");
 }
 
-// 자동 탈퇴 처리 함수 (대기게임 소속도 함께 정리)
+// 자동 탈퇴 처리 함수 (외부인의 대기게임 소속도 완벽하게 정리)
 function clearUserStatus(user) {
     for (var id in partyDB) {
         var p = partyDB[id];
         
-        // 메인 멤버에서 제거
+        // 1. 대기게임에서 이름 제거 (메인 멤버 여부와 무관하게 무조건 검사)
+        if (p.sub) {
+            var subIdx = p.sub.members.indexOf(user);
+            if (subIdx !== -1) {
+                p.sub.members.splice(subIdx, 1);
+                if (p.sub.members.length === 0) delete p.sub;
+            }
+        }
+        
+        // 2. 메인 멤버에서 제거
+        var removedMain = false;
         for (var i = 0; i < p.members.length; i++) {
             if (p.members[i].n === user) {
                 p.members.splice(i, 1);
-                
-                // 속해있던 대기게임에서도 이름 제거
-                if (p.sub) {
-                    var subIdx = p.sub.members.indexOf(user);
-                    if (subIdx !== -1) {
-                        p.sub.members.splice(subIdx, 1);
-                        if (p.sub.members.length === 0) delete p.sub;
-                    }
-                }
-                
-                if (p.members.length === 0) delete partyDB[id];
+                removedMain = true;
                 break;
             }
         }
         
-        // 예약 명단에서 제거
+        if (removedMain && p.members.length === 0) {
+            delete partyDB[id];
+            continue; // 파티 자체가 사라졌으므로 아래 예약 지우기 패스
+        }
+        
+        // 3. 예약 명단에서 제거
         if (partyDB[id]) {
             var resIdx = partyDB[id].reservations.indexOf(user);
             if (resIdx !== -1) partyDB[id].reservations.splice(resIdx, 1);
@@ -96,7 +101,7 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 명령어 가이드 (대기게임 설명 추가)
+    // 1. 명령어 가이드
     if (msg === "명령어") {
         var help = "\n✨ [ 롤 구인 시스템 메뉴얼 ] ✨\n\n" +
                    "📝 파티 만들기\n" +
@@ -106,7 +111,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "⏳ 예약 [파티명] : 예약 명단 등록\n" +
                    "❌ 탈퇴 : 파티/예약 취소\n" +
                    "🧨 파티삭제 : 내 파티 해산하기\n\n" +
-                   "🎮 대기게임 (메인 파티원 전용 미니게임)\n" +
+                   "🎮 대기게임 (메인 파티 종속 미니게임)\n" +
                    "👉 대기게임 [파티명] [모드] (예: 대기게임 자랭1 칼바람)\n" +
                    "👉 대기참여 [파티명]\n" +
                    "👉 대기탈퇴\n\n" +
@@ -132,7 +137,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 3. 메인 파티 생성
+    // 3. 메인 파티 생성 (안내 문구 롤백)
     var modeMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람|기타게임)(?:\s+|$)/);
     if (modeMatch && msg.indexOf("참여 ") === -1 && msg.indexOf("예약 ") === -1 && msg.indexOf("파티삭제") === -1 && msg.indexOf("대기") === -1) {
         var createMatch = msg.match(/^(내전|아레나|자랭|듀랭|칼바람|기타게임)\s+([^\s]+)\s+(.+)$/);
@@ -145,7 +150,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 mode: mode, members: [{n: sender, t: ""}], reservations: [],
                 max: maxMembers[mode], time: createMatch[2], vibe: createMatch[3]
             };
-            replier.reply("🎉 파티 생성 완료\n\n" + getPartyStatusText(pId));
+            replier.reply("🎉 파티 생성 완료\n\n성공적으로 파티를 생성했습니다!\n\n" + getPartyStatusText(pId) + "\n\n💡 같이 하실 분은 '참여 " + pId + " [비고]'를 입력해주세요");
             return;
         }
     }
@@ -192,7 +197,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 6. 대기게임 생성
+    // 6. 대기게임 생성 (메인 파티 멤버만 가능 유지)
     if (msg.indexOf("대기게임 ") === 0) {
         var parts = msg.split(" ");
         var targetId = parts[1];
@@ -213,17 +218,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 7. 대기게임 참여
+    // 7. 대기게임 참여 (권한 해제: 누구나 참여 가능)
     if (msg.indexOf("대기참여 ") === 0) {
         var targetId = msg.split(" ")[1];
         if (!partyDB[targetId]) { replier.reply("⚠️ 존재하지 않는 파티입니다."); return; }
         var p = partyDB[targetId];
         
         if (!p.sub) { replier.reply("⚠️ 진행 중인 대기게임이 없습니다."); return; }
-        
-        var isMember = false;
-        for(var i=0; i < p.members.length; i++) if(p.members[i].n === sender) isMember = true;
-        if (!isMember) { replier.reply("⚠️ 메인 파티 멤버만 대기게임에 참여할 수 있습니다."); return; }
         if (p.sub.members.indexOf(sender) !== -1) { replier.reply("⚠️ 이미 대기게임에 참여 중입니다."); return; }
 
         p.sub.members.push(sender);
@@ -290,7 +291,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         var p = partyDB[targetId];
         
-        // 메인 멤버에서 제거 및 대기게임 동시 정리
+        // 메인 멤버에서 제거 (이때 대기게임 소속도 함께 정리)
         for (var i = 0; i < p.members.length; i++) {
             if (p.members[i].n === sender) {
                 p.members.splice(i, 1);
