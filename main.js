@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v37.0.0 (최종 무결성 통합본)
+ * [롤 구인구직 봇] lolgtec.js v38.0.0 (최종 무결성 통합본)
  * - 주요 기능: 파티 생성, 참여, 예약, 탈퇴, 삭제 (자동 정리 기본)
- * - 변경 사항: 고객님의 기존 완벽한 UI 레이아웃 원본 유지 + 안전한 DB 영구 저장 기능(오류 방지) 결합
+ * - 변경 사항: 임시 참여 인원 개별 시각적 구분(🌟), 도움말(명령어) 가이드 상세 보강
  */
 
 var partyDB = {};
@@ -35,7 +35,7 @@ const maxMembers = {
     "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "칼바람": 5, "기타게임": 5
 };
 
-// 실시간 파티 정보 유닛 (메인/임시 시각적 구분 적용)
+// 실시간 파티 정보 유닛 (임시 멤버 시각적 구분 적용)
 function getPartyStatusText(pId) {
     var p = partyDB[pId];
     if (!p) return "";
@@ -51,7 +51,9 @@ function getPartyStatusText(pId) {
     for (var i = 0; i < p.members.length; i++) {
         var m = p.members[i];
         var noteStr = m.t ? " (" + m.t + ")" : "";
-        status += "👤 " + m.n + noteStr + "\n";
+        // 멤버가 임시 참여자인지 확인하여 아이콘 분리 (메인:👤, 임시:🌟)
+        var mIcon = m.isTemp ? "🌟" : "👤"; 
+        status += mIcon + " " + m.n + noteStr + "\n";
     }
     
     if (p.reservations.length > 0) {
@@ -116,22 +118,29 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 명령어 가이드
+    // 1. 명령어 가이드 (도움말 상세 보강)
     if (msg === "명령어") {
         var help = "\n✨ [ 롤 구인 시스템 메뉴얼 ] ✨\n\n" +
-                   "🏆 [ 메인 기능 : 자동 정리 ]\n" +
-                   "👉 모드 시간 분위기\n" +
-                   "👉 참여 [파티명] [비고]\n\n" +
-                   "🌟 [ 임시 기능 : 기존 유지 ]\n" +
+                   "🏆 [ 메인 기능 : 자동 탈퇴 적용 ]\n" +
+                   "※ 새로운 파티 생성/참여 시 기존 파티에서 자동 탈퇴됩니다.\n" +
+                   "👉 [모드] [시간] [분위기] (예: 자랭 22시 즐겜)\n" +
+                   "👉 참여 [파티명] [비고] (예: 참여 자랭1 미드)\n" +
+                   "👉 예약 [파티명]\n\n" +
+                   "🌟 [ 임시 기능 : 기존 파티 유지 ]\n" +
+                   "※ 메인 파티를 기다리며 임시로 다른 게임을 할 때 씁니다. (최대 2개 소속 가능)\n" +
                    "👉 임시생성 [모드] [시간] [분위기]\n" +
-                   "👉 임시참여 [파티명] [비고]\n\n" +
-                   "🔍 현황  |  ❌ 탈퇴  |  🧨 파티삭제\n" +
+                   "👉 임시참여 [파티명] [비고]\n" +
+                   "👉 임시예약 [파티명]\n\n" +
+                   "⚙️ [ 관리 명령어 ]\n" +
+                   "🔍 현황 : 모집 중인 파티 전체 보기\n" +
+                   "❌ 탈퇴 [파티명] : 특정 파티 나가기/예약취소\n" +
+                   "🧨 파티삭제 [파티명] : 내 파티 폭파하기\n\n" +
                    "※ 지원: 내전, 아레나, 자랭, 듀랭, 칼바람, 기타게임";
         replier.reply(help);
         return;
     }
 
-    // 2. 파티 현황 (가독성 개선)
+    // 2. 파티 현황
     if (msg === "현황") {
         var keys = Object.keys(partyDB);
         if (keys.length === 0) {
@@ -169,12 +178,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             var mode = createMatch[1]; 
             var pId = getNextPartyId(mode); 
             partyDB[pId] = {
-                mode: mode, members: [{n: sender, t: ""}], reservations: [],
+                mode: mode, 
+                members: [{n: sender, t: "", isTemp: isTempCreate}], // 생성자 임시 여부 저장
+                reservations: [],
                 max: maxMembers[mode], time: createMatch[2], vibe: createMatch[3],
-                isTemp: isTempCreate // 임시 여부 저장
+                isTemp: isTempCreate 
             };
             
-            saveDB(); // DB 저장 추가
+            saveDB(); // DB 저장
             var prefix = isTempCreate ? "🌟 임시 파티 생성 완료" : "🎉 파티 생성 완료";
             replier.reply(prefix + "\n\n성공적으로 파티를 생성했습니다!\n\n" + getPartyStatusText(pId) + "\n\n💡 같이 하실 분은 '참여 " + pId + " [비고]'를 입력해주세요");
             return;
@@ -204,8 +215,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             clearUserStatus(sender);
         }
 
-        p.members.push({n: sender, t: note});
-        saveDB(); // DB 저장 추가
+        // 합류 시 해당 멤버가 '임시'로 들어왔는지 플래그 저장
+        p.members.push({n: sender, t: note, isTemp: isTempJoin});
+        saveDB(); // DB 저장
         var prefix = isTempJoin ? "🌟 임시 합류 완료" : "✅ 파티 참여 완료";
         replier.reply(prefix + "\n\n" + sender + "님 합류!\n\n" + getPartyStatusText(targetId));
         return;
@@ -229,8 +241,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         partyDB[targetId].reservations.push(sender);
-        saveDB(); // DB 저장 추가
-        replier.reply("📝 " + (isTempRes ? "임시 " : "") + "예약 완료\n\n" + getPartyStatusText(targetId));
+        saveDB(); // DB 저장
+        replier.reply("📝 " + (isTempRes ? "임시 " : "") + "예약 완료\n\n" + sender + "님, 자리가 나면 알려드릴게요!\n\n" + getPartyStatusText(targetId));
         return;
     }
 
@@ -241,14 +253,14 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         if (targetId) {
             if (partyDB[targetId]) {
                 delete partyDB[targetId];
-                saveDB(); // DB 저장 추가
-                replier.reply("🧨 [" + targetId + "] 파티를 삭제했습니다.");
+                saveDB(); 
+                replier.reply("🧨 파티 삭제\n\n[" + targetId + "] 파티가 해산되었습니다.");
             } else { replier.reply("⚠️ 존재하지 않는 파티입니다."); }
         } else {
             if (userParties.length === 1) {
                 delete partyDB[userParties[0]];
-                saveDB(); // DB 저장 추가
-                replier.reply("🧨 [" + userParties[0] + "] 파티를 삭제했습니다.");
+                saveDB(); 
+                replier.reply("🧨 파티 삭제\n\n[" + userParties[0] + "] 파티가 해산되었습니다.");
             } else { replier.reply("⚠️ '파티삭제 [파티명]'으로 지정해주세요."); }
         }
         return;
@@ -284,10 +296,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         if (p.members.length === 0) {
             delete partyDB[finalId];
-            saveDB(); // DB 저장 추가
+            saveDB(); 
             replier.reply("🍃 [" + finalId + "] 파티가 해산되었습니다.");
         } else {
-            saveDB(); // DB 저장 추가
+            saveDB(); 
             var exitMsg = "💨 " + sender + "님이 [" + finalId + "] 파티에서 퇴장했습니다.\n\n" + getPartyStatusText(finalId);
             if (p.reservations.length > 0) exitMsg += "\n\n🔔 알림: 대기 1순위 [" + p.reservations[0] + "]님!";
             replier.reply(exitMsg);
