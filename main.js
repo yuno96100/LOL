@@ -112,7 +112,7 @@ function getNextPartyId(mode) {
 }
 
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
-    if (room !== "ㅇㅇ") return;
+    if (room !== "LOL지텍 구인방") return;
 
     // 1. 명령어 가이드 (메모 기입란 제거 및 완벽 분리)
     if (msg === "명령어") {
