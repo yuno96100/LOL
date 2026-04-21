@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v47.0.0 (최종 커스텀 파티 적용본)
+ * [롤 구인구직 봇] lolgtec.js v48.0.0 (최종 커스텀 파티 적용본)
  * - 주요 기능: 파티 생성, 참여, 예약, 탈퇴, 삭제, 수정
- * - 변경 사항: '기타게임' 고정 틀 폐지 및 게임명/인원수를 직접 정하는 '기타(커스텀)' 로직 도입
+ * - 변경 사항: '비고'를 '메모'로 명칭 변경, 매뉴얼 하단 파티 해산 권고 문구 추가
  */
 
 var partyDB = {};
@@ -114,28 +114,30 @@ function getNextPartyId(mode) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ") return;
 
-    // 1. 명령어 가이드
+    // 1. 명령어 가이드 (메모로 명칭 변경 및 공지 추가)
     if (msg === "명령어") {
         var help = "✨ [ 롤 구인 시스템 매뉴얼 ] ✨\n\n" +
                    "🏆 [ 롤 파티 생성 ] (자동 탈퇴 적용)\n" +
-                   "👉 [모드] [시간] [티어(선택)] [분위기(선택)]\n" +
-                   "👉 예) 자랭 22시 (티어:미정, 분위기:즐겜 자동 적용)\n" +
+                   "👉 [모드] [시간] [티어(선택)] [분위기(선택)] [메모(선택)]\n" +
                    "👉 예) 자랭 22시 골드 빡겜 원딜\n\n" +
                    "🎮 [ 타 게임 파티 생성 ] (커스텀)\n" +
-                   "👉 기타 [게임명] [최대인원] [시간] [분위기(선택)] [비고]\n" +
+                   "👉 기타 [게임명] [최대인원] [시간] [분위기(선택)] [메모]\n" +
                    "👉 예) 기타 배그 4 22시 빡겜 디코필수\n\n" +
                    "🌟 [ 임시 파티 생성 ] (기존 파티 유지)\n" +
                    "👉 임시생성 [모드] [시간] ...\n" +
                    "👉 임시생성 기타 [게임명] [인원] [시간] ...\n\n" +
                    "✅ [ 참여 및 관리 명령어 ]\n" +
-                   "👉 참여 [파티명] [비고]\n" +
-                   "👉 임시참여 [파티명] [비고]\n" +
+                   "👉 참여 [파티명] [메모]\n" +
+                   "👉 임시참여 [파티명] [메모]\n" +
                    "👉 예약 [파티명] / 임시예약 [파티명]\n" +
                    "🔍 현황 : 파티 전체 보기\n" +
                    "🔄 수정 [파티명] [시간] [티어] [분위기] (방장 전용)\n" +
                    "❌ 탈퇴 [파티명] : 파티 나가기/예약취소\n" +
                    "🗑️ 파티삭제 [파티명] : 파티 해산하기\n\n" +
-                   "※ 기본 지원: 내전, 아레나, 자랭, 듀랭, 칼바람, 기타";
+                   "💡 [ 메모 활용 안내 ]\n" +
+                   "※ 파티명 뒤에 포지션, 티어 등 간단한 메모를 기재할 수 있습니다.\n\n" +
+                   "⚠️ 파티가 종료되거나 해산할 경우, 반드시 '파티삭제 [파티명]' 명령어로 방을 정리해 주시기 바랍니다.\n\n" +
+                   "※ 지원: 내전, 아레나, 자랭, 듀랭, 칼바람, 기타";
         replier.reply(help);
         return;
     }
@@ -153,12 +155,12 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             body += getPartyStatusText(keys[i]) + "\n";
             if (i < keys.length - 1) body += "--------------------------\n";
         }
-        body += "\n💡 참여 [파티명] [비고] / 임시참여 [파티명] [비고]";
+        body += "\n💡 참여 [파티명] [메모] / 임시참여 [파티명] [메모]";
         replier.reply(body);
         return;
     }
 
-    // 3. 파티 생성 (하이브리드 & 커스텀 기타 파싱 적용)
+    // 3. 파티 생성
     var isTempCreate = (msg.indexOf("임시생성 ") === 0);
     var createStr = isTempCreate ? msg.replace("임시생성 ", "").trim() : msg.trim();
     
@@ -224,7 +226,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             
             saveDB(); 
             var prefix = isTempCreate ? "✅ 임시 파티 생성 완료" : "✅ 파티 생성 완료";
-            replier.reply(prefix + "\n\n파티가 생성되었습니다.\n\n" + getPartyStatusText(pId) + "\n\n💡 참여 [파티명] [비고] 명령어로 합류할 수 있습니다.");
+            replier.reply(prefix + "\n\n파티가 생성되었습니다.\n\n" + getPartyStatusText(pId) + "\n\n💡 참여 [파티명] [메모] 명령어로 합류할 수 있습니다.");
             return;
             
         } else if (isTempCreate) {
@@ -320,7 +322,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         var userParties = getUserParties(sender);
         
         if (userParties.length === 0) {
-            replier.reply("⚠️ 탈퇴 실패: 현재 참여 중인 파티나 예약이 없습니다.");
+            replier.reply("⚠️ 탈퇴 실패: 현재 참여 중인 파티나 예약 내역이 없습니다.");
             return;
         }
 
@@ -370,7 +372,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 8. 파티 수정 (방장 전용 기능)
+    // 8. 파티 수정
     if (msg.indexOf("수정 ") === 0) {
         var parts = msg.split(/\s+/);
         var targetId = parts[1];
@@ -395,7 +397,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         var validModesArray = ["내전", "아레나", "자랭", "듀랭", "칼바람"];
         var isCustomGame = (validModesArray.indexOf(p.mode) === -1);
         
-        // 커스텀 게임이거나 칼바람, 아레나, 내전이면 기본 티어를 "무관"으로 설정
         var defaultTier = (isCustomGame || p.mode === "칼바람" || p.mode === "아레나" || p.mode === "내전") ? "무관" : "미정";
         p.tier = parts[3] || defaultTier;
         p.vibe = parts[4] || "즐겜";
