@@ -456,4 +456,102 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         var isMember = false;
-        for (
+        for (var i = 0; i < p.members.length; i++) {
+            if (isNameMatch(p.members[i].n, sender)) {
+                p.members[i].t = note;
+                isMember = true;
+                break;
+            }
+        }
+
+        if (!isMember) {
+            replier.reply("⚠️ 메모 갱신 실패: [" + targetId + "] 파티에 소속된 대원만 메모를 수정할 수 있습니다.");
+            return;
+        }
+
+        saveDB();
+        replier.reply("📝 메모 갱신 완료\n\n" + sender + "님의 파티 메모가 업데이트되었습니다.\n\n" + getPartyStatusText(targetId));
+        return;
+    }
+
+    if (msg.indexOf("강제참여 ") === 0) {
+        var modeRegex = /^강제참여\s+(\S+)\s+@?(\d{2}\s*[남여]\s*[^\s]+|\S+)(?:\s+(.*))?$/;
+        var match = msg.match(modeRegex);
+        
+        if (!match) {
+            replier.reply("⚠️ 입력 오류: 대리 참석시킬 파티명과 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @랄호 미드");
+            return;
+        }
+        var targetId = match[1];
+        var targetName = match[2].replace(/@/g, "").replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "");
+        var note = match[3] || ""; 
+
+        if (!partyDB[targetId]) { replier.reply("⚠️ 강제참여 실패: 해당 파티를 찾을 수 없습니다."); return; }
+        var p = partyDB[targetId];
+        if (p.members.length >= p.max) { replier.reply("⚠️ 인원 초과: 정원이 마감되었습니다."); return; }
+
+        var isDuplicate = false;
+        for (var i = 0; i < p.members.length; i++) {
+            if (isNameMatch(p.members[i].n, targetName)) { isDuplicate = true; break; }
+        }
+        if (isDuplicate) { replier.reply("⚠️ 중복 참여: 해당 유저는 이미 파티에 소속되어 있습니다."); return; }
+
+        p.members.push({n: targetName, t: note, isTemp: p.isTemp, isForced: true});
+        saveDB();
+        replier.reply("✅ 강제 참여 완료\n\n[" + targetName + "]님이 파티에 추가되었습니다.\n\n" + getPartyStatusText(targetId));
+        return;
+    }
+
+    if (msg.indexOf("강제탈퇴 ") === 0) {
+        var modeRegex = /^강제탈퇴\s+(\S+)\s+@?(\d{2}\s*[남여]\s*[^\s]+|\S+)/;
+        var match = msg.match(modeRegex);
+        
+        if (!match) {
+            replier.reply("⚠️ 입력 오류: 강제 퇴장시킬 파티명과 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @랄호");
+            return;
+        }
+        var targetId = match[1];
+        var targetName = match[2].replace(/@/g, "").replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "");
+
+        if (!partyDB[targetId]) { replier.reply("⚠️ 강제탈퇴 실패: 해당 파티를 찾을 수 없습니다."); return; }
+        var p = partyDB[targetId];
+
+        var isRemoved = false;
+        var resIdx = -1;
+        for (var k = 0; k < p.reservations.length; k++) {
+            if (isNameMatch(p.reservations[k], targetName)) { resIdx = k; break; }
+        }
+        
+        if (resIdx !== -1) {
+            p.reservations.splice(resIdx, 1);
+            isRemoved = true;
+        } else {
+            for (var i = 0; i < p.members.length; i++) {
+                if (isNameMatch(p.members[i].n, targetName)) {
+                    var removedName = p.members[i].n; 
+                    p.members.splice(i, 1);
+                    isRemoved = true;
+                    targetName = removedName; 
+                    break;
+                }
+            }
+        }
+
+        if (!isRemoved) {
+            replier.reply("⚠️ 강제탈퇴 실패: 해당 유저를 명단에서 찾을 수 없습니다.");
+            return;
+        }
+
+        if (p.members.length === 0) {
+            delete partyDB[targetId];
+            saveDB();
+            replier.reply("🗑️ 파티 자동 해산\n\n마지막 멤버의 이탈로 [" + targetId + "] 파티가 해산되었습니다.");
+        } else {
+            saveDB();
+            replier.reply("❌ 강제 탈퇴 완료\n\n[" + targetName + "]님이 파티에서 제외되었습니다.\n\n" + getPartyStatusText(targetId));
+        }
+        return;
+    }
+}
+//=== 수정 끝 ===
+// (파일 최하단)
