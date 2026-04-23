@@ -2,8 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v59.0.0 (가이드 레이아웃 조정)
- * - 변경 사항: '명령어' 가이드 내 '지원 모드' 안내 문구를 최하단으로 이동
+ * [롤 구인구직 봇] lolgtec.js v61.0.0 (다중 멘션 처리 및 강제참여 메모 삭제)
+ * - 변경 사항: 강제참여/강제탈퇴 시 '@'를 기준으로 다수의 유저를 한 번에 처리하는 기능 추가
+ * - 효과: 여러 명을 동시에 멘션하여 파티에 일괄 추가 및 삭제 가능
  */
 
 var partyDB = {};
@@ -16,12 +17,16 @@ try {
         var dbData = File.read(DB_PATH);
         if (dbData) partyDB = JSON.parse(dbData);
     }
+} catch (e) {
+    partyDB = {}; 
+}
+
+try {
     if (File.exists(CONFIG_PATH)) {
         var confData = File.read(CONFIG_PATH);
         if (confData) isLive = JSON.parse(confData).isLive;
     }
 } catch (e) {
-    partyDB = {}; 
     isLive = false;
 }
 
@@ -176,9 +181,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "🔴 [ 관리 및 예외 처리 ] (방장 / 대리용)\n" +
                    "👉 수정 : 수정 [파티명] [시간] [티어] [분위기] (방장 전용)\n" +
                    "👉 삭제 : 파티삭제 [파티명] (파티 완전 해산)\n" +
-                   "👉 대리 : 강제참여 [파티명] @[이름] [메모]\n" +
-                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름]\n\n" +
-                   "💡 강제참여 시 카카오톡의 '@' 멘션 기능을 활용하시면 이름이 완벽하게 자동입력 됩니다.\n\n" +
+                   "👉 대리 : 강제참여 [파티명] @[이름] @[이름]...\n" +
+                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름] @[이름]...\n\n" +
+                   "💡 강제명령어 시 여러 명을 멘션하여 한 번에 등록/제거가 가능합니다.\n\n" +
                    "⚠️ 파티가 끝났거나 폭파될 땐 꼭 '파티삭제 [파티명]'으로 방을 정리해 주세요!\n" +
                    "🚫 동시 입력 시 처리가 누락될 수 있으니 앞선 메시지 처리 후 입력을 권장합니다.\n\n" +
                    "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 칼바람, 기타";
@@ -474,82 +479,156 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
+    // 💡 [핵심] 다중 멘션을 처리하는 강제참여 로직
     if (msg.indexOf("강제참여 ") === 0) {
-        var modeRegex = /^강제참여\s+(\S+)\s+@?(\d{2}\s*[남여]\s*[^\s]+|\S+)(?:\s+(.*))?$/;
-        var match = msg.match(modeRegex);
-        
-        if (!match) {
-            replier.reply("⚠️ 입력 오류: 대리 참석시킬 파티명과 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @랄호 미드");
+        var parts = msg.split(/\s+/);
+        if (parts.length < 3) {
+            replier.reply("⚠️ 입력 오류: 파티명과 멘션할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무 @여름");
             return;
         }
-        var targetId = match[1];
-        var targetName = match[2].replace(/@/g, "").replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "");
-        var note = match[3] || ""; 
-
+        var targetId = parts[1];
+        
         if (!partyDB[targetId]) { replier.reply("⚠️ 강제참여 실패: 해당 파티를 찾을 수 없습니다."); return; }
         var p = partyDB[targetId];
-        if (p.members.length >= p.max) { replier.reply("⚠️ 인원 초과: 정원이 마감되었습니다."); return; }
 
-        var isDuplicate = false;
-        for (var i = 0; i < p.members.length; i++) {
-            if (isNameMatch(p.members[i].n, targetName)) { isDuplicate = true; break; }
+        // 파티명 뒤의 문자열을 통째로 가져와서 '@'를 기준으로 자릅니다.
+        var rawNamesStr = msg.replace("강제참여 " + targetId, "").trim();
+        var nameList = [];
+        
+        if (rawNamesStr.indexOf("@") !== -1) {
+            var splitNames = rawNamesStr.split("@");
+            for (var i = 1; i < splitNames.length; i++) {
+                // 숨김문자 제거 및 공백 제거
+                var cleanedName = splitNames[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+                if (cleanedName) nameList.push(cleanedName);
+            }
+        } else {
+            // @를 안 쓰고 닉네임만 쳤을 경우를 위한 백업 로직
+            var cleanedName = rawNamesStr.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+            if (cleanedName) nameList.push(cleanedName);
         }
-        if (isDuplicate) { replier.reply("⚠️ 중복 참여: 해당 유저는 이미 파티에 소속되어 있습니다."); return; }
 
-        p.members.push({n: targetName, t: note, isTemp: p.isTemp, isForced: true});
-        saveDB();
-        replier.reply("✅ 강제 참여 완료\n\n[" + targetName + "]님이 파티에 추가되었습니다.\n\n" + getPartyStatusText(targetId));
+        var addedNames = [];
+        var errorMsgs = [];
+
+        for (var n = 0; n < nameList.length; n++) {
+            var targetName = nameList[n];
+
+            if (p.members.length >= p.max) {
+                errorMsgs.push("[" + targetName + "] 정원 초과");
+                continue;
+            }
+
+            var isDuplicate = false;
+            for (var j = 0; j < p.members.length; j++) {
+                if (isNameMatch(p.members[j].n, targetName)) { isDuplicate = true; break; }
+            }
+            if (isDuplicate) {
+                errorMsgs.push("[" + targetName + "] 중복 참여");
+                continue;
+            }
+
+            // 메모(t)는 일괄 공란 처리
+            p.members.push({n: targetName, t: "", isTemp: p.isTemp, isForced: true});
+            addedNames.push(targetName);
+        }
+
+        if (addedNames.length > 0) saveDB();
+
+        var replyMsg = "";
+        if (addedNames.length > 0) {
+            replyMsg += "✅ 강제 참여 완료\n\n[" + addedNames.join(", ") + "]님이 파티에 추가되었습니다.\n\n" + getPartyStatusText(targetId);
+        }
+        if (errorMsgs.length > 0) {
+            if (replyMsg) replyMsg += "\n\n";
+            replyMsg += "⚠️ 일부 실패 내역: " + errorMsgs.join(", ");
+        }
+        if (!replyMsg) replyMsg = "⚠️ 명단에 추가된 인원이 없습니다.";
+
+        replier.reply(replyMsg);
         return;
     }
 
+    // 💡 [핵심] 다중 멘션을 처리하는 강제탈퇴 로직
     if (msg.indexOf("강제탈퇴 ") === 0) {
-        var modeRegex = /^강제탈퇴\s+(\S+)\s+@?(\d{2}\s*[남여]\s*[^\s]+|\S+)/;
-        var match = msg.match(modeRegex);
-        
-        if (!match) {
-            replier.reply("⚠️ 입력 오류: 강제 퇴장시킬 파티명과 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @랄호");
+        var parts = msg.split(/\s+/);
+        if (parts.length < 3) {
+            replier.reply("⚠️ 입력 오류: 파티명과 멘션할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무 @여름");
             return;
         }
-        var targetId = match[1];
-        var targetName = match[2].replace(/@/g, "").replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "");
+        var targetId = parts[1];
 
         if (!partyDB[targetId]) { replier.reply("⚠️ 강제탈퇴 실패: 해당 파티를 찾을 수 없습니다."); return; }
         var p = partyDB[targetId];
 
-        var isRemoved = false;
-        var resIdx = -1;
-        for (var k = 0; k < p.reservations.length; k++) {
-            if (isNameMatch(p.reservations[k], targetName)) { resIdx = k; break; }
-        }
+        var rawNamesStr = msg.replace("강제탈퇴 " + targetId, "").trim();
+        var nameList = [];
         
-        if (resIdx !== -1) {
-            p.reservations.splice(resIdx, 1);
-            isRemoved = true;
-        } else {
-            for (var i = 0; i < p.members.length; i++) {
-                if (isNameMatch(p.members[i].n, targetName)) {
-                    var removedName = p.members[i].n; 
-                    p.members.splice(i, 1);
-                    isRemoved = true;
-                    targetName = removedName; 
-                    break;
-                }
+        if (rawNamesStr.indexOf("@") !== -1) {
+            var splitNames = rawNamesStr.split("@");
+            for (var i = 1; i < splitNames.length; i++) {
+                var cleanedName = splitNames[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+                if (cleanedName) nameList.push(cleanedName);
             }
+        } else {
+            var cleanedName = rawNamesStr.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+            if (cleanedName) nameList.push(cleanedName);
         }
 
-        if (!isRemoved) {
-            replier.reply("⚠️ 강제탈퇴 실패: 해당 유저를 명단에서 찾을 수 없습니다.");
-            return;
+        var removedNames = [];
+        var notFoundNames = [];
+
+        for (var n = 0; n < nameList.length; n++) {
+            var targetName = nameList[n];
+            var isRemoved = false;
+            var resIdx = -1;
+            
+            for (var k = 0; k < p.reservations.length; k++) {
+                if (isNameMatch(p.reservations[k], targetName)) { resIdx = k; break; }
+            }
+            
+            if (resIdx !== -1) {
+                var actualName = p.reservations[resIdx];
+                p.reservations.splice(resIdx, 1);
+                isRemoved = true;
+                removedNames.push(actualName);
+            } else {
+                for (var j = 0; j < p.members.length; j++) {
+                    if (isNameMatch(p.members[j].n, targetName)) {
+                        var actualName = p.members[j].n; 
+                        p.members.splice(j, 1);
+                        isRemoved = true;
+                        removedNames.push(actualName);
+                        break;
+                    }
+                }
+            }
+
+            if (!isRemoved) {
+                notFoundNames.push(targetName);
+            }
         }
 
         if (p.members.length === 0) {
             delete partyDB[targetId];
             saveDB();
             replier.reply("🗑️ 파티 자동 해산\n\n마지막 멤버의 이탈로 [" + targetId + "] 파티가 해산되었습니다.");
-        } else {
+            return;
+        } else if (removedNames.length > 0) {
             saveDB();
-            replier.reply("❌ 강제 탈퇴 완료\n\n[" + targetName + "]님이 파티에서 제외되었습니다.\n\n" + getPartyStatusText(targetId));
         }
+
+        var replyMsg = "";
+        if (removedNames.length > 0) {
+            replyMsg += "❌ 강제 탈퇴 완료\n\n[" + removedNames.join(", ") + "]님이 파티에서 제외되었습니다.\n\n" + getPartyStatusText(targetId);
+        }
+        if (notFoundNames.length > 0) {
+            if (replyMsg) replyMsg += "\n\n";
+            replyMsg += "⚠️ 명단 없음: [" + notFoundNames.join(", ") + "]";
+        }
+        if (!replyMsg) replyMsg = "⚠️ 제외된 인원이 없습니다.";
+
+        replier.reply(replyMsg);
         return;
     }
 }
