@@ -2,17 +2,15 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js v63.0.0 (데이터베이스 완전 분리 아키텍처)
- * - 변경 사항: 'ㅇㅇ'방과 '구인방'의 데이터를 물리적으로 분리하는 듀얼 DB 시스템 도입
- * - 효과: 코드 수정 시 즉각적으로 두 방에 기능이 업데이트되나, 파티 명단(데이터)은 서로 절대 섞이지 않음
+ * [롤 구인구직 봇] lolgtec.js v66.0.0 (지원 모드 '솔랭' 추가)
+ * - 변경 사항: 파티 생성 및 수정 지원 모드에 '솔랭' 추가 (최대 인원 1명)
  */
 
 var partyDB_live = {};
 var partyDB_test = {};
-var DB_PATH_LIVE = "sdcard/msgbot/lolgtec_db.json";       // 기존 라이브 구인방 DB (보존됨)
-var DB_PATH_TEST = "sdcard/msgbot/lolgtec_test_db.json";  // 테스트용 'ㅇㅇ'방 전용 DB
+var DB_PATH_LIVE = "sdcard/msgbot/lolgtec_db.json";       
+var DB_PATH_TEST = "sdcard/msgbot/lolgtec_test_db.json";  
 
-// 💾 라이브 DB 로드
 try {
     if (File.exists(DB_PATH_LIVE)) {
         var dbData = File.read(DB_PATH_LIVE);
@@ -20,7 +18,6 @@ try {
     }
 } catch (e) { partyDB_live = {}; }
 
-// 💾 테스트 DB 로드
 try {
     if (File.exists(DB_PATH_TEST)) {
         var testData = File.read(DB_PATH_TEST);
@@ -28,11 +25,11 @@ try {
     }
 } catch (e) { partyDB_test = {}; }
 
+// 💡 솔랭(1인) 최대 인원수 추가
 const maxMembers = {
-    "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "칼바람": 5
+    "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5
 };
 
-// 💡 스마트 닉네임 부분 매칭
 function isNameMatch(name1, name2) {
     if (!name1 || !name2) return false;
     if (name1 === name2) return true;
@@ -130,11 +127,9 @@ function getNextPartyId(mode, currentDB) {
 function response(room, msg, sender, isGroupChat, replier, imageDB, packageName) {
     if (room !== "ㅇㅇ" && room !== "LOL지텍 구인방") return;
 
-    // 💡 [핵심] 현재 메시지가 발생한 채팅방에 따라 서랍(DB)을 다르게 엽니다.
     var isTestRoom = (room === "ㅇㅇ");
     var currentDB = isTestRoom ? partyDB_test : partyDB_live;
 
-    // 💡 [핵심] 저장할 때도 현재 방의 전용 파일에만 안전하게 덮어씁니다.
     var saveDB = function() {
         var path = isTestRoom ? DB_PATH_TEST : DB_PATH_LIVE;
         try {
@@ -166,7 +161,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "💡 강제명령어 시 여러 명을 멘션하여 한 번에 등록/제거가 가능합니다.\n\n" +
                    "⚠️ 파티가 끝났거나 폭파될 땐 꼭 '파티삭제 [파티명]'으로 방을 정리해 주세요!\n" +
                    "🚫 동시 입력 시 처리가 누락될 수 있으니 앞선 메시지 처리 후 입력을 권장합니다.\n\n" +
-                   "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 칼바람, 기타";
+                   "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 기타";
         replier.reply(help);
         return;
     }
@@ -192,7 +187,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     var createStr = isTempCreate ? msg.replace("임시생성 ", "").trim() : msg.trim();
     
     if (msg.indexOf("참여 ") === -1 && msg.indexOf("임시참여") === -1 && msg.indexOf("예약") === -1 && msg.indexOf("탈퇴") === -1 && msg.indexOf("파티삭제") === -1 && msg.indexOf("수정 ") === -1 && msg.indexOf("메모 ") === -1 && msg.indexOf("강제참여 ") === -1 && msg.indexOf("강제탈퇴 ") === -1) {
-        var validModes = ["내전", "아레나", "자랭", "듀랭", "칼바람"];
+        var validModes = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람"];
         var words = createStr.split(/\s+/);
         var mode = words[0];
         
@@ -232,7 +227,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 actualMode = mode;
                 pMax = maxMembers[mode];
                 pTime = words[1];
-                var defaultTier = (mode === "칼바람" || mode === "아레나" || mode === "내전") ? "무관" : "미정";
+                var defaultTier = (mode === "칼바람" || mode === "아레나" || mode === "내전" || mode === "솔랭") ? "무관" : "미정";
                 pTier = words[2] || defaultTier;
                 pVibe = words[3] || "즐겜";
                 pId = getNextPartyId(actualMode, currentDB);
@@ -255,7 +250,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
             
         } else if (isTempCreate) {
-            replier.reply("⚠️ 지원하지 않는 모드입니다.\n(지원: 내전, 아레나, 자랭, 듀랭, 칼바람, 기타)");
+            replier.reply("⚠️ 지원하지 않는 모드입니다.\n(지원: 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 기타)");
             return;
         }
     }
@@ -417,10 +412,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         p.time = parts[2];
-        var validModesArray = ["내전", "아레나", "자랭", "듀랭", "칼바람"];
+        var validModesArray = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람"];
         var isCustomGame = (validModesArray.indexOf(p.mode) === -1);
         
-        var defaultTier = (isCustomGame || p.mode === "칼바람" || p.mode === "아레나" || p.mode === "내전") ? "무관" : "미정";
+        var defaultTier = (isCustomGame || p.mode === "칼바람" || p.mode === "아레나" || p.mode === "내전" || p.mode === "솔랭") ? "무관" : "미정";
         p.tier = parts[3] || defaultTier;
         p.vibe = parts[4] || "즐겜";
 
