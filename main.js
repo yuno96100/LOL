@@ -44,18 +44,30 @@ function isNameMatch(name1, name2) {
 }
 
 function parseMultiNames(rawStr) {
-    var words = rawStr.split(/\s+/);
+    var cleanStr = rawStr.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+    if (!cleanStr) return [];
+
+    // 정규식: "문자열" 또는 '문자열' 또는 공백이 없는 단어를 각각 분리
+    var tokens = cleanStr.match(/"[^"]+"|'[^']+'|\S+/g) || [];
     var names = [];
     var i = 0;
     
-    while (i < words.length) {
-        var word = words[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
-        if (!word) { i++; continue; }
+    while (i < tokens.length) {
+        var word = tokens[i];
 
+        // 1. 따옴표로 묶인 지인 이름인 경우 (따옴표를 벗겨내고 1명으로 통째로 등록)
+        if ((word.charAt(0) === '"' && word.charAt(word.length - 1) === '"') || 
+            (word.charAt(0) === "'" && word.charAt(word.length - 1) === "'")) {
+            names.push(word.substring(1, word.length - 1));
+            i++;
+            continue;
+        }
+
+        // 2. 멘션(@) 및 기존 톡방 유저 형식 처리
         if (word.indexOf("@") === 0) {
             var cleanWord = word.replace("@", "");
-            if (/^\d{2}$/.test(cleanWord) && i + 2 < words.length && /^[남여]$/.test(words[i+1])) {
-                var fullName = cleanWord + " " + words[i+1] + " " + words[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+            if (/^\d{2}$/.test(cleanWord) && i + 2 < tokens.length && /^[남여]$/.test(tokens[i+1])) {
+                var fullName = cleanWord + " " + tokens[i+1] + " " + tokens[i+2];
                 names.push(fullName);
                 i += 3;
             } else {
@@ -63,6 +75,7 @@ function parseMultiNames(rawStr) {
                 i++;
             }
         } else {
+            // 3. 띄어쓰기 없는 일반 지인 이름
             names.push(word);
             i++;
         }
