@@ -2,9 +2,10 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v75.0.0 통합본)
- * - 변경 사항: '모드변경' 및 '인원수정' 시 예약자 자동 강제 합류(수급) 로직 제거
- * - 변경 사유: 예약자는 '확정'이 아닌 '예비(불확실)' 상태일 수 있으므로 수동 참여 유도(알림만 제공)
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v76.0.0 통합본)
+ * - 적용 사항: 쉼표(,) 기반 다중 등록 파서, 파티 중복 참여 무제한, 듀얼 DB, 솔랭 지원, 
+ * 방 폭파 없는 모드변경, 인원수정, 자동 닉네임 동기화, 대기자 알림(수동 합류 유도)
+ * - 주의: 축약 및 생략 없이 모든 방어 로직과 안내 메시지를 100% 포함한 완전체 버전
  */
 
 var partyDB_live = {};
@@ -43,42 +44,21 @@ function isNameMatch(name1, name2) {
     return false;
 }
 
+// 💡 [핵심] 쉼표(,)를 기준으로 닉네임을 직관적이고 안전하게 분리하는 다중 파서
 function parseMultiNames(rawStr) {
-    var cleanStr = rawStr.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
-    if (!cleanStr) return [];
-
-    // 정규식: "문자열" 또는 '문자열' 또는 공백이 없는 단어를 각각 분리
-    var tokens = cleanStr.match(/"[^"]+"|'[^']+'|\S+/g) || [];
+    var cleanStr = rawStr.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "");
+    var tokens = cleanStr.split(",");
     var names = [];
-    var i = 0;
     
-    while (i < tokens.length) {
-        var word = tokens[i];
-
-        // 1. 따옴표로 묶인 지인 이름인 경우 (따옴표를 벗겨내고 1명으로 통째로 등록)
-        if ((word.charAt(0) === '"' && word.charAt(word.length - 1) === '"') || 
-            (word.charAt(0) === "'" && word.charAt(word.length - 1) === "'")) {
-            names.push(word.substring(1, word.length - 1));
-            i++;
-            continue;
-        }
-
-        // 2. 멘션(@) 및 기존 톡방 유저 형식 처리
+    for (var i = 0; i < tokens.length; i++) {
+        var word = tokens[i].trim();
+        if (!word) continue;
+        
         if (word.indexOf("@") === 0) {
-            var cleanWord = word.replace("@", "");
-            if (/^\d{2}$/.test(cleanWord) && i + 2 < tokens.length && /^[남여]$/.test(tokens[i+1])) {
-                var fullName = cleanWord + " " + tokens[i+1] + " " + tokens[i+2];
-                names.push(fullName);
-                i += 3;
-            } else {
-                if (cleanWord) names.push(cleanWord);
-                i++;
-            }
-        } else {
-            // 3. 띄어쓰기 없는 일반 지인 이름
-            names.push(word);
-            i++;
+            word = word.replace("@", "").trim();
         }
+        
+        if (word) names.push(word);
     }
     return names;
 }
@@ -204,14 +184,16 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "👉 메모 : 메모 [파티명] [할말] (내 포지션 등록)\n" +
                    "👉 현황 : 현황 (모집 중인 파티 전체 보기)\n\n" +
                    "🟡 [ 특수 파티 기능 ]\n" +
-                   "👉 타게임 : 기타 [게임명] [최대인원] [시간] [분위기]\n\n" +
+                   "👉 타게임 : 기타 [게임명] [최대인원] [시간] [분위기]\n" +
+                   "   (예: 기타 배그 4 22시 즐겜)\n\n" +
                    "🔴 [ 관리 및 예외 처리 ] (방장 / 대리용)\n" +
                    "👉 수정 : 수정 [파티명] [시간] [티어] [분위기]\n" +
                    "👉 모드변경 : 모드변경 [파티명] [새로운모드] (방장 전용)\n" +
                    "👉 인원수정 : 인원수정 [파티명] [숫자] (방장 전용)\n" +
                    "👉 삭제 : 파티삭제 [파티명] (파티 완전 해산)\n" +
-                   "👉 대리 : 강제참여 [파티명] @[이름] [지인이름]...\n" +
-                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름] [지인이름]...\n\n" +
+                   "👉 대리 : 강제참여 [파티명] @[이름], [지인이름]...\n" +
+                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름], [지인이름]...\n\n" +
+                   "💡 톡방 유저는 @멘션으로, 지인은 쉼표(,)로 구분하여 여러 명을 동시 처리할 수 있습니다.\n" +
                    "💡 파티는 개수 제한 없이 중복으로 동시 참여가 가능합니다.\n" +
                    "⚠️ 모드변경 시 최대 모집 인원수도 해당 게임 모드에 맞게 자동 변경됩니다.\n" +
                    "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 기타";
@@ -352,7 +334,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         
         var pFrom = currentDB[fromId];
         var userNote = "";
-        var isRemoved = false;
         
         var resIdx = -1;
         for (var k = 0; k < pFrom.reservations.length; k++) {
@@ -360,13 +341,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
         if (resIdx !== -1) {
             pFrom.reservations.splice(resIdx, 1);
-            isRemoved = true;
         } else {
             for (var i = 0; i < pFrom.members.length; i++) {
                 if (isNameMatch(pFrom.members[i].n, sender)) {
                     userNote = pFrom.members[i].t;
                     pFrom.members.splice(i, 1);
-                    isRemoved = true;
                     break;
                 }
             }
@@ -557,7 +536,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         saveDB();
         var replyMsg = "🔄 파티 모드 변경 완료\n\n[" + targetId + "] 파티의 모드가 [" + newMode + "] (정원 " + targetMax + "명)으로 전격 변경되었습니다!\n\n" + getPartyStatusText(targetId, currentDB);
         
-        // 💡 강제 수급 제거 및 알림만 제공
         if (p.reservations && p.reservations.length > 0) {
             replyMsg += "\n\n🔔 알림: 모드 확장으로 자리가 발생했습니다! 대기 명단의 [" + p.reservations[0] + "]님, '참여 " + targetId + "'를 입력하여 합류해 주세요.";
         }
@@ -599,7 +577,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
         var replyMsg = "🔄 인원 수정 완료\n\n[" + targetId + "] 파티의 최대 인원이 " + newMax + "명으로 변경되었습니다.\n\n" + getPartyStatusText(targetId, currentDB);
         
-        // 💡 강제 수급 제거 및 알림만 제공
         if (p.reservations && p.reservations.length > 0) {
             replyMsg += "\n\n🔔 알림: 정원이 확장되었습니다! 대기 명단의 [" + p.reservations[0] + "]님, '참여 " + targetId + "'를 입력하여 합류해 주세요.";
         }
@@ -640,7 +617,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (msg.indexOf("강제참여 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무 지인1 지인2");
+            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무, 지인1, 지인2");
             return;
         }
         var targetId = parts[1];
@@ -677,7 +654,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (msg.indexOf("강제탈퇴 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무 지인1");
+            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무, 지인1");
             return;
         }
         var targetId = parts[1];
