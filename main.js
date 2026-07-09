@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v76.0.0 통합본)
- * - 적용 사항: 쉼표(,) 기반 다중 등록 파서, 파티 중복 참여 무제한, 듀얼 DB, 솔랭 지원, 
- * 방 폭파 없는 모드변경, 인원수정, 자동 닉네임 동기화, 대기자 알림(수동 합류 유도)
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v77.0.0 통합본)
+ * - 적용 사항: 쉼표(,) 기반 다중 등록 파서, 무제한 파티 참여, 듀얼 DB, 솔랭 지원, 
+ * 방 폭파 없는 모드변경(간판 자동 교체 포함), 인원수정, 자동 닉네임 동기화, 수동 합류 알림
  * - 주의: 축약 및 생략 없이 모든 방어 로직과 안내 메시지를 100% 포함한 완전체 버전
  */
 
@@ -44,7 +44,7 @@ function isNameMatch(name1, name2) {
     return false;
 }
 
-// 💡 [핵심] 쉼표(,)를 기준으로 닉네임을 직관적이고 안전하게 분리하는 다중 파서
+// 💡 쉼표(,)를 기준으로 닉네임을 직관적이고 안전하게 분리하는 다중 파서
 function parseMultiNames(rawStr) {
     var cleanStr = rawStr.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "");
     var tokens = cleanStr.split(",");
@@ -530,14 +530,21 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
+        // 💡 새 모드에 맞는 새로운 파티 ID 발급
+        var newId = getNextPartyId(newMode, currentDB);
+
         p.mode = newMode;
         p.max = targetMax;
 
+        // 새 간판으로 데이터 이관 및 기존 간판 삭제
+        currentDB[newId] = p;
+        delete currentDB[targetId];
+
         saveDB();
-        var replyMsg = "🔄 파티 모드 변경 완료\n\n[" + targetId + "] 파티의 모드가 [" + newMode + "] (정원 " + targetMax + "명)으로 전격 변경되었습니다!\n\n" + getPartyStatusText(targetId, currentDB);
+        var replyMsg = "🔄 파티 모드 변경 완료\n\n[" + targetId + "] 파티가 [" + newId + "] 파티로 전격 변경되었습니다! (정원 " + targetMax + "명)\n\n" + getPartyStatusText(newId, currentDB);
         
         if (p.reservations && p.reservations.length > 0) {
-            replyMsg += "\n\n🔔 알림: 모드 확장으로 자리가 발생했습니다! 대기 명단의 [" + p.reservations[0] + "]님, '참여 " + targetId + "'를 입력하여 합류해 주세요.";
+            replyMsg += "\n\n🔔 알림: 모드 확장으로 자리가 발생했습니다! 대기 명단의 [" + p.reservations[0] + "]님, '참여 " + newId + "'를 입력하여 합류해 주세요.";
         }
         replier.reply(replyMsg);
         return;
