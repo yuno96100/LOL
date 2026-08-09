@@ -2,10 +2,10 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v77.0.0 통합본)
- * - 적용 사항: 쉼표(,) 기반 다중 등록 파서, 무제한 파티 참여, 듀얼 DB, 솔랭 지원, 
- * 방 폭파 없는 모드변경(간판 자동 교체 포함), 인원수정, 자동 닉네임 동기화, 수동 합류 알림
- * - 주의: 축약 및 생략 없이 모든 방어 로직과 안내 메시지를 100% 포함한 완전체 버전
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v80.0.0 통합본)
+ * - 적용 사항: 신규 모드 '증바람(5인)' 추가
+ * - 유지 사항: 7시간 경과 파티 자동 청소 및 안내, 순정 띄어쓰기 파서, 무제한 파티 참여, 
+ * 듀얼 DB, 솔랭 지원, 방 폭파 없는 모드변경, 인원수정, 자동 닉네임 동기화
  */
 
 var partyDB_live = {};
@@ -27,8 +27,9 @@ try {
     }
 } catch (e) { partyDB_test = {}; }
 
+// 💡 [수정] '증바람' 모드 추가 (기본 5명)
 const maxMembers = {
-    "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5
+    "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5, "증바람": 5
 };
 
 function isNameMatch(name1, name2) {
@@ -44,21 +45,29 @@ function isNameMatch(name1, name2) {
     return false;
 }
 
-// 💡 쉼표(,)를 기준으로 닉네임을 직관적이고 안전하게 분리하는 다중 파서
 function parseMultiNames(rawStr) {
-    var cleanStr = rawStr.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "");
-    var tokens = cleanStr.split(",");
+    var words = rawStr.split(/\s+/);
     var names = [];
+    var i = 0;
     
-    for (var i = 0; i < tokens.length; i++) {
-        var word = tokens[i].trim();
-        if (!word) continue;
-        
+    while (i < words.length) {
+        var word = words[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+        if (!word) { i++; continue; }
+
         if (word.indexOf("@") === 0) {
-            word = word.replace("@", "").trim();
+            var cleanWord = word.replace("@", "");
+            if (/^\d{2}$/.test(cleanWord) && i + 2 < words.length && /^[남여]$/.test(words[i+1])) {
+                var fullName = cleanWord + " " + words[i+1] + " " + words[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+                names.push(fullName);
+                i += 3;
+            } else {
+                if (cleanWord) names.push(cleanWord);
+                i++;
+            }
+        } else {
+            names.push(word);
+            i++;
         }
-        
-        if (word) names.push(word);
     }
     return names;
 }
@@ -153,6 +162,28 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         } catch(e){}
     };
 
+    var now = Date.now();
+    var isCleaned = false;
+    var SEVEN_HOURS = 7 * 60 * 60 * 1000;
+    var expiredParties = [];
+    
+    for (var id in currentDB) {
+        var p = currentDB[id];
+        if (!p.createdAt) {
+            p.createdAt = now;
+            isCleaned = true;
+        } else if (now - p.createdAt > SEVEN_HOURS) {
+            expiredParties.push(id);
+            delete currentDB[id];
+            isCleaned = true;
+        }
+    }
+    if (isCleaned) saveDB();
+    
+    if (expiredParties.length > 0) {
+        replier.reply("🧹 장시간(7시간) 대기로 인해 다음 파티가 자동 해산되었습니다.\n👉 해산된 파티: " + expiredParties.join(", "));
+    }
+
     var isProfileUpdated = false;
     for (var id in currentDB) {
         var p = currentDB[id];
@@ -174,29 +205,29 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (isProfileUpdated) saveDB();
 
     if (msg === "명령어") {
+        // 💡 [수정] 도움말에 증바람 추가
         var help = "✨ [ 구인구직 시스템 매뉴얼 ] ✨\n\n" +
                    "🟢 [ 기본 필수 명령어 ]\n" +
                    "👉 생성 : [모드] [시간] [티어(선택)] [분위기(선택)]\n" +
                    "   (예: 자랭 22시 골드 빡겜)\n" +
                    "👉 참여 : 참여 [파티명] / 탈퇴 [파티명]\n" +
                    "👉 예약 : 예약 [파티명] / 예약취소 [파티명]\n" +
-                   "👉 이동 : 이동 [이동할파티명] (파티 간 다이렉트 전출입)\n" +
+                   "👉 이동 : 이동 [이동할파티명] (파티 간 환승)\n" +
                    "👉 메모 : 메모 [파티명] [할말] (내 포지션 등록)\n" +
                    "👉 현황 : 현황 (모집 중인 파티 전체 보기)\n\n" +
                    "🟡 [ 특수 파티 기능 ]\n" +
-                   "👉 타게임 : 기타 [게임명] [최대인원] [시간] [분위기]\n" +
-                   "   (예: 기타 배그 4 22시 즐겜)\n\n" +
-                   "🔴 [ 관리 및 예외 처리 ] (방장 / 대리용)\n" +
+                   "👉 타게임 : 기타 [게임명] [최대인원] [시간] [분위기]\n\n" +
+                   "🔴 [ 관리 및 예외 처리 ]\n" +
                    "👉 수정 : 수정 [파티명] [시간] [티어] [분위기]\n" +
-                   "👉 모드변경 : 모드변경 [파티명] [새로운모드] (방장 전용)\n" +
-                   "👉 인원수정 : 인원수정 [파티명] [숫자] (방장 전용)\n" +
-                   "👉 삭제 : 파티삭제 [파티명] (파티 완전 해산)\n" +
-                   "👉 대리 : 강제참여 [파티명] @[이름], [지인이름]...\n" +
-                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름], [지인이름]...\n\n" +
-                   "💡 톡방 유저는 @멘션으로, 지인은 쉼표(,)로 구분하여 여러 명을 동시 처리할 수 있습니다.\n" +
-                   "💡 파티는 개수 제한 없이 중복으로 동시 참여가 가능합니다.\n" +
-                   "⚠️ 모드변경 시 최대 모집 인원수도 해당 게임 모드에 맞게 자동 변경됩니다.\n" +
-                   "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 기타";
+                   "👉 모드변경 : 모드변경 [파티명] [새모드] (방장용)\n" +
+                   "👉 인원수정 : 인원수정 [파티명] [숫자] (방장용)\n" +
+                   "👉 삭제 : 파티삭제 [파티명]\n" +
+                   "👉 대리 : 강제참여 [파티명] @[이름] [지인이름]...\n" +
+                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름] [지인이름]...\n\n" +
+                   "💡 톡방 유저는 @멘션, 외부 지인은 띄어쓰기 없이 붙여서(예: 아는동생) 나열해 주세요.\n" +
+                   "💡 중복으로 동시 참여가 무제한 가능합니다.\n" +
+                   "🧹 생성 후 7시간이 지난 파티는 자동 해산(삭제)됩니다.\n" +
+                   "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 증바람, 기타";
         replier.reply(help);
         return;
     }
@@ -219,7 +250,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     }
 
     if (msg.indexOf("참여 ") === -1 && msg.indexOf("예약 ") === -1 && msg.indexOf("탈퇴 ") === -1 && msg.indexOf("예약취소 ") === -1 && msg.indexOf("이동 ") === -1 && msg.indexOf("파티이동 ") === -1 && msg.indexOf("파티삭제") === -1 && msg.indexOf("수정 ") === -1 && msg.indexOf("모드변경 ") === -1 && msg.indexOf("인원수정 ") === -1 && msg.indexOf("메모 ") === -1 && msg.indexOf("강제참여 ") === -1 && msg.indexOf("강제탈퇴 ") === -1) {
-        var validModes = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람"];
+        // 💡 [수정] 생성 시 증바람 유효성 검사 추가
+        var validModes = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람", "증바람"];
         var words = msg.trim().split(/\s+/);
         var mode = words[0];
         
@@ -249,7 +281,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 actualMode = mode;
                 pMax = maxMembers[mode];
                 pTime = words[1];
-                var defaultTier = (mode === "칼바람" || mode === "아레나" || mode === "내전" || mode === "솔랭") ? "무관" : "미정";
+                // 💡 [수정] 증바람 생성 시 기본 티어를 '무관'으로 자동 설정
+                var defaultTier = (mode === "칼바람" || mode === "증바람" || mode === "아레나" || mode === "내전" || mode === "솔랭") ? "무관" : "미정";
                 pTier = words[2] || defaultTier;
                 pVibe = words[3] || "즐겜";
                 pId = getNextPartyId(actualMode, currentDB);
@@ -262,7 +295,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 max: pMax, 
                 time: pTime, 
                 tier: pTier, 
-                vibe: pVibe
+                vibe: pVibe,
+                createdAt: Date.now() 
             };
             
             saveDB(); 
@@ -486,10 +520,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         p.time = parts[2];
-        var validModesArray = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람"];
+        // 💡 [수정] 파티 수정 시 증바람 유효성 및 무관 티어 처리
+        var validModesArray = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람", "증바람"];
         var isCustomGame = (validModesArray.indexOf(p.mode) === -1);
         
-        var defaultTier = (isCustomGame || p.mode === "칼바람" || p.mode === "아레나" || p.mode === "내전" || p.mode === "솔랭") ? "무관" : "미정";
+        var defaultTier = (isCustomGame || p.mode === "칼바람" || p.mode === "증바람" || p.mode === "아레나" || p.mode === "내전" || p.mode === "솔랭") ? "무관" : "미정";
         p.tier = parts[3] || defaultTier;
         p.vibe = parts[4] || "즐겜";
 
@@ -519,7 +554,8 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         if (!maxMembers[newMode]) {
-            replier.reply("⚠️ 지원하지 않는 모드입니다.\n(지원: 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람)");
+            // 💡 [수정] 모드변경 시 증바람 모드 지원 안내 메시지 추가
+            replier.reply("⚠️ 지원하지 않는 모드입니다.\n(지원: 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 증바람)");
             return;
         }
 
@@ -530,13 +566,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             return;
         }
 
-        // 💡 새 모드에 맞는 새로운 파티 ID 발급
         var newId = getNextPartyId(newMode, currentDB);
 
         p.mode = newMode;
         p.max = targetMax;
 
-        // 새 간판으로 데이터 이관 및 기존 간판 삭제
         currentDB[newId] = p;
         delete currentDB[targetId];
 
@@ -624,7 +658,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (msg.indexOf("강제참여 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무, 지인1, 지인2");
+            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무 아는동생 동네친구");
             return;
         }
         var targetId = parts[1];
@@ -661,7 +695,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (msg.indexOf("강제탈퇴 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무, 지인1");
+            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무 아는동생");
             return;
         }
         var targetId = parts[1];
