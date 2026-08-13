@@ -747,3 +747,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 }
 //=== 수정 끝 ===
 // (파일 최하단)
+
+const ActivityThreadForRoomName = Java.type("android.app.ActivityThread");
+const RankingForRoomName = Java.type("android.service.notification.NotificationListenerService$Ranking");
+
