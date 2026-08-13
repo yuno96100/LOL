@@ -2,10 +2,10 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v80.0.0 통합본)
- * - 적용 사항: 신규 모드 '증바람(5인)' 추가
- * - 유지 사항: 7시간 경과 파티 자동 청소 및 안내, 순정 띄어쓰기 파서, 무제한 파티 참여, 
- * 듀얼 DB, 솔랭 지원, 방 폭파 없는 모드변경, 인원수정, 자동 닉네임 동기화
+ * [롤 구인구직 봇] lolgtec.js 롤백 완성본 (v80.0.0 통합본)
+ * - 롤백 사항: 카톡 26.7.0 알림 패치 및 API v2 엔진 변환 로직 완전 삭제
+ * - 유지 사항: 신규 모드 '증바람(5인)' 지원, 7시간 경과 파티 자동 청소 및 톡방 보고, 
+ * 순정 띄어쓰기 파서, 무제한 파티 참여, 듀얼 DB, 방 폭파 없는 모드변경
  */
 
 var partyDB_live = {};
@@ -27,7 +27,6 @@ try {
     }
 } catch (e) { partyDB_test = {}; }
 
-// 💡 [수정] '증바람' 모드 추가 (기본 5명)
 const maxMembers = {
     "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5, "증바람": 5
 };
@@ -205,7 +204,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     if (isProfileUpdated) saveDB();
 
     if (msg === "명령어") {
-        // 💡 [수정] 도움말에 증바람 추가
         var help = "✨ [ 구인구직 시스템 매뉴얼 ] ✨\n\n" +
                    "🟢 [ 기본 필수 명령어 ]\n" +
                    "👉 생성 : [모드] [시간] [티어(선택)] [분위기(선택)]\n" +
@@ -250,7 +248,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
     }
 
     if (msg.indexOf("참여 ") === -1 && msg.indexOf("예약 ") === -1 && msg.indexOf("탈퇴 ") === -1 && msg.indexOf("예약취소 ") === -1 && msg.indexOf("이동 ") === -1 && msg.indexOf("파티이동 ") === -1 && msg.indexOf("파티삭제") === -1 && msg.indexOf("수정 ") === -1 && msg.indexOf("모드변경 ") === -1 && msg.indexOf("인원수정 ") === -1 && msg.indexOf("메모 ") === -1 && msg.indexOf("강제참여 ") === -1 && msg.indexOf("강제탈퇴 ") === -1) {
-        // 💡 [수정] 생성 시 증바람 유효성 검사 추가
         var validModes = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람", "증바람"];
         var words = msg.trim().split(/\s+/);
         var mode = words[0];
@@ -281,7 +278,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 actualMode = mode;
                 pMax = maxMembers[mode];
                 pTime = words[1];
-                // 💡 [수정] 증바람 생성 시 기본 티어를 '무관'으로 자동 설정
                 var defaultTier = (mode === "칼바람" || mode === "증바람" || mode === "아레나" || mode === "내전" || mode === "솔랭") ? "무관" : "미정";
                 pTier = words[2] || defaultTier;
                 pVibe = words[3] || "즐겜";
@@ -520,7 +516,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         p.time = parts[2];
-        // 💡 [수정] 파티 수정 시 증바람 유효성 및 무관 티어 처리
         var validModesArray = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람", "증바람"];
         var isCustomGame = (validModesArray.indexOf(p.mode) === -1);
         
@@ -554,7 +549,6 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         if (!maxMembers[newMode]) {
-            // 💡 [수정] 모드변경 시 증바람 모드 지원 안내 메시지 추가
             replier.reply("⚠️ 지원하지 않는 모드입니다.\n(지원: 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 증바람)");
             return;
         }
@@ -747,7 +741,3 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 }
 //=== 수정 끝 ===
 // (파일 최하단)
-
-const ActivityThreadForRoomName = Java.type("android.app.ActivityThread");
-const RankingForRoomName = Java.type("android.service.notification.NotificationListenerService$Ranking");
-
