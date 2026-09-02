@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (하이브리드 파서 적용)
- * - 파서: 카톡 멘션 기능(\u2068~\u2069)으로 톡방 유저를 추출하고, 남은 텍스트는 띄어쓰기로 지인 처리
- * - 유지 사항: 7시간 자동 청소, 다중 DB, 유연한 닉네임 인식(indexOf)
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본 (PC/모바일 하이브리드 파서 + 엄격한 이름 검사)
+ * - 파서: 모바일 멘션 태그 추출은 물론, PC 카톡의 수동 멘션(@YY 남/여 이름)도 1명으로 완벽 그룹화
+ * - 검사: indexOf 삭제, 공백을 제외한 문자가 완전히 일치할 때만 중복(동일인)으로 판정
  */
 
 var partyDB_live = {};
@@ -30,41 +30,70 @@ const maxMembers = {
     "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5, "증바람": 5
 };
 
-// 💡 유연한 닉네임 인식 (일부만 맞아도 동일인 처리)
+// 💡 [수정됨] 이름의 일부가 아닌 '공백을 제거한 핵심 텍스트가 완전히 같을 때만' 일치 처리
 function isNameMatch(name1, name2) {
     if (!name1 || !name2) return false;
     if (name1 === name2) return true;
     
     var regex = /^\d{2}\s*(?:[남여]\s*)?/;
-    var core1 = name1.replace(regex, "").trim().toLowerCase();
-    var core2 = name2.replace(regex, "").trim().toLowerCase();
+    var core1 = name1.replace(regex, "").trim();
+    var core2 = name2.replace(regex, "").trim();
     
-    if (core1.length > 0 && core1 === core2) return true;
-    if (core1.length >= 2 && core2.indexOf(core1) !== -1) return true;
-    if (core2.length >= 2 && core1.indexOf(core2) !== -1) return true;
+    // 띄어쓰기 전부 제거 후 소문자 변환하여 비교 ('여름'과 '여름지인'이 중복처리되는 버그 해결)
+    var clean1 = core1.replace(/\s+/g, "").toLowerCase();
+    var clean2 = core2.replace(/\s+/g, "").toLowerCase();
+    
+    if (clean1.length > 0 && clean1 === clean2) return true;
     
     return false;
 }
 
-// 💡 [방장님 맞춤형 정답] 닉네임은 카톡 멘션 기능으로 묶고, 지인은 띄어쓰기로 분리
+// 💡 [수정됨] 모바일 태그 + PC 수동 멘션(@) + 띄어쓰기 지인 완벽 호환 파서
 function parseMultiNames(rawStr) {
     var names = [];
     var tempStr = rawStr;
     
-    // 1. 카톡 '멘션 기능'을 사용한 닉네임 먼저 추출 (투명 괄호 \u2068~\u2069 기준)
+    // 1. 모바일 카톡 진짜 멘션(\u2068~\u2069) 우선 추출
     var mentionRegex = /\u2068([^\u2069]+)\u2069/g;
     var match;
     while ((match = mentionRegex.exec(rawStr)) !== null) {
         var mentionName = match[1].replace(/@/g, "").trim();
         if (mentionName) names.push(mentionName);
-        tempStr = tempStr.replace(match[0], " "); // 빼낸 멘션은 원본에서 지움
+        tempStr = tempStr.replace(match[0], " "); // 원본에서 제거
     }
     
-    // 2. 멘션된 사람들을 빼내고 남은 글자들(지인)은 띄어쓰기로 구분
-    var friends = tempStr.split(/\s+/);
-    for (var i = 0; i < friends.length; i++) {
-        var friendName = friends[i].replace(/[\u200B-\u200D\uFEFF@]/g, "").trim();
-        if (friendName) names.push(friendName);
+    // 2. PC 카톡 수동 멘션(@) 및 지인 띄어쓰기 처리 (v69 로직 부활 및 개선)
+    var words = tempStr.split(/\s+/);
+    var i = 0;
+    while (i < words.length) {
+        var word = words[i].replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+        if (!word) { i++; continue; }
+
+        if (word.indexOf("@") === 0) {
+            var cleanWord = word.replace("@", "");
+            
+            // 패턴 A: @YY 남/여 이름 (3단어를 1명으로 그룹화)
+            if (/^\d{2}$/.test(cleanWord) && i + 2 < words.length && /^[남여]$/.test(words[i+1])) {
+                var fullName = cleanWord + " " + words[i+1] + " " + words[i+2];
+                names.push(fullName);
+                i += 3;
+            } 
+            // 패턴 B: @YY 이름 (성별이 누락된 경우, 2단어 그룹화)
+            else if (/^\d{2}$/.test(cleanWord) && i + 1 < words.length && !/^[남여]$/.test(words[i+1])) {
+                var fullName = cleanWord + " " + words[i+1];
+                names.push(fullName);
+                i += 2;
+            } 
+            // 그 외: 일반 텍스트
+            else {
+                if (cleanWord) names.push(cleanWord);
+                i++;
+            }
+        } else {
+            // @가 없는 단어는 순수 지인 (띄어쓰기 기준)
+            names.push(word);
+            i++;
+        }
     }
     
     return names;
@@ -185,7 +214,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
 
     if (msg === "명령어") {
         var help = "✨ [ 구인구직 시스템 매뉴얼 ] ✨\n\n" +
-                   "🟢 [ 기본 필수 명령어 ] (이것만 알아도 충분해요!)\n" +
+                   "🟢 [ 기본 필수 명령어 ]\n" +
                    "👉 생성 : [모드] [시간] [티어(선택)] [분위기(선택)]\n" +
                    "   (예: 자랭 22시 골드 빡겜)\n" +
                    "👉 참여 : 참여 [파티명]\n" +
