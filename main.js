@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본
- * - 적용 사항: 카톡 멘션 태그(투명 괄호) 스마트 파서 적용 (성별 누락/띄어쓰기 닉네임 인식 오류 해결)
- * - 유지 사항: 강제참여 상세 현황판 출력, 신분 위조(동기화) 방지, 증바람 지원, 7시간 자동 청소
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v80.3.0 맞춤형 롤백 통합본)
+ * - 복구 사항: 방장님 맞춤형 v69 띄어쓰기 파서 및 닉네임 유연 인식(indexOf) 롤백
+ * - 유지 사항: 강제참여/탈퇴 시 상세 현황판 출력, 증바람 모드 지원, 7시간 자동 청소, 무제한 중복 참여
  */
 
 var partyDB_live = {};
@@ -30,54 +30,36 @@ const maxMembers = {
     "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5, "증바람": 5
 };
 
+// 💡 [v69 롤백] 이름의 일부만 일치해도 같은 사람으로 융통성 있게 인식하는 로직
 function isNameMatch(name1, name2) {
     if (!name1 || !name2) return false;
     if (name1 === name2) return true;
-
-    var clean1 = name1.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
-    var clean2 = name2.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
-    if (clean1 === clean2) return true;
-
-    var regex = /^(\d{2})\s*([남여])?\s*(.*)$/;
-    var m1 = clean1.match(regex);
-    var m2 = clean2.match(regex);
-
-    if (m1 && m2) {
-        if (m1[1] !== m2[1]) return false;
-        if (m1[2] && m2[2] && m1[2] !== m2[2]) return false;
-        return m1[3].replace(/\s+/g, "") === m2[3].replace(/\s+/g, ""); 
-    }
-
-    var core1 = clean1.replace(/^\d{2}\s*(?:[남여]\s*)?/, "").replace(/\s+/g, "").toLowerCase();
-    var core2 = clean2.replace(/^\d{2}\s*(?:[남여]\s*)?/, "").replace(/\s+/g, "").toLowerCase();
+    
+    var regex = /^\d{2}\s*(?:[남여]\s*)?/;
+    var core1 = name1.replace(regex, "").trim().toLowerCase();
+    var core2 = name2.replace(regex, "").trim().toLowerCase();
     
     if (core1.length > 0 && core1 === core2) return true;
+    if (core1.length >= 2 && core2.indexOf(core1) !== -1) return true;
+    if (core2.length >= 2 && core1.indexOf(core2) !== -1) return true;
     
     return false;
 }
 
+// 💡 [v69 롤백] 쉼표 없이 멘션과 띄어쓰기 지인을 혼합 인식하는 스마트 파서
 function parseMultiNames(rawStr) {
-    var tokens = rawStr.match(/\u2068[^\u2069]+\u2069|\S+/g) || [];
+    var words = rawStr.split(/\s+/);
     var names = [];
     var i = 0;
     
-    while (i < tokens.length) {
-        var token = tokens[i];
-        var isRealMention = (token.indexOf("\u2068") !== -1);
-        var word = token.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
-        
+    while (i < words.length) {
+        var word = words[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
         if (!word) { i++; continue; }
-
-        if (isRealMention && word.indexOf("@") === 0) {
-            names.push(word.substring(1).trim());
-            i++;
-            continue;
-        }
 
         if (word.indexOf("@") === 0) {
             var cleanWord = word.replace("@", "");
-            if (/^\d{2}$/.test(cleanWord) && i + 2 < tokens.length && /^[남여]$/.test(tokens[i+1].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim())) {
-                var fullName = cleanWord + " " + tokens[i+1].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim() + " " + tokens[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+            if (/^\d{2}$/.test(cleanWord) && i + 2 < words.length && /^[남여]$/.test(words[i+1])) {
+                var fullName = cleanWord + " " + words[i+1] + " " + words[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
                 names.push(fullName);
                 i += 3;
             } else {
