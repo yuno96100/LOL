@@ -2,10 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v80.2.0 안정화 통합본)
- * - 복구 사항: 쉼표 없는 순정 띄어쓰기 파서(v73) 롤백, 강제참여 상세 현황판 복구
- * - 수정 사항: 닉네임 오인식(도플갱어) 및 강제 덮어쓰기 버그 완벽 차단 (isNameMatch 강화)
- * - 유지 사항: 증바람 지원, 7시간 자동 청소, 무제한 중복 참여, 듀얼 DB, 방 폭파 없는 모드변경
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본
+ * - 적용 사항: 카톡 멘션 태그(투명 괄호) 스마트 파서 적용 (성별 누락/띄어쓰기 닉네임 인식 오류 해결)
+ * - 유지 사항: 강제참여 상세 현황판 출력, 신분 위조(동기화) 방지, 증바람 지원, 7시간 자동 청소
  */
 
 var partyDB_live = {};
@@ -58,18 +57,27 @@ function isNameMatch(name1, name2) {
 }
 
 function parseMultiNames(rawStr) {
-    var words = rawStr.split(/\s+/);
+    var tokens = rawStr.match(/\u2068[^\u2069]+\u2069|\S+/g) || [];
     var names = [];
     var i = 0;
     
-    while (i < words.length) {
-        var word = words[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+    while (i < tokens.length) {
+        var token = tokens[i];
+        var isRealMention = (token.indexOf("\u2068") !== -1);
+        var word = token.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+        
         if (!word) { i++; continue; }
+
+        if (isRealMention && word.indexOf("@") === 0) {
+            names.push(word.substring(1).trim());
+            i++;
+            continue;
+        }
 
         if (word.indexOf("@") === 0) {
             var cleanWord = word.replace("@", "");
-            if (/^\d{2}$/.test(cleanWord) && i + 2 < words.length && /^[남여]$/.test(words[i+1])) {
-                var fullName = cleanWord + " " + words[i+1] + " " + words[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+            if (/^\d{2}$/.test(cleanWord) && i + 2 < tokens.length && /^[남여]$/.test(tokens[i+1].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim())) {
+                var fullName = cleanWord + " " + tokens[i+1].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim() + " " + tokens[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
                 names.push(fullName);
                 i += 3;
             } else {
