@@ -2,10 +2,10 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 롤백 완성본 (v80.0.0 통합본)
- * - 롤백 사항: 카톡 26.7.0 알림 패치 및 API v2 엔진 변환 로직 완전 삭제
- * - 유지 사항: 신규 모드 '증바람(5인)' 지원, 7시간 경과 파티 자동 청소 및 톡방 보고, 
- * 순정 띄어쓰기 파서, 무제한 파티 참여, 듀얼 DB, 방 폭파 없는 모드변경
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v80.2.0 안정화 통합본)
+ * - 복구 사항: 쉼표 없는 순정 띄어쓰기 파서(v73) 롤백, 강제참여 상세 현황판 복구
+ * - 수정 사항: 닉네임 오인식(도플갱어) 및 강제 덮어쓰기 버그 완벽 차단 (isNameMatch 강화)
+ * - 유지 사항: 증바람 지원, 7시간 자동 청소, 무제한 중복 참여, 듀얼 DB, 방 폭파 없는 모드변경
  */
 
 var partyDB_live = {};
@@ -34,10 +34,23 @@ const maxMembers = {
 function isNameMatch(name1, name2) {
     if (!name1 || !name2) return false;
     if (name1 === name2) return true;
-    
-    var regex = /^\d{2}\s*(?:[남여]\s*)?/;
-    var core1 = name1.replace(regex, "").trim().toLowerCase();
-    var core2 = name2.replace(regex, "").trim().toLowerCase();
+
+    var clean1 = name1.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+    var clean2 = name2.replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
+    if (clean1 === clean2) return true;
+
+    var regex = /^(\d{2})\s*([남여])?\s*(.*)$/;
+    var m1 = clean1.match(regex);
+    var m2 = clean2.match(regex);
+
+    if (m1 && m2) {
+        if (m1[1] !== m2[1]) return false;
+        if (m1[2] && m2[2] && m1[2] !== m2[2]) return false;
+        return m1[3].replace(/\s+/g, "") === m2[3].replace(/\s+/g, ""); 
+    }
+
+    var core1 = clean1.replace(/^\d{2}\s*(?:[남여]\s*)?/, "").replace(/\s+/g, "").toLowerCase();
+    var core2 = clean2.replace(/^\d{2}\s*(?:[남여]\s*)?/, "").replace(/\s+/g, "").toLowerCase();
     
     if (core1.length > 0 && core1 === core2) return true;
     
