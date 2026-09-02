@@ -2,8 +2,8 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (v61 골뱅이 파서 롤백 및 임시방 제거)
- * - 파서: 명령어에 '@'가 있으면 무조건 '@' 기준으로 분리, 없으면 띄어쓰기로 분리
+ * [롤 구인구직 봇] lolgtec.js 최종 완성본 (하이브리드 파서 적용)
+ * - 파서: 카톡 멘션 기능(\u2068~\u2069)으로 톡방 유저를 추출하고, 남은 텍스트는 띄어쓰기로 지인 처리
  * - 유지 사항: 7시간 자동 청소, 다중 DB, 유연한 닉네임 인식(indexOf)
  */
 
@@ -46,26 +46,25 @@ function isNameMatch(name1, name2) {
     return false;
 }
 
-// 💡 [v61.0.0 롤백] 띄어쓰기 대신 무조건 골뱅이(@)를 기준으로 1명씩 묶는 파서
+// 💡 [방장님 맞춤형 정답] 닉네임은 카톡 멘션 기능으로 묶고, 지인은 띄어쓰기로 분리
 function parseMultiNames(rawStr) {
     var names = [];
+    var tempStr = rawStr;
     
-    // 만약 명령어에 @가 하나라도 포함되어 있다면 (카톡 멘션을 사용했다면)
-    if (rawStr.indexOf("@") !== -1) {
-        var splitNames = rawStr.split("@");
-        // 맨 앞의 빈 공간(splitNames[0])을 제외하고 1번부터 반복
-        for (var i = 1; i < splitNames.length; i++) {
-            var cleanedName = splitNames[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
-            if (cleanedName) names.push(cleanedName);
-        }
-    } else {
-        // @가 아예 없는 경우 (예: '강제참여 자랭1 지인1 지인2' 처럼 수동 타이핑했을 때)
-        // 이때만 예외적으로 띄어쓰기로 사람을 구별합니다.
-        var words = rawStr.split(/\s+/);
-        for (var j = 0; j < words.length; j++) {
-            var word = words[j].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
-            if (word) names.push(word);
-        }
+    // 1. 카톡 '멘션 기능'을 사용한 닉네임 먼저 추출 (투명 괄호 \u2068~\u2069 기준)
+    var mentionRegex = /\u2068([^\u2069]+)\u2069/g;
+    var match;
+    while ((match = mentionRegex.exec(rawStr)) !== null) {
+        var mentionName = match[1].replace(/@/g, "").trim();
+        if (mentionName) names.push(mentionName);
+        tempStr = tempStr.replace(match[0], " "); // 빼낸 멘션은 원본에서 지움
+    }
+    
+    // 2. 멘션된 사람들을 빼내고 남은 글자들(지인)은 띄어쓰기로 구분
+    var friends = tempStr.split(/\s+/);
+    for (var i = 0; i < friends.length; i++) {
+        var friendName = friends[i].replace(/[\u200B-\u200D\uFEFF@]/g, "").trim();
+        if (friendName) names.push(friendName);
     }
     
     return names;
@@ -202,9 +201,9 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "👉 모드변경 : 모드변경 [파티명] [새모드] (방장용)\n" +
                    "👉 인원수정 : 인원수정 [파티명] [숫자] (방장용)\n" +
                    "👉 삭제 : 파티삭제 [파티명] (파티 완전 해산)\n" +
-                   "👉 대리 : 강제참여 [파티명] @[이름] @[이름]...\n" +
-                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름] @[이름]...\n\n" +
-                   "💡 강제명령어 시 기존 유저는 @멘션으로, 지인 이름 앞에도 @를 붙여 나열해 주세요.\n\n" +
+                   "👉 대리 : 강제참여 [파티명] @[이름] [지인이름]...\n" +
+                   "👉 강퇴 : 강제탈퇴 [파티명] @[이름] [지인이름]...\n\n" +
+                   "💡 강제명령어 시 기존 유저는 @멘션으로 찍고, 지인은 띄어쓰기로 구분하여 적어주세요.\n\n" +
                    "⚠️ 파티가 끝났거나 폭파될 땐 꼭 '파티삭제 [파티명]'으로 방을 정리해 주세요!\n" +
                    "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 증바람, 기타";
         replier.reply(help);
@@ -636,11 +635,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 💡 [핵심] 골뱅이(@) 롤백 파서를 사용한 강제참여 로직
+    // 💡 [핵심] 하이브리드 파서를 사용한 강제참여 로직
     if (msg.indexOf("강제참여 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무 @아는동생 @동네친구");
+            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무 아는동생 동네친구");
             return;
         }
         var targetId = parts[1];
@@ -674,11 +673,11 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 💡 [핵심] 골뱅이(@) 롤백 파서를 사용한 강제탈퇴 로직
+    // 💡 [핵심] 하이브리드 파서를 사용한 강제탈퇴 로직
     if (msg.indexOf("강제탈퇴 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무 @아는동생");
+            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무 아는동생");
             return;
         }
         var targetId = parts[1];
