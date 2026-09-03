@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js 최종 완성본 (PC/모바일 하이브리드 파서 + 엄격한 이름 검사)
- * - 파서: 모바일 멘션 태그 추출은 물론, PC 카톡의 수동 멘션(@YY 남/여 이름)도 1명으로 완벽 그룹화
- * - 검사: indexOf 삭제, 공백을 제외한 문자가 완전히 일치할 때만 중복(동일인)으로 판정
+ * [롤 구인구직 봇] lolgtec.js (스마트 파서 도입판)
+ * - 추가 사항: 복잡한 쉼표 없이 멘션(@)과 띄어쓰기만으로 여러 명을 분리하는 스마트 파서 이식
+ * - 추가 사항: 유연한 이름 검사 로직(isNameMatch) 복구 적용
  */
 
 var partyDB_live = {};
@@ -30,72 +30,47 @@ const maxMembers = {
     "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5, "증바람": 5
 };
 
-// 💡 [수정됨] 이름의 일부가 아닌 '공백을 제거한 핵심 텍스트가 완전히 같을 때만' 일치 처리
+// 💡 유연한 이름 검사 로직 (닉네임의 일부만 맞아도 인식)
 function isNameMatch(name1, name2) {
     if (!name1 || !name2) return false;
     if (name1 === name2) return true;
     
     var regex = /^\d{2}\s*(?:[남여]\s*)?/;
-    var core1 = name1.replace(regex, "").trim();
-    var core2 = name2.replace(regex, "").trim();
+    var core1 = name1.replace(regex, "").trim().toLowerCase();
+    var core2 = name2.replace(regex, "").trim().toLowerCase();
     
-    // 띄어쓰기 전부 제거 후 소문자 변환하여 비교 ('여름'과 '여름지인'이 중복처리되는 버그 해결)
-    var clean1 = core1.replace(/\s+/g, "").toLowerCase();
-    var clean2 = core2.replace(/\s+/g, "").toLowerCase();
-    
-    if (clean1.length > 0 && clean1 === clean2) return true;
+    if (core1.length > 0 && core1 === core2) return true;
+    if (core1.length >= 2 && core2.indexOf(core1) !== -1) return true;
+    if (core2.length >= 2 && core1.indexOf(core2) !== -1) return true;
     
     return false;
 }
 
-// 💡 [수정됨] 모바일 태그 + PC 수동 멘션(@) + 띄어쓰기 지인 완벽 호환 파서
+// 💡 스마트 다중 이름 파서 (멘션과 띄어쓰기 지인을 완벽 분리)
 function parseMultiNames(rawStr) {
+    var words = rawStr.split(/\s+/);
     var names = [];
-    var tempStr = rawStr;
-    
-    // 1. 모바일 카톡 진짜 멘션(\u2068~\u2069) 우선 추출
-    var mentionRegex = /\u2068([^\u2069]+)\u2069/g;
-    var match;
-    while ((match = mentionRegex.exec(rawStr)) !== null) {
-        var mentionName = match[1].replace(/@/g, "").trim();
-        if (mentionName) names.push(mentionName);
-        tempStr = tempStr.replace(match[0], " "); // 원본에서 제거
-    }
-    
-    // 2. PC 카톡 수동 멘션(@) 및 지인 띄어쓰기 처리 (v69 로직 부활 및 개선)
-    var words = tempStr.split(/\s+/);
     var i = 0;
+    
     while (i < words.length) {
-        var word = words[i].replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+        var word = words[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
         if (!word) { i++; continue; }
 
         if (word.indexOf("@") === 0) {
             var cleanWord = word.replace("@", "");
-            
-            // 패턴 A: @YY 남/여 이름 (3단어를 1명으로 그룹화)
             if (/^\d{2}$/.test(cleanWord) && i + 2 < words.length && /^[남여]$/.test(words[i+1])) {
-                var fullName = cleanWord + " " + words[i+1] + " " + words[i+2];
+                var fullName = cleanWord + " " + words[i+1] + " " + words[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
                 names.push(fullName);
                 i += 3;
-            } 
-            // 패턴 B: @YY 이름 (성별이 누락된 경우, 2단어 그룹화)
-            else if (/^\d{2}$/.test(cleanWord) && i + 1 < words.length && !/^[남여]$/.test(words[i+1])) {
-                var fullName = cleanWord + " " + words[i+1];
-                names.push(fullName);
-                i += 2;
-            } 
-            // 그 외: 일반 텍스트
-            else {
+            } else {
                 if (cleanWord) names.push(cleanWord);
                 i++;
             }
         } else {
-            // @가 없는 단어는 순수 지인 (띄어쓰기 기준)
             names.push(word);
             i++;
         }
     }
-    
     return names;
 }
 
@@ -226,13 +201,13 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                    "🟡 [ 특수 파티 기능 ]\n" +
                    "👉 타게임 : 기타 [게임명] [최대인원] [시간] [분위기]\n\n" +
                    "🔴 [ 관리 및 예외 처리 ] (방장 / 대리용)\n" +
-                   "👉 수정 : 수정 [파티명] [시간] [티어] [분위기] (방장 전용)\n" +
-                   "👉 모드변경 : 모드변경 [파티명] [새모드] (방장용)\n" +
-                   "👉 인원수정 : 인원수정 [파티명] [숫자] (방장용)\n" +
+                   "👉 수정 : 수정 [파티명] [시간] [티어] [분위기]\n" +
+                   "👉 모드변경 : 모드변경 [파티명] [새모드]\n" +
+                   "👉 인원수정 : 인원수정 [파티명] [숫자]\n" +
                    "👉 삭제 : 파티삭제 [파티명] (파티 완전 해산)\n" +
                    "👉 대리 : 강제참여 [파티명] @[이름] [지인이름]...\n" +
                    "👉 강퇴 : 강제탈퇴 [파티명] @[이름] [지인이름]...\n\n" +
-                   "💡 강제명령어 시 기존 유저는 @멘션으로 찍고, 지인은 띄어쓰기로 구분하여 적어주세요.\n\n" +
+                   "💡 강제명령어 시 기존 유저는 @멘션으로, 지인은 띄어쓰기로 구분하여 한 번에 등록 가능합니다.\n\n" +
                    "⚠️ 파티가 끝났거나 폭파될 땐 꼭 '파티삭제 [파티명]'으로 방을 정리해 주세요!\n" +
                    "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 증바람, 기타";
         replier.reply(help);
@@ -664,11 +639,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 💡 [핵심] 하이브리드 파서를 사용한 강제참여 로직
     if (msg.indexOf("강제참여 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무 아는동생 동네친구");
+            replier.reply("⚠️ 입력 오류: 파티명과 추가할 이름을 입력해 주세요.\n👉 예시: 강제참여 자랭1 @멈무 지인1 지인2");
             return;
         }
         var targetId = parts[1];
@@ -702,11 +676,10 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
-    // 💡 [핵심] 하이브리드 파서를 사용한 강제탈퇴 로직
     if (msg.indexOf("강제탈퇴 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무 아는동생");
+            replier.reply("⚠️ 입력 오류: 파티명과 제외할 이름을 입력해 주세요.\n👉 예시: 강제탈퇴 자랭1 @멈무 지인1");
             return;
         }
         var targetId = parts[1];
