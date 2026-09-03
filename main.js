@@ -2,9 +2,9 @@
 // (파일 최상단)
 //=== 수정 시작 ===
 /**
- * [롤 구인구직 봇] lolgtec.js (스마트 파서 도입판)
- * - 추가 사항: 복잡한 쉼표 없이 멘션(@)과 띄어쓰기만으로 여러 명을 분리하는 스마트 파서 이식
- * - 추가 사항: 유연한 이름 검사 로직(isNameMatch) 복구 적용
+ * [롤 구인구직 봇] lolgtec.js v69.0.0 (스마트 다중 이름 파서 도입)
+ * - 변경 사항: 강제참여/탈퇴 시 멘션(@)된 풀네임과 띄어쓰기로 구분된 지인 이름을 혼합 인식
+ * - 효과: 쉼표 없이도 여러 명의 파티원과 지인을 한 번에 제어 가능
  */
 
 var partyDB_live = {};
@@ -27,10 +27,9 @@ try {
 } catch (e) { partyDB_test = {}; }
 
 const maxMembers = {
-    "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5, "증바람": 5
+    "내전": 10, "아레나": 8, "자랭": 5, "듀랭": 2, "솔랭": 1, "칼바람": 5
 };
 
-// 💡 유연한 이름 검사 로직 (닉네임의 일부만 맞아도 인식)
 function isNameMatch(name1, name2) {
     if (!name1 || !name2) return false;
     if (name1 === name2) return true;
@@ -46,8 +45,9 @@ function isNameMatch(name1, name2) {
     return false;
 }
 
-// 💡 스마트 다중 이름 파서 (멘션과 띄어쓰기 지인을 완벽 분리)
+// 💡 [신규] 멘션과 띄어쓰기 지인을 구분하여 이름 리스트를 추출하는 파서
 function parseMultiNames(rawStr) {
+    // 공백을 기준으로 단어를 나누되, 투명 문자(멘션 토큰) 제거
     var words = rawStr.split(/\s+/);
     var names = [];
     var i = 0;
@@ -56,8 +56,10 @@ function parseMultiNames(rawStr) {
         var word = words[i].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
         if (!word) { i++; continue; }
 
+        // 멘션(@)이 붙어 있고, 뒤에 'YY 성별' 형식이 이어지는지 확인 (풀네임 그룹화)
         if (word.indexOf("@") === 0) {
             var cleanWord = word.replace("@", "");
+            // YY(숫자2자리) + 남/여 패턴인 경우 다음 2단어까지 합침
             if (/^\d{2}$/.test(cleanWord) && i + 2 < words.length && /^[남여]$/.test(words[i+1])) {
                 var fullName = cleanWord + " " + words[i+1] + " " + words[i+2].replace(/[\u200B-\u200D\uFEFF\u2068-\u2069]/g, "").trim();
                 names.push(fullName);
@@ -67,6 +69,7 @@ function parseMultiNames(rawStr) {
                 i++;
             }
         } else {
+            // 일반 띄어쓰기로 구분된 이름(지인)
             names.push(word);
             i++;
         }
@@ -78,14 +81,18 @@ function getPartyStatusText(pId, currentDB) {
     var p = currentDB[pId];
     if (!p) return "";
     
-    var status = "🏆 [ " + pId + " ]\n";
+    var icon = p.isTemp ? "🌟" : "🏆";
+    var tag = p.isTemp ? " [임시] " : " ";
+    
+    var status = icon + tag + "[ " + pId + " ]\n";
     status += "📅 " + p.time + "  |  🏅 구간: " + p.tier + "  |  💬 " + p.vibe + "\n";
     status += "📊 현황 : " + p.members.length + " / " + p.max + " 명\n";
     
     for (var i = 0; i < p.members.length; i++) {
         var m = p.members[i];
         var noteStr = m.t ? " (" + m.t + ")" : "";
-        status += "👤 " + m.n + noteStr + "\n";
+        var mIcon = m.isTemp ? "🌟" : "👤"; 
+        status += mIcon + " " + m.n + noteStr + "\n";
     }
     
     if (p.reservations && p.reservations.length > 0) {
@@ -164,52 +171,29 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         } catch(e){}
     };
 
-    // 💡 7시간 자동 청소 기능
-    var now = Date.now();
-    var isCleaned = false;
-    var SEVEN_HOURS = 7 * 60 * 60 * 1000;
-    var expiredParties = [];
-    
-    for (var id in currentDB) {
-        var p = currentDB[id];
-        if (!p.createdAt) {
-            p.createdAt = now;
-            isCleaned = true;
-        } else if (now - p.createdAt > SEVEN_HOURS) {
-            expiredParties.push(id);
-            delete currentDB[id];
-            isCleaned = true;
-        }
-    }
-    if (isCleaned) saveDB();
-    
-    if (expiredParties.length > 0) {
-        replier.reply("🧹 장시간(7시간) 대기로 인해 다음 파티가 자동 해산되었습니다.\n👉 해산된 파티: " + expiredParties.join(", "));
-    }
-
     if (msg === "명령어") {
         var help = "✨ [ 구인구직 시스템 매뉴얼 ] ✨\n\n" +
-                   "🟢 [ 기본 필수 명령어 ]\n" +
+                   "🟢 [ 기본 필수 명령어 ] (이것만 알아도 충분해요!)\n" +
                    "👉 생성 : [모드] [시간] [티어(선택)] [분위기(선택)]\n" +
                    "   (예: 자랭 22시 골드 빡겜)\n" +
                    "👉 참여 : 참여 [파티명]\n" +
                    "👉 예약 : 예약 [파티명] / 예약취소 [파티명]\n" +
-                   "👉 이동 : 이동 [이동할파티명] (파티 간 환승)\n" +
                    "👉 메모 : 메모 [파티명] [할말] (내 포지션 등록)\n" +
                    "👉 현황 : 현황 (모집 중인 파티 전체 보기)\n" +
                    "👉 탈퇴 : 탈퇴 [파티명]\n\n" +
-                   "🟡 [ 특수 파티 기능 ]\n" +
-                   "👉 타게임 : 기타 [게임명] [최대인원] [시간] [분위기]\n\n" +
+                   "🟡 [ 특수 파티 기능 ] (타 게임 / 투잡 뛰기)\n" +
+                   "👉 타게임 : 기타 [게임명] [최대인원] [시간] [분위기]\n" +
+                   "👉 임시방 : 임시생성 [모드] [시간] ...\n" +
+                   "👉 임시참여 : 임시참여 [파티명]\n\n" +
                    "🔴 [ 관리 및 예외 처리 ] (방장 / 대리용)\n" +
-                   "👉 수정 : 수정 [파티명] [시간] [티어] [분위기]\n" +
-                   "👉 모드변경 : 모드변경 [파티명] [새모드]\n" +
-                   "👉 인원수정 : 인원수정 [파티명] [숫자]\n" +
+                   "👉 수정 : 수정 [파티명] [시간] [티어] [분위기] (방장 전용)\n" +
                    "👉 삭제 : 파티삭제 [파티명] (파티 완전 해산)\n" +
                    "👉 대리 : 강제참여 [파티명] @[이름] [지인이름]...\n" +
                    "👉 강퇴 : 강제탈퇴 [파티명] @[이름] [지인이름]...\n\n" +
                    "💡 강제명령어 시 기존 유저는 @멘션으로, 지인은 띄어쓰기로 구분하여 한 번에 등록 가능합니다.\n\n" +
                    "⚠️ 파티가 끝났거나 폭파될 땐 꼭 '파티삭제 [파티명]'으로 방을 정리해 주세요!\n" +
-                   "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 증바람, 기타";
+                   "🚫 동시 입력 시 처리가 누락될 수 있으니 앞선 메시지 처리 후 입력을 권장합니다.\n\n" +
+                   "※ 지원 모드 : 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 기타";
         replier.reply(help);
         return;
     }
@@ -226,18 +210,29 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             body += getPartyStatusText(keys[i], currentDB) + "\n";
             if (i < keys.length - 1) body += "--------------------------\n";
         }
-        body += "\n💡 '이동 [파티명]' 명령어로 파티 간 빠른 환승이 가능합니다!";
+        body += "\n💡 '참여 [파티명]' 후 '메모 [파티명] [할말]'로 포지션을 등록해 보세요!";
         replier.reply(body);
         return;
     }
 
-    if (msg.indexOf("참여 ") === -1 && msg.indexOf("예약 ") === -1 && msg.indexOf("탈퇴 ") === -1 && msg.indexOf("예약취소 ") === -1 && msg.indexOf("이동 ") === -1 && msg.indexOf("파티이동 ") === -1 && msg.indexOf("파티삭제") === -1 && msg.indexOf("수정 ") === -1 && msg.indexOf("모드변경 ") === -1 && msg.indexOf("인원수정 ") === -1 && msg.indexOf("메모 ") === -1 && msg.indexOf("강제참여 ") === -1 && msg.indexOf("강제탈퇴 ") === -1) {
-        var validModes = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람", "증바람"];
-        var words = msg.trim().split(/\s+/);
+    var isTempCreate = (msg.indexOf("임시생성 ") === 0);
+    var createStr = isTempCreate ? msg.replace("임시생성 ", "").trim() : msg.trim();
+    
+    if (msg.indexOf("참여 ") === -1 && msg.indexOf("임시참여") === -1 && msg.indexOf("예약") === -1 && msg.indexOf("탈퇴") === -1 && msg.indexOf("파티삭제") === -1 && msg.indexOf("수정 ") === -1 && msg.indexOf("메모 ") === -1 && msg.indexOf("강제참여 ") === -1 && msg.indexOf("강제탈퇴 ") === -1) {
+        var validModes = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람"];
+        var words = createStr.split(/\s+/);
         var mode = words[0];
         
         if (validModes.indexOf(mode) !== -1 || mode === "기타") {
-            clearUserStatus(sender, currentDB, saveDB);
+            if (isTempCreate) {
+                var userParties = getUserParties(sender, currentDB);
+                if (userParties.length >= 2) {
+                    replier.reply("⚠️ 생성 실패\n\n최대 2개의 파티에만 동시 소속될 수 있습니다.");
+                    return;
+                }
+            } else {
+                clearUserStatus(sender, currentDB, saveDB);
+            }
 
             var pId, pTime, pTier, pVibe, pMax, actualMode;
 
@@ -264,7 +259,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
                 actualMode = mode;
                 pMax = maxMembers[mode];
                 pTime = words[1];
-                var defaultTier = (mode === "칼바람" || mode === "증바람" || mode === "아레나" || mode === "내전" || mode === "솔랭") ? "무관" : "미정";
+                var defaultTier = (mode === "칼바람" || mode === "아레나" || mode === "내전" || mode === "솔랭") ? "무관" : "미정";
                 pTier = words[2] || defaultTier;
                 pVibe = words[3] || "즐겜";
                 pId = getNextPartyId(actualMode, currentDB);
@@ -272,23 +267,30 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             
             currentDB[pId] = {
                 mode: actualMode, 
-                members: [{n: sender, t: ""}], 
+                members: [{n: sender, t: "", isTemp: isTempCreate}], 
                 reservations: [],
                 max: pMax, 
                 time: pTime, 
                 tier: pTier, 
                 vibe: pVibe,
-                createdAt: Date.now() 
+                isTemp: isTempCreate 
             };
             
             saveDB(); 
-            replier.reply("✅ 파티 생성 완료\n\n파티가 생성되었습니다.\n\n" + getPartyStatusText(pId, currentDB) + "\n\n💡 '메모 " + pId + " [할말]' 명령어로 내 포지션을 추가해 보세요!");
+            var prefix = isTempCreate ? "✅ 임시 파티 생성 완료" : "✅ 파티 생성 완료";
+            replier.reply(prefix + "\n\n파티가 생성되었습니다.\n\n" + getPartyStatusText(pId, currentDB) + "\n\n💡 '메모 " + pId + " [할말]' 명령어로 내 포지션을 추가해 보세요!");
+            return;
+            
+        } else if (isTempCreate) {
+            replier.reply("⚠️ 지원하지 않는 모드입니다.\n(지원: 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 기타)");
             return;
         }
     }
 
-    if (msg.indexOf("참여 ") === 0) {
-        var targetId = msg.split(" ")[1];
+    var isTempJoin = (msg.indexOf("임시참여 ") === 0);
+    if (msg.indexOf("참여 ") === 0 || isTempJoin) {
+        var parts = msg.split(" ");
+        var targetId = parts[1];
         
         if (!currentDB[targetId]) { replier.reply("⚠️ 참여 실패: 해당 파티를 찾을 수 없습니다."); return; }
         var p = currentDB[targetId];
@@ -297,106 +299,42 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         var userParties = getUserParties(sender, currentDB);
         if (userParties.indexOf(targetId) !== -1) { replier.reply("⚠️ 중복 참여: 이미 파티에 소속되어 있습니다."); return; }
 
-        clearUserStatus(sender, currentDB, saveDB);
+        if (isTempJoin) {
+            if (userParties.length >= 2) {
+                replier.reply("⚠️ 참여 실패: 최대 2개의 파티에만 동시 소속이 가능합니다.");
+                return;
+            }
+        } else {
+            clearUserStatus(sender, currentDB, saveDB);
+        }
 
-        p.members.push({n: sender, t: ""});
+        p.members.push({n: sender, t: "", isTemp: isTempJoin});
         saveDB(); 
-        replier.reply("✅ 파티 참여 완료\n\n" + sender + "님이 파티에 참여했습니다.\n\n" + getPartyStatusText(targetId, currentDB) + "\n\n💡 '메모 " + targetId + " [할말]' 명령어로 포지션을 등록해 주세요!");
+        var prefix = isTempJoin ? "✅ 임시 파티 참여 완료" : "✅ 파티 참여 완료";
+        replier.reply(prefix + "\n\n" + sender + "님이 파티에 참여했습니다.\n\n" + getPartyStatusText(targetId, currentDB) + "\n\n💡 '메모 " + targetId + " [할말]' 명령어로 포지션을 등록해 주세요!");
         return;
     }
 
-    if (msg.indexOf("이동 ") === 0 || msg.indexOf("파티이동 ") === 0) {
-        var parts = msg.split(/\s+/);
-        var userParties = getUserParties(sender, currentDB);
-
-        if (userParties.length === 0) {
-            replier.reply("⚠️ 이동 실패: 소속된 파티가 없어 이동할 수 없습니다. '참여'를 이용해 주세요.");
-            return;
-        }
-
-        var fromId, toId;
-        if (userParties.length === 1) {
-            fromId = userParties[0];
-            toId = parts[1];
-            if (!toId) {
-                replier.reply("⚠️ 입력 오류: 이동할 대상 파티명을 입력해 주세요.\n👉 예시: 이동 자랭2");
-                return;
-            }
-        } else {
-            if (parts.length < 3) {
-                replier.reply("⚠️ 파티 지정 필요: 현재 여러 파티에 소속되어 있습니다.\n👉 예시: 이동 " + userParties[0] + " 자랭2");
-                return;
-            }
-            fromId = parts[1];
-            toId = parts[2];
-            if (userParties.indexOf(fromId) === -1) {
-                replier.reply("⚠️ 이동 실패: [" + fromId + "] 파티에 소속되어 있지 않습니다.");
-                return;
-            }
-        }
-
-        if (!currentDB[toId]) {
-            replier.reply("⚠️ 이동 실패: 대상 파티 [" + toId + "]를 찾을 수 없습니다.");
-            return;
-        }
-        if (fromId === toId) {
-            replier.reply("⚠️ 이동 실패: 이미 해당 파티에 소속되어 있습니다.");
-            return;
-        }
-
-        var pTo = currentDB[toId];
-        if (pTo.members.length >= pTo.max) {
-            replier.reply("⚠️ 이동 실패: 대상 파티 [" + toId + "]의 정원이 마감되었습니다.");
-            return;
-        }
-        
-        var pFrom = currentDB[fromId];
-        var userNote = "";
-        
-        var resIdx = -1;
-        for (var k = 0; k < pFrom.reservations.length; k++) {
-            if (isNameMatch(pFrom.reservations[k], sender)) { resIdx = k; break; }
-        }
-        if (resIdx !== -1) {
-            pFrom.reservations.splice(resIdx, 1);
-        } else {
-            for (var i = 0; i < pFrom.members.length; i++) {
-                if (isNameMatch(pFrom.members[i].n, sender)) {
-                    userNote = pFrom.members[i].t;
-                    pFrom.members.splice(i, 1);
-                    break;
-                }
-            }
-        }
-
-        if (pFrom.members.length === 0) {
-            delete currentDB[fromId];
-        }
-
-        pTo.members.push({n: sender, t: userNote});
-        saveDB();
-
-        var replyMsg = "🚚 파티 이동 완료\n\n[" + sender + "]님이 [" + fromId + "] ➡️ [" + toId + "] 파티로 이동했습니다.\n\n" + getPartyStatusText(toId, currentDB);
-        if (currentDB[fromId]) {
-            if (pFrom.reservations && pFrom.reservations.length > 0) {
-                replyMsg += "\n\n🔔 [" + fromId + "] 알림: 대기 1순위 [" + pFrom.reservations[0] + "]님! 자리가 발생했습니다. '참여 " + fromId + "'를 입력하여 합류해 주세요.";
-            }
-        }
-        replier.reply(replyMsg);
-        return;
-    }
-
-    if (msg.indexOf("예약 ") === 0) {
+    var isTempRes = (msg.indexOf("임시예약 ") === 0);
+    if (msg.indexOf("예약 ") === 0 || isTempRes) {
         var targetId = msg.split(" ")[1];
         if (!currentDB[targetId]) { replier.reply("⚠️ 예약 실패: 해당 파티를 찾을 수 없습니다."); return; }
         var userParties = getUserParties(sender, currentDB);
         if (userParties.indexOf(targetId) !== -1) { replier.reply("⚠️ 중복 예약: 이미 해당 파티에 소속되어 있습니다."); return; }
         
-        clearUserStatus(sender, currentDB, saveDB);
+        if (isTempRes) {
+            if (userParties.length >= 2) {
+                replier.reply("⚠️ 예약 실패: 최대 2개의 파티에만 동시 소속이 가능합니다.");
+                return;
+            }
+        } else {
+            clearUserStatus(sender, currentDB, saveDB);
+        }
 
         currentDB[targetId].reservations.push(sender);
         saveDB(); 
-        replier.reply("✅ 파티 예약 완료\n\n" + sender + "님이 대기 명단에 등록되었습니다.\n\n" + getPartyStatusText(targetId, currentDB));
+        var prefix = isTempRes ? "✅ 임시 파티 예약 완료" : "✅ 파티 예약 완료";
+        replier.reply(prefix + "\n\n" + sender + "님이 대기 명단에 등록되었습니다.\n\n" + getPartyStatusText(targetId, currentDB));
         return;
     }
 
@@ -506,106 +444,15 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         }
 
         p.time = parts[2];
-        var validModesArray = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람", "증바람"];
+        var validModesArray = ["내전", "아레나", "자랭", "듀랭", "솔랭", "칼바람"];
         var isCustomGame = (validModesArray.indexOf(p.mode) === -1);
         
-        var defaultTier = (isCustomGame || p.mode === "칼바람" || p.mode === "증바람" || p.mode === "아레나" || p.mode === "내전" || p.mode === "솔랭") ? "무관" : "미정";
+        var defaultTier = (isCustomGame || p.mode === "칼바람" || p.mode === "아레나" || p.mode === "내전" || p.mode === "솔랭") ? "무관" : "미정";
         p.tier = parts[3] || defaultTier;
         p.vibe = parts[4] || "즐겜";
 
         saveDB();
         replier.reply("🔄 파티 수정 완료\n\n파티 정보가 성공적으로 변경되었습니다.\n\n" + getPartyStatusText(targetId, currentDB));
-        return;
-    }
-
-    if (msg.indexOf("모드변경 ") === 0) {
-        var parts = msg.split(/\s+/);
-        if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 변경할 새로운 모드를 입력해 주세요.\n👉 예시: 모드변경 솔랭1 자랭");
-            return;
-        }
-        var targetId = parts[1];
-        var newMode = parts[2];
-
-        if (!currentDB[targetId]) { 
-            replier.reply("⚠️ 변경 실패: 해당 파티를 찾을 수 없습니다."); 
-            return; 
-        }
-        var p = currentDB[targetId];
-
-        if (!isNameMatch(p.members[0].n, sender)) { 
-            replier.reply("⚠️ 권한 없음: 모드 변경은 파티를 생성한 방장만 가능합니다."); 
-            return; 
-        }
-
-        if (!maxMembers[newMode]) {
-            replier.reply("⚠️ 지원하지 않는 모드입니다.\n(지원: 내전, 아레나, 자랭, 듀랭, 솔랭, 칼바람, 증바람)");
-            return;
-        }
-
-        var targetMax = maxMembers[newMode];
-        
-        if (p.members.length > targetMax) {
-            replier.reply("⚠️ 변경 실패: 현재 참여 인원(" + p.members.length + "명)이 변경하려는 " + newMode + " 모드의 정원(" + targetMax + "명)보다 많습니다.\n인원을 정리한 후 다시 시도해 주세요.");
-            return;
-        }
-
-        var newId = getNextPartyId(newMode, currentDB);
-
-        p.mode = newMode;
-        p.max = targetMax;
-
-        currentDB[newId] = p;
-        delete currentDB[targetId];
-
-        saveDB();
-        var replyMsg = "🔄 파티 모드 변경 완료\n\n[" + targetId + "] 파티가 [" + newId + "] 파티로 전격 변경되었습니다! (정원 " + targetMax + "명)\n\n" + getPartyStatusText(newId, currentDB);
-        
-        if (p.reservations && p.reservations.length > 0) {
-            replyMsg += "\n\n🔔 알림: 모드 확장으로 자리가 발생했습니다! 대기 명단의 [" + p.reservations[0] + "]님, '참여 " + newId + "'를 입력하여 합류해 주세요.";
-        }
-        replier.reply(replyMsg);
-        return;
-    }
-
-    if (msg.indexOf("인원수정 ") === 0) {
-        var parts = msg.split(/\s+/);
-        if (parts.length < 3) {
-            replier.reply("⚠️ 입력 오류: 파티명과 변경할 인원수를 입력해 주세요.\n👉 예시: 인원수정 배그1 4");
-            return;
-        }
-        var targetId = parts[1];
-        if (!currentDB[targetId]) { 
-            replier.reply("⚠️ 인원수정 실패: 해당 파티를 찾을 수 없습니다."); 
-            return; 
-        }
-        var p = currentDB[targetId];
-
-        if (!isNameMatch(p.members[0].n, sender)) { 
-            replier.reply("⚠️ 권한 없음: 인원 수정은 파티를 생성한 방장만 가능합니다."); 
-            return; 
-        }
-
-        var newMax = parseInt(parts[2]);
-        if (isNaN(newMax) || newMax <= 0) {
-            replier.reply("⚠️ 입력 오류: 변경할 인원수는 올바른 숫자로 입력해 주세요.");
-            return;
-        }
-
-        if (newMax < p.members.length) {
-            replier.reply("⚠️ 인원수정 실패: 현재 참여 중인 인원(" + p.members.length + "명)보다 적게 설정할 수 없습니다.");
-            return;
-        }
-
-        p.max = newMax;
-        saveDB();
-
-        var replyMsg = "🔄 인원 수정 완료\n\n[" + targetId + "] 파티의 최대 인원이 " + newMax + "명으로 변경되었습니다.\n\n" + getPartyStatusText(targetId, currentDB);
-        
-        if (p.reservations && p.reservations.length > 0) {
-            replyMsg += "\n\n🔔 알림: 정원이 확장되었습니다! 대기 명단의 [" + p.reservations[0] + "]님, '참여 " + targetId + "'를 입력하여 합류해 주세요.";
-        }
-        replier.reply(replyMsg);
         return;
     }
 
@@ -639,6 +486,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
+    // 💡 [핵심] 다중 이름 파서를 사용한 강제참여 로직
     if (msg.indexOf("강제참여 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
@@ -649,6 +497,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         if (!currentDB[targetId]) { replier.reply("⚠️ 강제참여 실패: 해당 파티를 찾을 수 없습니다."); return; }
         var p = currentDB[targetId];
 
+        // 파티명 이후의 모든 문자열을 가져와서 파서에 넘김
         var rawNamesStr = msg.replace("강제참여 " + targetId, "").trim();
         var nameList = parseMultiNames(rawNamesStr);
 
@@ -664,7 +513,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
             }
             if (isDuplicate) { errorMsgs.push("[" + targetName + "] 중복 참여"); continue; }
 
-            p.members.push({n: targetName, t: "", isForced: true});
+            p.members.push({n: targetName, t: "", isTemp: p.isTemp, isForced: true});
             addedNames.push(targetName);
         }
 
@@ -676,6 +525,7 @@ function response(room, msg, sender, isGroupChat, replier, imageDB, packageName)
         return;
     }
 
+    // 💡 [핵심] 다중 이름 파서를 사용한 강제탈퇴 로직
     if (msg.indexOf("강제탈퇴 ") === 0) {
         var parts = msg.split(/\s+/);
         if (parts.length < 3) {
